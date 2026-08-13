@@ -64,7 +64,15 @@
       if (v.jdChartH) chartHeight = v.jdChartH;
     });
     buildTab();
-    maybeCoachMark();
+    // The bird flies in, becomes the banner, and only then does the
+    // coach mark speak — one thing at a time.
+    chrome.storage.local.get("jdFlightDone").then(async ({ jdFlightDone }) => {
+      await flightEntrance(!jdFlightDone);
+      if (!jdFlightDone) chrome.storage.local.set({ jdFlightDone: true });
+      tabEl.classList.remove("jd-preflight");
+      tabEl.classList.add("jd-tab-reveal");
+      maybeCoachMark();
+    });
     // Report what this browser already sees, then load community data.
     send({ type: "report", data: product });
     await refreshAll();
@@ -207,9 +215,53 @@
 
   const SPARK_PATH = "M1 15 L6 15 L6 9 L11 9 L11 12 L16 12 L16 4 L21 4";
 
+  // A stylized jackdaw in flight, facing its direction of travel:
+  // black body, grey nape, pale eye, two independently flapping wings.
+  const BIRD_SVG =
+    `<svg class="jd-flight-bird" viewBox="0 0 64 44" fill="none" aria-hidden="true">` +
+    `<path class="jd-w2" d="M26 20 Q30 6 44 3 Q36 13 32 20 Z" fill="#0d1626" opacity=".85"/>` +
+    `<path d="M2 20 L15 16 L15 25 L2 27 Z" fill="#1a1d23"/>` + // tail fan
+    `<path d="M12 22 Q26 13 42 15 Q52 16 57 21 Q52 27 40 28 Q24 30 12 26 Z" fill="#1a1d23"/>` + // body+head
+    `<path d="M55 19.5 L63 22.5 L55 24.5 Z" fill="#3d434c"/>` + // beak
+    `<path d="M40 14.5 Q47 12.5 53 16 Q47 15.5 41 16.5 Z" fill="#8b95a3"/>` + // grey nape
+    `<circle cx="53.5" cy="19.5" r="1.4" fill="#e8edf4"/>` + // pale eye
+    `<path class="jd-w1" d="M24 21 Q30 2 50 1 Q40 14 33 22 Z" fill="#16233a"/>` +
+    `</svg>`;
+
+  // The jackdaw flies in and becomes the banner. Full flight on the very
+  // first visit; a quick swoop afterwards. Skipped under reduced motion.
+  function flightEntrance(full) {
+    return new Promise((resolve) => {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return resolve();
+      const r = tabEl.getBoundingClientRect();
+      const wrap = el("div", "jd-flight " + (full ? "jd-flight-full" : "jd-flight-mini"));
+      wrap.style.left = r.left + r.width / 2 + window.scrollX + "px";
+      wrap.style.top = r.top + r.height / 2 + window.scrollY + "px";
+      wrap.innerHTML = BIRD_SVG;
+      uiRoot.append(wrap);
+      const bird = wrap.querySelector(".jd-flight-bird");
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        wrap.classList.add("jd-land");
+        setTimeout(() => {
+          wrap.classList.add("jd-bird-out");
+          resolve();
+          setTimeout(() => wrap.remove(), 300);
+        }, 180);
+      };
+      bird.addEventListener("animationend", (e) => {
+        if (e.animationName === "jd-fly") finish();
+      });
+      setTimeout(finish, full ? 1600 : 900); // safety net
+    });
+  }
+
   function buildTab() {
     tabEl = document.createElement("button");
     tabEl.id = "jackdaw-tab";
+    tabEl.classList.add("jd-preflight"); // hidden until the bird lands
     tabEl.setAttribute("aria-label", "Price history");
     tabEl.innerHTML =
       `<svg class="jd-spark" viewBox="0 0 22 18" fill="none" aria-hidden="true">` +

@@ -888,6 +888,49 @@
 }
 #jackdaw-drawer.jd-dark .mk-post { background: #24365a; }
 
+/* ---------- The arrival: a jackdaw flies in and becomes the banner ---------- */
+#jackdaw-tab.jd-preflight { opacity: 0; pointer-events: none; }
+#jackdaw-tab.jd-tab-reveal { animation: jd-tab-in 0.3s var(--ease-out); }
+.jd-flight {
+  position: absolute;
+  z-index: 2147483002;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+.jd-flight-bird {
+  width: 54px;
+  height: 37px;
+  offset-rotate: auto;
+  filter: drop-shadow(0 4px 8px rgba(13, 22, 38, 0.3));
+}
+/* full flight: long banking approach from the upper left, leveling out to land */
+.jd-flight-full .jd-flight-bird {
+  offset-path: path("M -360 -280 Q -200 -160 -110 -60 Q -50 -8 0 0");
+  animation: jd-fly 1.15s cubic-bezier(0.3, 0.6, 0.35, 1) forwards;
+}
+/* mini swoop for every later visit: same language, a fraction of the time */
+.jd-flight-mini .jd-flight-bird {
+  offset-path: path("M -130 -80 Q -60 -10 0 0");
+  animation: jd-fly 0.5s cubic-bezier(0.3, 0.6, 0.35, 1) forwards;
+}
+@keyframes jd-fly {
+  from { offset-distance: 0%; transform: scale(0.55); }
+  to { offset-distance: 100%; transform: scale(1); }
+}
+/* wings: flap on approach, spread to glide before touchdown */
+.jd-w1, .jd-w2 { transform-box: fill-box; transform-origin: 15% 90%; }
+.jd-flight-full .jd-w1 { animation: jd-flap 0.26s ease-in-out 3 alternate; }
+.jd-flight-full .jd-w2 { animation: jd-flap 0.26s ease-in-out 0.08s 3 alternate; }
+.jd-flight-mini .jd-w1 { animation: jd-flap 0.2s ease-in-out 2 alternate; }
+.jd-flight-mini .jd-w2 { animation: jd-flap 0.2s ease-in-out 0.06s 2 alternate; }
+@keyframes jd-flap {
+  from { transform: rotate(6deg); }
+  to { transform: rotate(-38deg); }
+}
+/* touchdown: a tiny settle, then the bird becomes the banner */
+.jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
+.jd-flight.jd-bird-out { opacity: 0; transform: scale(0.6); }
+
 /* ---------- Onboarding: coach mark + spotlight tour ---------- */
 .jd-coach {
   position: absolute;
@@ -1038,6 +1081,8 @@
   .jd-ib-expand svg, .jd-ib-share svg, .jd-ib-theme svg, .jd-ib-min svg, .jd-watch.jd-watching svg { animation: none; }
   .jd-coach, .jd-tour, .jd-tour-pop { animation: jd-fade 0.2s ease; }
   .jd-tour-hole { transition: none; }
+  .jd-flight { display: none; }
+  #jackdaw-tab.jd-tab-reveal { animation: jd-fade 0.2s ease; }
   #jackdaw-tab:active { transform: translate(-100%, -50%); }
   .jd-icon-btn:active, .jd-watch:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }
