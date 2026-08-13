@@ -888,6 +888,47 @@
 }
 #jackdaw-drawer.jd-dark .mk-post { background: #24365a; }
 
+/* ---------- Idle icon spells ----------
+   Each header icon makes one tiny characterful move on a 16s cycle,
+   staggered so no two ever move at the same moment. Motion lives in
+   the first ~7% of each cycle; the rest is stillness. */
+.jd-idle-icons .jd-icon-btn svg, .jd-watch svg { will-change: transform; }
+.jd-ib-expand svg { animation: jd-idle-expand 16s var(--ease-in-out) 2s infinite; }
+.jd-ib-share svg { animation: jd-idle-share 16s var(--ease-in-out) 6s infinite; }
+.jd-ib-theme svg { animation: jd-idle-theme 16s var(--ease-in-out) 10s infinite; }
+.jd-ib-min svg { animation: jd-idle-min 16s var(--ease-in-out) 14s infinite; }
+@keyframes jd-idle-expand {
+  0%, 7%, 100% { transform: scale(1); }
+  3.5% { transform: scale(1.14); }
+}
+@keyframes jd-idle-share {
+  0%, 7%, 100% { transform: translateY(0); }
+  2.5% { transform: translateY(-1.8px); }
+  5% { transform: translateY(0.4px); }
+}
+@keyframes jd-idle-theme {
+  0%, 7%, 100% { transform: rotate(0deg); }
+  3.5% { transform: rotate(-16deg); }
+}
+@keyframes jd-idle-min {
+  0%, 7%, 100% { transform: translateY(0); }
+  2.5% { transform: translateY(1.6px); }
+  5% { transform: translateY(-0.4px); }
+}
+/* The bell rings only while an alert is armed — motion as state, not noise */
+.jd-watch.jd-watching svg {
+  transform-origin: 50% 15%;
+  animation: jd-idle-bell 12s var(--ease-in-out) 4s infinite;
+}
+@keyframes jd-idle-bell {
+  0%, 8%, 100% { transform: rotate(0deg); }
+  1.5% { transform: rotate(13deg); }
+  3% { transform: rotate(-11deg); }
+  4.5% { transform: rotate(7deg); }
+  6% { transform: rotate(-4deg); }
+  7.5% { transform: rotate(1deg); }
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   #jackdaw-tab { animation: jd-fade 0.2s ease; }
@@ -902,6 +943,7 @@
   .mk-input-nudge { animation: none; }
   .jd-wordmark { animation: none; background-position: 100% 0; }
   .jd-popover { animation: jd-fade 0.15s ease; }
+  .jd-ib-expand svg, .jd-ib-share svg, .jd-ib-theme svg, .jd-ib-min svg, .jd-watch.jd-watching svg { animation: none; }
   #jackdaw-tab:active { transform: translate(-100%, -50%); }
   .jd-icon-btn:active, .jd-watch:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }

@@ -168,7 +168,9 @@
     const prodName = el("div", "jd-product-name", product.name);
 
     const controls = el("div", "jd-header-controls");
+    controls.classList.add("jd-idle-icons");
     const expandBtn = iconBtn(ICONS.expand, "Expand");
+    expandBtn.classList.add("jd-ib-expand");
     expandBtn.addEventListener("click", () => {
       const max = drawerEl.classList.toggle("jd-max");
       expandBtn.innerHTML = max ? ICONS.shrink : ICONS.expand;
@@ -176,8 +178,10 @@
       renderLeft(); // chart re-measures to the new width
     });
     const shareBtn = iconBtn(ICONS.share, "Copy chart as image");
+    shareBtn.classList.add("jd-ib-share");
     shareBtn.addEventListener("click", () => shareChart(shareBtn));
     const themeBtn = iconBtn(theme === "dark" ? ICONS.sun : ICONS.moon, theme === "dark" ? "Light mode" : "Dark mode");
+    themeBtn.classList.add("jd-ib-theme");
     themeBtn.addEventListener("click", () => {
       theme = theme === "dark" ? "light" : "dark";
       chrome.storage.local.set({ jdTheme: theme });
@@ -191,6 +195,7 @@
     watchBtn.title = "Pick a price — get notified when the flock sees it";
     watchBtn.addEventListener("click", () => switchTab("alerts"));
     const minBtn = iconBtn(ICONS.minimize, "Minimize");
+    minBtn.classList.add("jd-ib-min");
     minBtn.addEventListener("click", closeDrawer);
     controls.append(expandBtn, shareBtn, themeBtn, watchBtn, minBtn);
     header.append(brand, prodName, controls);
