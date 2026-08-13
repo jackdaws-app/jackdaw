@@ -888,6 +888,98 @@
 }
 #jackdaw-drawer.jd-dark .mk-post { background: #24365a; }
 
+/* ---------- Onboarding: coach mark + spotlight tour ---------- */
+.jd-coach {
+  position: absolute;
+  z-index: 2147483001;
+  transform: translateY(-50%);
+  width: 236px;
+  background: var(--jd-navy, #16233a);
+  color: #fff;
+  border-radius: 12px;
+  padding: 13px 14px;
+  box-shadow: 0 10px 34px rgba(13, 22, 38, 0.35);
+  animation: jd-coach-in 0.25s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+/* little arrow pointing back at the tab */
+.jd-coach::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--jd-navy, #16233a);
+}
+@keyframes jd-coach-in {
+  from { opacity: 0; transform: translateY(-50%) translateX(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
+}
+.jd-coach-out { opacity: 0 !important; transition: opacity 0.2s ease; }
+.jd-coach-title { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+.jd-coach-body { font-size: 12px; line-height: 1.5; color: rgba(255, 255, 255, 0.78); margin-bottom: 10px; }
+.jd-coach-btn {
+  border: 0;
+  background: var(--jd-green, #16a34a);
+  color: #fff;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .jd-coach-btn:hover { background: #15803d; }
+}
+.jd-coach-btn:active { transform: scale(0.96); }
+
+.jd-tour {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  overflow: hidden;
+  animation: jd-fade 0.25s ease;
+  border-radius: inherit;
+}
+.jd-tour-hole {
+  position: absolute;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(13, 22, 38, 0.55);
+  transition: left 0.3s var(--ease-in-out), top 0.3s var(--ease-in-out), width 0.3s var(--ease-in-out), height 0.3s var(--ease-in-out);
+}
+.jd-tour-pop {
+  position: absolute;
+  width: 280px;
+  background: var(--jd-navy);
+  color: #fff;
+  border-radius: 12px;
+  padding: 13px 14px;
+  box-shadow: 0 10px 34px rgba(13, 22, 38, 0.45);
+  animation: jd-coach-pop 0.25s var(--ease-out);
+}
+@keyframes jd-coach-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }
+.jd-tour-pop .mk-cancel { color: rgba(255, 255, 255, 0.6); }
+@media (hover: hover) and (pointer: fine) {
+  .jd-tour-pop .mk-cancel:hover { color: #fff; }
+}
+.jd-tour-dots { display: flex; gap: 5px; margin-bottom: 10px; }
+.jd-tour-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background-color 0.2s ease, transform 0.2s var(--ease-out);
+}
+.jd-tour-dot-on { background: var(--jd-green); transform: scale(1.3); }
+
 /* ---------- Idle icon spells ----------
    Each header icon makes one tiny characterful move on a 16s cycle,
    staggered so no two ever move at the same moment. Motion lives in
@@ -944,6 +1036,8 @@
   .jd-wordmark { animation: none; background-position: 100% 0; }
   .jd-popover { animation: jd-fade 0.15s ease; }
   .jd-ib-expand svg, .jd-ib-share svg, .jd-ib-theme svg, .jd-ib-min svg, .jd-watch.jd-watching svg { animation: none; }
+  .jd-coach, .jd-tour, .jd-tour-pop { animation: jd-fade 0.2s ease; }
+  .jd-tour-hole { transition: none; }
   #jackdaw-tab:active { transform: translate(-100%, -50%); }
   .jd-icon-btn:active, .jd-watch:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }

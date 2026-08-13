@@ -64,10 +64,113 @@
       if (v.jdChartH) chartHeight = v.jdChartH;
     });
     buildTab();
+    maybeCoachMark();
     // Report what this browser already sees, then load community data.
     send({ type: "report", data: product });
     await refreshAll();
   });
+
+  // ---------- Onboarding ----------
+
+  // First contact: a small coach mark pointing at the tab.
+  async function maybeCoachMark() {
+    const { jdCoachDone } = await chrome.storage.local.get("jdCoachDone");
+    if (jdCoachDone || !tabEl) return;
+    const mark = el("div", "jd-coach");
+    mark.append(
+      el("div", "jd-coach-title", "Price history lives here"),
+      el("div", "jd-coach-body", "Real prices, seen by real shoppers. Open the tab to see this product's story."),
+    );
+    const ok = el("button", "jd-coach-btn", "Got it");
+    mark.append(ok);
+    uiRoot.append(mark);
+    const place = () => {
+      const r = tabEl.getBoundingClientRect();
+      mark.style.left = r.right + window.scrollX + 12 + "px";
+      mark.style.top = r.top + window.scrollY + r.height / 2 + "px";
+    };
+    place();
+    window.addEventListener("resize", place);
+    const dismiss = () => {
+      mark.classList.add("jd-coach-out");
+      setTimeout(() => mark.remove(), 250);
+      chrome.storage.local.set({ jdCoachDone: true });
+    };
+    ok.addEventListener("click", dismiss);
+    tabEl.addEventListener("click", dismiss, { once: true });
+  }
+
+  // First open: a three-step spotlight tour, built in our own shadow world.
+  async function maybeTour() {
+    const { jdTourDone } = await chrome.storage.local.get("jdTourDone");
+    if (jdTourDone) return;
+    const steps = [
+      {
+        target: () => paneEl.querySelector(".jd-chart") || paneEl,
+        title: "The flock's memory",
+        body: "Every point on this chart was a real shopper's visit. Hover for exact days, drag the handle below to resize, and watch the amber line for open-box steals.",
+      },
+      {
+        target: () => tabButtons.get("discussion"),
+        title: "Aisle intel",
+        body: "Open-box finds, price matches, shelf reports. Your notes help the next shopper — theirs help you.",
+      },
+      {
+        target: () => watchBtn,
+        title: "Never overpay",
+        body: "Set your price and close the tab. The flock keeps watching and pings you the moment someone sees it lower.",
+      },
+    ];
+    let i = 0;
+    const overlay = el("div", "jd-tour");
+    const hole = el("div", "jd-tour-hole");
+    const pop = el("div", "jd-tour-pop");
+    overlay.append(hole, pop);
+
+    const finish = () => {
+      overlay.classList.add("jd-coach-out");
+      setTimeout(() => overlay.remove(), 250);
+      chrome.storage.local.set({ jdTourDone: true });
+    };
+
+    const show = () => {
+      const t = steps[i].target();
+      if (!t) return finish();
+      const tr = t.getBoundingClientRect();
+      const dr = drawerEl.getBoundingClientRect();
+      const pad = 6;
+      Object.assign(hole.style, {
+        left: tr.left - dr.left - pad + "px",
+        top: tr.top - dr.top - pad + "px",
+        width: tr.width + pad * 2 + "px",
+        height: tr.height + pad * 2 + "px",
+      });
+      pop.textContent = "";
+      pop.append(el("div", "jd-coach-title", steps[i].title), el("div", "jd-coach-body", steps[i].body));
+      const dots = el("div", "jd-tour-dots");
+      steps.forEach((_, d) => dots.append(el("span", "jd-tour-dot" + (d === i ? " jd-tour-dot-on" : ""))));
+      const row = el("div", "mk-form-row");
+      const skip = el("button", "mk-cancel", "Skip");
+      skip.addEventListener("click", finish);
+      const next = el("button", "jd-coach-btn", i === steps.length - 1 ? "Done" : "Next");
+      next.addEventListener("click", () => {
+        i += 1;
+        if (i >= steps.length) finish();
+        else show();
+      });
+      row.append(skip, next);
+      pop.append(dots, row);
+      // popover below the hole when there's room, above otherwise
+      const holeBottom = tr.bottom - dr.top;
+      const below = holeBottom + 170 < dr.height;
+      pop.style.top = below ? holeBottom + pad + 10 + "px" : "";
+      pop.style.bottom = below ? "" : dr.height - (tr.top - dr.top) + pad + 10 + "px";
+      pop.style.left = Math.min(Math.max(tr.left - dr.left, 16), dr.width - 296) + "px";
+    };
+
+    drawerEl.append(overlay);
+    show();
+  }
 
   async function refreshAll() {
     const [h, c] = await Promise.all([
@@ -362,11 +465,13 @@
 
   function openDrawer() {
     if (!drawerEl) buildDrawer();
-    pendingReveal = !everOpened;
+    const firstOpen = !everOpened;
+    pendingReveal = firstOpen;
     everOpened = true;
     renderActive();
     tabEl.classList.add("jd-hidden");
     requestAnimationFrame(() => positionIndicator(false));
+    if (firstOpen) setTimeout(maybeTour, 700); // after the drawer settles
     requestAnimationFrame(() => requestAnimationFrame(() => drawerEl.classList.add("jd-open")));
   }
 
