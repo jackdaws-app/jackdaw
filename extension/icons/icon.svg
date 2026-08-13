@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="bg" cx="38%" cy="32%" r="85%">
+      <stop offset="0%" stop-color="#23375c"/>
+      <stop offset="55%" stop-color="#16233a"/>
+      <stop offset="100%" stop-color="#0d1626"/>
+    </radialGradient>
+    <linearGradient id="nape" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#98a2b1"/>
+      <stop offset="100%" stop-color="#525e6e"/>
+    </linearGradient>
+    <radialGradient id="spark" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#6ee7a0"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- head: side profile facing right, prominent pointed beak -->
+  <path d="M24 66
+           Q24 36 56 32
+           Q80 30 88 46
+           L116 58
+           Q119 60 115 62
+           L90 66
+           Q92 82 80 92
+           Q66 102 48 96
+           Q26 88 24 66 Z" fill="#1a1d23"/>
+  <!-- grey hood over crown and nape -->
+  <path d="M30 50
+           Q38 34 58 32
+           Q74 31 83 40
+           L76 46
+           Q68 38 56 40
+           Q42 42 36 56 Z" fill="url(#nape)"/>
+  <!-- pale silver eye -->
+  <circle cx="62" cy="56" r="11" fill="#e8edf4"/>
+  <circle cx="64" cy="56" r="5" fill="#0d1626"/>
+  <circle cx="66.5" cy="53" r="2" fill="#ffffff"/>
+  <!-- beak seam -->
+  <path d="M88 52 L110 59.5" stroke="#0d1626" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- the shiny thing: a price spark -->
+  <circle cx="100" cy="100" r="12" fill="url(#spark)"/>
+  <path d="M100 93 L102 98 L107 100 L102 102 L100 107 L98 102 L93 100 L98 98 Z" fill="#eafff2"/>
+</svg>

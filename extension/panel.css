@@ -1,0 +1,211 @@
+#jackdaw-panel {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  max-height: min(72vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: #1c1e21;
+  border: 1px solid #d8dce1;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  z-index: 2147483000;
+  overflow: hidden;
+  animation: mk-panel-in 0.3s var(--ease-out);
+}
+@keyframes mk-panel-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+#jackdaw-panel.mk-collapsed {
+  width: auto;
+}
+#jackdaw-panel * { box-sizing: border-box; }
+
+.mk-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #16233a;
+  color: #fff;
+  overflow: hidden;
+}
+/* Ambient orb: slow breathing glow behind the brand (orbs.jakubantalik.com-inspired). */
+.mk-header::before {
+  content: "";
+  position: absolute;
+  left: -30px;
+  top: -46px;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 45%, rgba(52, 211, 153, 0.55), rgba(59, 130, 246, 0.28) 55%, transparent 72%);
+  filter: blur(14px);
+  pointer-events: none;
+  animation: mk-orb 7s var(--ease-in-out) infinite alternate;
+}
+@keyframes mk-orb {
+  from { transform: translateX(0) scale(1); opacity: 0.7; }
+  to { transform: translateX(18px) scale(1.18); opacity: 1; }
+}
+.mk-title, .mk-toggle { position: relative; }
+.mk-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.mk-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.mk-toggle {
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mk-toggle:hover { background: rgba(255, 255, 255, 0.22); }
+}
+.mk-toggle:active { transform: scale(0.96); }
+
+.mk-body {
+  padding: 12px;
+  overflow-y: auto;
+  animation: mk-body-in 0.2s var(--ease-out);
+}
+@keyframes mk-body-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* First-render stagger: sections cascade in 40ms apart. */
+.mk-stagger > * {
+  animation: mk-body-in 0.25s var(--ease-out) backwards;
+}
+.mk-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.mk-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.mk-stagger > *:nth-child(4) { animation-delay: 120ms; }
+
+.mk-stats { display: flex; gap: 8px; margin-bottom: 10px; }
+.mk-stat {
+  flex: 1;
+  background: #f4f6f8;
+  border: 1px solid #e4e8ec;
+  border-radius: 8px;
+  padding: 8px;
+}
+.mk-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+.mk-stat-value { font-size: 16px; font-weight: 700; }
+.mk-stat-sub { font-size: 11px; color: #6b7280; }
+
+.mk-chart-wrap { border: 1px solid #e4e8ec; border-radius: 8px; padding: 4px; }
+/* One-time left-to-right reveal on first mount only (content.js gates the class). */
+.mk-chart-reveal { animation: mk-chart-in 0.4s var(--ease-out); }
+@keyframes mk-chart-in {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+.mk-note { font-size: 11px; color: #6b7280; margin-top: 6px; }
+
+.mk-empty {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.mk-empty-title { font-weight: 700; margin-bottom: 4px; }
+
+.mk-comments { margin-top: 14px; }
+.mk-section-title { font-weight: 700; margin-bottom: 8px; }
+.mk-comment { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #eef1f4; }
+.mk-votes { display: flex; flex-direction: column; align-items: center; width: 28px; }
+.mk-vote-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #9ca3af;
+  font-size: 12px;
+  padding: 0 4px;
+  transition: color 0.15s ease, transform 0.12s var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mk-vote-btn:hover { color: #374151; }
+}
+.mk-vote-btn:active { transform: scale(0.85); }
+.mk-vote-btn.mk-active-up { color: #16a34a; }
+.mk-vote-btn.mk-active-down { color: #dc2626; }
+.mk-score { font-weight: 700; font-size: 12px; }
+.mk-score.mk-pop { animation: mk-pop 0.2s var(--ease-out); }
+@keyframes mk-pop {
+  from { transform: scale(1.35); }
+  to { transform: scale(1); }
+}
+.mk-comment-main { flex: 1; min-width: 0; }
+.mk-comment-meta { font-size: 11px; color: #6b7280; }
+.mk-author { font-weight: 600; color: #374151; }
+.mk-comment-body { white-space: pre-wrap; overflow-wrap: break-word; }
+
+.mk-form { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.mk-input {
+  border: 1px solid #d8dce1;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font: inherit;
+  background: #fff;
+  color: inherit;
+}
+.mk-textarea { resize: vertical; min-height: 56px; }
+.mk-post {
+  align-self: flex-end;
+  border: 0;
+  background: #16a34a;
+  color: #fff;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mk-post:disabled { opacity: 0.6; cursor: default; }
+.mk-post {
+  transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mk-post:hover { background: #15803d; }
+}
+.mk-post:active { transform: scale(0.97); }
+.mk-input {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mk-input:focus {
+  outline: none;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #jackdaw-panel { animation: mk-fade 0.2s ease; }
+  .mk-body, .mk-stagger > *, .mk-chart-reveal, .mk-score.mk-pop { animation: mk-fade 0.2s ease; }
+  .mk-header::before { animation: none; }
+  .mk-toggle:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
+  @keyframes mk-fade { from { opacity: 0; } to { opacity: 1; } }
+}

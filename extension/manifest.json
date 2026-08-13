@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Jackdaw — Micro Center Price History",
+  "version": "0.1.0",
+  "description": "Community price history, charts, and discussion for Micro Center product pages. Data comes from what your own browser already sees — no scraping.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.microcenter.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.microcenter.com/product/*"],
+      "js": ["page-world.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.microcenter.com/product/*"],
+      "js": ["content.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Jackdaw",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}
