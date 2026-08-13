@@ -246,10 +246,11 @@
         done = true;
         wrap.classList.add("jd-land");
         setTimeout(() => {
-          wrap.classList.add("jd-bird-out");
+          // banner growth and bird absorption start on the same frame
           resolve();
-          setTimeout(() => wrap.remove(), 300);
-        }, 180);
+          requestAnimationFrame(() => wrap.classList.add("jd-bird-out"));
+          setTimeout(() => wrap.remove(), 320);
+        }, 150);
       };
       bird.addEventListener("animationend", (e) => {
         if (e.animationName === "jd-fly") finish();

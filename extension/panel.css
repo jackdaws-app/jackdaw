@@ -890,7 +890,16 @@
 
 /* ---------- The arrival: a jackdaw flies in and becomes the banner ---------- */
 #jackdaw-tab.jd-preflight { opacity: 0; pointer-events: none; }
-#jackdaw-tab.jd-tab-reveal { animation: jd-tab-in 0.3s var(--ease-out); }
+/* The banner grows outward from the exact point the bird lands on —
+   starting bird-sized with a small organic overshoot — while the bird
+   shrinks into it. One event, two halves. */
+#jackdaw-tab.jd-tab-reveal { animation: jd-tab-grow 0.42s var(--ease-out); }
+@keyframes jd-tab-grow {
+  0% { opacity: 0; transform: translate(-100%, -50%) scale(0.22); }
+  30% { opacity: 1; }
+  72% { transform: translate(-100%, -50%) scale(1.045); }
+  100% { opacity: 1; transform: translate(-100%, -50%) scale(1); }
+}
 .jd-flight {
   position: absolute;
   z-index: 2147483002;
@@ -943,9 +952,13 @@
 .jd-flight-mini .jd-w1 { animation: jd-wing-front 0.25s linear 2; }
 .jd-flight-mini .jd-w2 { animation: jd-wing-back 0.25s linear 0.04s 2; }
 .jd-flight-mini .jd-bob { animation: jd-bob 0.25s ease-in-out 2; }
-/* touchdown: a tiny settle, then the bird becomes the banner */
+/* touchdown: a tiny settle, then the bird is absorbed by the growing banner */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
-.jd-flight.jd-bird-out { opacity: 0; transform: scale(0.6); }
+.jd-flight.jd-bird-out {
+  opacity: 0;
+  transform: scale(0.24);
+  transition: opacity 0.2s ease, transform 0.24s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
 
 /* ---------- Onboarding: coach mark + spotlight tour ---------- */
 .jd-coach {
