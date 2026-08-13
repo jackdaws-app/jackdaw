@@ -152,11 +152,10 @@
   bottom: 16px;
 }
 #jackdaw-drawer.jd-max .jd-drawer-body {
-  grid-template-columns: 1.5fr 1fr;
-  gap: 26px;
-  padding: 20px;
+  padding: 20px 24px;
   animation: jd-fade-settle 0.2s var(--ease-out);
 }
+#jackdaw-drawer.jd-max .jd-pane .mk-comments { max-width: 820px; }
 @keyframes jd-fade-settle {
   from { opacity: 0.4; }
   to { opacity: 1; }
@@ -249,13 +248,90 @@
 
 /* Two columns: chart | discussion. Stacks when narrow. */
 .jd-drawer-body {
-  display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 20px;
   padding: 16px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 130, 145, 0.35) transparent;
+}
+.jd-pane { min-width: 0; }
+.jd-pane-enter { animation: jd-pane-in 0.2s var(--ease-out); }
+@keyframes jd-pane-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Readability caps: full-width tabs, but text lines stay comfortable */
+.jd-pane .mk-comments { max-width: 700px; }
+.jd-alert-card {
+  max-width: 400px;
+  background: #fff;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+/* Tab bar with sliding indicator */
+.jd-tabbar {
+  position: relative;
+  display: flex;
+  gap: 22px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--jd-hairline);
+  flex-shrink: 0;
+}
+.jd-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 9px 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9aa1ab;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .jd-tab-btn:hover { color: var(--jd-ink); }
+}
+.jd-tab-btn.jd-tab-active { color: var(--jd-navy); }
+.jd-tab-count {
+  font-size: 9.5px;
+  color: var(--jd-green-deep);
+  font-variant-numeric: tabular-nums;
+}
+.jd-tab-ind {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--jd-green);
+  transition: transform 0.2s var(--ease-out), width 0.2s var(--ease-out);
+}
+
+.jd-meter {
+  height: 5px;
+  border-radius: 4px;
+  background: rgba(120, 130, 145, 0.18);
+  overflow: hidden;
+  margin: 10px 0 4px;
+}
+.jd-meter-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(22, 163, 74, 0.5), #16a34a);
+  transition: width 0.4s var(--ease-out);
+}
+.jd-meter-label { font-size: 10.5px; color: var(--jd-muted); margin-bottom: 8px; }
+
+/* Buttons/inputs inherit our typeface (Chrome's UA default is Arial) */
+#jackdaw-drawer button, #jackdaw-drawer input, #jackdaw-drawer textarea, #jackdaw-drawer select, #jackdaw-tab {
+  font-family: inherit;
 }
 /* Sleek minimal scrollbars: thin, rounded, only visible when needed */
 .jd-drawer-body::-webkit-scrollbar,
@@ -274,10 +350,6 @@
 #jackdaw-drawer.jd-dark .mk-textarea::-webkit-scrollbar-thumb { background: rgba(140, 152, 175, 0.25); }
 #jackdaw-drawer.jd-dark .jd-drawer-body::-webkit-scrollbar-thumb:hover,
 #jackdaw-drawer.jd-dark .mk-textarea::-webkit-scrollbar-thumb:hover { background: rgba(140, 152, 175, 0.5); }
-@media (max-width: 760px) {
-  .jd-drawer-body { grid-template-columns: 1fr; }
-}
-.jd-col { min-width: 0; }
 
 /* First-open stagger */
 .mk-stagger > * { animation: mk-body-in 0.25s var(--ease-out) backwards; }
@@ -788,8 +860,13 @@
   -webkit-background-clip: text;
   background-clip: text;
 }
-#jackdaw-drawer.jd-dark .jd-popover { background: #131e30; border-color: #253049; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4); }
 #jackdaw-drawer.jd-dark .jd-popover-dollar { color: #e6eaf2; }
+#jackdaw-drawer.jd-dark .jd-tabbar { background: #131e30; border-bottom-color: #1e293e; }
+#jackdaw-drawer.jd-dark .jd-tab-btn { color: #7c8598; }
+#jackdaw-drawer.jd-dark .jd-tab-btn.jd-tab-active { color: #e6eaf2; }
+#jackdaw-drawer.jd-dark .jd-tab-count { color: #4ade80; }
+#jackdaw-drawer.jd-dark .jd-alert-card { background: #16213a; border-color: #253049; }
+#jackdaw-drawer.jd-dark .jd-meter { background: rgba(140, 152, 175, 0.15); }
 #jackdaw-drawer.jd-dark .jd-sort-active { color: #cdd6e4; border-color: #253049; background: #16213a; }
 /* the sweep miss: active store/range pills were navy-on-navy in dark */
 #jackdaw-drawer.jd-dark .jd-range-btn { color: #7c8598; }

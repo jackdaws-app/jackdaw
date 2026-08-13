@@ -8,8 +8,10 @@
   let historyLoaded = false;
   let tabEl = null;
   let drawerEl = null;
-  let leftCol = null;
-  let rightCol = null;
+  let paneEl = null; // single full-width pane; content switches by tab
+  let activeTab = "chart"; // "chart" | "discussion" | "alerts"
+  let tabButtons = null;
+  let tabIndicator = null;
   let everOpened = false;
   let pendingReveal = false; // one-time stagger + chart reveal on first drawer open
   let theme = "light";
@@ -32,7 +34,6 @@
     return uiRoot;
   }
   let watchTarget = null; // active alert target price, or null
-  let alertPopover = null;
   let commentSort = "top"; // "top" | "new"
   const collapsedThreads = new Set(); // comment _ids collapsed reddit-style
 
@@ -77,10 +78,7 @@
     comments = c && !c.error && Array.isArray(c.result) ? c.result : [];
     historyLoaded = true;
     updateTabSparkline();
-    if (drawerEl && drawerEl.classList.contains("jd-open")) {
-      renderLeft();
-      renderRight();
-    }
+    if (drawerEl && drawerEl.classList.contains("jd-open")) renderActive();
   }
 
   // Once real history exists, the tab's glyph becomes this product's actual trend.
@@ -191,21 +189,37 @@
     watchBtn = el("button", "jd-watch");
     watchBtn.innerHTML = `${ICONS.bell}<span>Set alert</span>`;
     watchBtn.title = "Pick a price — get notified when the flock sees it";
-    watchBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleAlertPopover();
-    });
+    watchBtn.addEventListener("click", () => switchTab("alerts"));
     const minBtn = iconBtn(ICONS.minimize, "Minimize");
     minBtn.addEventListener("click", closeDrawer);
     controls.append(expandBtn, shareBtn, themeBtn, watchBtn, minBtn);
     header.append(brand, prodName, controls);
 
+    // Tab bar with a sliding indicator (transform-only motion)
+    const tabbar = el("div", "jd-tabbar");
+    tabButtons = new Map();
+    const tabDefs = [
+      ["chart", "Price history"],
+      ["discussion", "Aisle intel"],
+      ["alerts", "Alerts"],
+    ];
+    for (const [key, label] of tabDefs) {
+      const b = el("button", "jd-tab-btn");
+      b.dataset.tab = key;
+      b.append(el("span", "jd-tab-label", label), el("span", "jd-tab-count"));
+      b.addEventListener("click", () => switchTab(key));
+      tabButtons.set(key, b);
+      tabbar.append(b);
+    }
+    tabIndicator = el("span", "jd-tab-ind");
+    tabbar.append(tabIndicator);
+
     const body = el("div", "jd-drawer-body");
-    leftCol = el("div", "jd-col");
-    rightCol = el("div", "jd-col");
-    body.append(leftCol, rightCol);
-    drawerEl.append(header, body);
+    paneEl = el("div", "jd-pane");
+    body.append(paneEl);
+    drawerEl.append(header, tabbar, body);
     uiRoot.appendChild(drawerEl);
+    window.addEventListener("resize", () => positionIndicator(false));
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && drawerEl.classList.contains("jd-open")) closeDrawer();
@@ -222,29 +236,82 @@
     watchBtn.querySelector("span").textContent = v && target != null ? `Alert at ${fmtPrice(target)}` : "Set alert";
   }
 
-  // Small anchored popover: choose the price that triggers the alert.
-  function toggleAlertPopover() {
-    if (alertPopover) {
-      alertPopover.remove();
-      alertPopover = null;
-      return;
+  // ---------- Tabs ----------
+
+  function switchTab(key) {
+    if (!drawerEl.classList.contains("jd-open")) openDrawer();
+    if (activeTab === key) return;
+    activeTab = key;
+    positionIndicator(true);
+    paneEl.classList.remove("jd-pane-enter");
+    void paneEl.offsetWidth;
+    paneEl.classList.add("jd-pane-enter");
+    renderActive();
+  }
+
+  function positionIndicator(animate) {
+    const btn = tabButtons && tabButtons.get(activeTab);
+    if (!btn || !tabIndicator) return;
+    if (!animate) tabIndicator.style.transition = "none";
+    tabIndicator.style.transform = `translateX(${btn.offsetLeft}px)`;
+    tabIndicator.style.width = btn.offsetWidth + "px";
+    if (!animate) requestAnimationFrame(() => { tabIndicator.style.transition = ""; });
+  }
+
+  function updateTabChrome() {
+    for (const [k, b] of tabButtons) {
+      b.classList.toggle("jd-tab-active", k === activeTab);
+      const count = b.querySelector(".jd-tab-count");
+      if (k === "discussion") count.textContent = comments.length ? String(comments.length) : "";
+      else if (k === "alerts") count.textContent = watchTarget != null ? "●" : "";
+      else count.textContent = "";
     }
-    alertPopover = el("div", "jd-popover");
-    alertPopover.addEventListener("click", (e) => e.stopPropagation());
-    const label = el("div", "jd-popover-label", "Notify me at or below");
+    positionIndicator(true);
+  }
+
+  function renderActive() {
+    updateTabChrome();
+    renderLeft();
+    renderRight();
+    renderAlerts();
+  }
+
+  // ---------- Alerts pane ----------
+
+  function renderAlerts() {
+    if (activeTab !== "alerts" || !paneEl) return;
+    paneEl.textContent = "";
+    const card = el("div", "jd-alert-card");
+    card.append(el("div", "jd-popover-label", watchTarget != null ? "Alert armed" : "Notify me at or below"));
+
     const inputRow = el("div", "jd-popover-input");
     const dollar = el("span", "jd-popover-dollar", "$");
     const input = el("input", "mk-input jd-price-input");
     input.type = "number";
     input.min = "0.01";
     input.step = "0.01";
-    const suggested = watchTarget != null ? watchTarget : Math.max(product.price - 0.01, 0.01);
-    input.value = suggested.toFixed(2);
+    input.value = (watchTarget != null ? watchTarget : Math.max(product.price - 0.01, 0.01)).toFixed(2);
     inputRow.append(dollar, input);
-    const hint = el("div", "jd-popover-hint",
-      history && history.points.length
-        ? `Current ${fmtPrice(product.price)} · all-time low ${fmtPrice(computeStats(history.points).lowest)}`
-        : `Current ${fmtPrice(product.price)}`);
+    card.append(inputRow);
+
+    // Distance meter: where today's price sits relative to your target.
+    if (history && history.points.length) {
+      const stats = computeStats(history.points);
+      card.append(el("div", "jd-popover-hint",
+        `Current ${fmtPrice(product.price)} · typical ${fmtPrice(window.__jackdawChart.typicalPrice(history.points))} · all-time low ${fmtPrice(stats.lowest)}`));
+      if (watchTarget != null) {
+        const meter = el("div", "jd-meter");
+        const span = Math.max(stats.highest - watchTarget, 0.01);
+        const pos = Math.min(Math.max((product.price - watchTarget) / span, 0), 1);
+        const fill = el("div", "jd-meter-fill");
+        fill.style.width = ((1 - pos) * 100).toFixed(1) + "%";
+        meter.append(fill);
+        const gap = product.price - watchTarget;
+        card.append(meter, el("div", "jd-meter-label",
+          gap <= 0 ? "Target met — alert will fire on the next hourly check" : `${fmtPrice(gap)} above your target`));
+      }
+    }
+
     const row = el("div", "mk-form-row");
     if (watchTarget != null) {
       const remove = el("button", "mk-cancel", "Remove alert");
@@ -254,12 +321,12 @@
         else {
           setWatching(false, null);
           toast("Alert removed");
+          renderAlerts();
         }
-        toggleAlertPopover();
       });
       row.append(remove);
     }
-    const save = el("button", "mk-post", "Save alert");
+    const save = el("button", "mk-post", watchTarget != null ? "Update alert" : "Set alert");
     save.addEventListener("click", async () => {
       const v = parseFloat(input.value);
       if (!isFinite(v) || v <= 0) {
@@ -276,31 +343,24 @@
         toast(res.result.target >= product.price
           ? `Today's price already qualifies — you'll be pinged within the hour`
           : `Alert set — we'll ping you at ${fmtPrice(res.result.target)} or less`);
+        renderAlerts();
       }
-      toggleAlertPopover();
     });
     row.append(save);
-    alertPopover.append(label, inputRow, hint, row);
-    drawerEl.querySelector(".jd-header").append(alertPopover);
-    input.focus();
-    input.select();
-    const dismiss = (e) => {
-      if (alertPopover && !alertPopover.contains(e.target) && e.target !== watchBtn) {
-        alertPopover.remove();
-        alertPopover = null;
-        document.removeEventListener("click", dismiss);
-      }
-    };
-    setTimeout(() => document.addEventListener("click", dismiss), 0);
+    card.append(row);
+    paneEl.append(card);
+
+    paneEl.append(el("div", "mk-note",
+      "One alert per product. The flock checks hourly; when any member sees the price at or below your target, you get a Chrome notification. Alerts fire once, then disarm — re-arm any time."));
   }
 
   function openDrawer() {
     if (!drawerEl) buildDrawer();
     pendingReveal = !everOpened;
     everOpened = true;
-    renderLeft();
-    renderRight();
+    renderActive();
     tabEl.classList.add("jd-hidden");
+    requestAnimationFrame(() => positionIndicator(false));
     requestAnimationFrame(() => requestAnimationFrame(() => drawerEl.classList.add("jd-open")));
   }
 
@@ -346,9 +406,10 @@
   }
 
   function renderLeft() {
-    if (!leftCol) return;
+    if (activeTab !== "chart" || !paneEl) return;
+    const leftCol = paneEl;
     leftCol.textContent = "";
-    leftCol.className = "jd-col" + (pendingReveal ? " mk-stagger" : "");
+    leftCol.className = "jd-pane" + (pendingReveal ? " mk-stagger" : "");
 
     if (!historyLoaded) {
       // skeleton while the flock reports in
@@ -444,9 +505,11 @@
   }
 
   function renderRight() {
-    if (!rightCol) return;
-    rightCol.textContent = "";
-    rightCol.append(renderComments());
+    if (activeTab !== "discussion" || !paneEl) return;
+    paneEl.textContent = "";
+    paneEl.className = "jd-pane";
+    paneEl.append(renderComments());
+    updateTabChrome();
   }
 
   function stat(label, price, sub, animate) {
@@ -494,7 +557,8 @@
   }
 
   async function shareChartInner(btn) {
-    const src = leftCol && leftCol.querySelector(".jd-chart canvas");
+    if (activeTab !== "chart") switchTab("chart");
+    const src = paneEl && paneEl.querySelector(".jd-chart canvas");
     if (!src || !history) {
       toast("Nothing to share yet");
       return;
