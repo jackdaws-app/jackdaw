@@ -35,7 +35,19 @@ export default defineSchema({
     score: v.number(),
     voteCount: v.number(),
     parentId: v.optional(v.id("comments")),
-  }).index("by_product", ["productDocId"]),
+    hidden: v.optional(v.boolean()),
+    reportCount: v.optional(v.number()),
+  })
+    .index("by_product", ["productDocId"])
+    .index("by_parent", ["parentId"])
+    .index("by_reportCount", ["reportCount"]),
+
+  reports: defineTable({
+    commentId: v.id("comments"),
+    deviceId: v.string(),
+  })
+    .index("by_comment_device", ["commentId", "deviceId"])
+    .index("by_comment", ["commentId"]),
 
   votes: defineTable({
     commentId: v.id("comments"),

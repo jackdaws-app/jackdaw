@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
-import { requireLength, sanitize } from "./lib";
+import { enforceRateLimit, requireLength, sanitize } from "./lib";
 
 const THROTTLE_MS = 60_000;
 
@@ -77,6 +77,10 @@ export const report = mutation({
     ) {
       return { ok: true, throttled: true };
     }
+
+    // Global per-device cap on price reports (token bucket, 120/hour).
+    await enforceRateLimit(ctx, "priceReport", deviceId);
+
     if (device === null) {
       await ctx.db.insert("devices", {
         deviceId,

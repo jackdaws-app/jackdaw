@@ -147,6 +147,7 @@
 
 /* Light header: hairline, wordmark, breathing live-dot (the one orb that stayed) */
 .jd-header {
+  position: relative; /* anchors the alert popover inside the drawer's clip */
   display: flex;
   align-items: center;
   gap: 14px;
@@ -154,6 +155,7 @@
   border-bottom: 1px solid var(--jd-hairline);
   background: #fff;
   flex-shrink: 0;
+  z-index: 4;
 }
 .jd-brand { display: flex; align-items: center; gap: 7px; }
 /* Idle spell: a quiet sheen sweeps the wordmark every ~9s */
@@ -580,6 +582,9 @@
 }
 .mk-collapsed-count { font-size: 11px; color: #9aa1ab; flex-shrink: 0; }
 .mk-author { cursor: pointer; }
+.mk-hidden-row { color: #9aa1ab; font-style: italic; font-size: 12px; }
+.mk-report-btn { margin-left: 10px; opacity: 0.65; }
+#jackdaw-drawer.jd-dark .mk-hidden-row { color: #5b667a; }
 .mk-votes { display: flex; flex-direction: column; align-items: center; width: 26px; }
 .mk-vote-btn {
   border: 0;

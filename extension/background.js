@@ -18,7 +18,9 @@ async function convexCall(kind, path, args) {
   });
   const json = await res.json();
   if (json.status === "success") return json.value;
-  throw new Error(json.errorMessage || "Convex call failed");
+  const err = new Error(json.errorMessage || "Convex call failed");
+  if (json.errorData && json.errorData.code) err.code = json.errorData.code;
+  throw err;
 }
 
 const convexQuery = (path, args) => convexCall("query", path, args);
@@ -43,6 +45,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
       case "comments:vote":
         return convexMutation("comments:vote", { commentId: msg.commentId, deviceId, value: msg.value });
+      case "comments:report":
+        return convexMutation("comments:report", { commentId: msg.commentId, deviceId });
       case "watch:toggle":
         return convexMutation("watches:toggle", { deviceId, productId: msg.productId });
       case "watch:setTarget":
@@ -54,7 +58,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
   })()
     .then((result) => sendResponse({ result }))
-    .catch((e) => sendResponse({ error: String(e && e.message ? e.message : e) }));
+    .catch((e) => sendResponse({ error: String(e && e.message ? e.message : e), code: e && e.code }));
   return true; // async response
 });
 

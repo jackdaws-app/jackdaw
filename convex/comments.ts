@@ -1,6 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireLength } from "./lib";
+import { enforceRateLimit, requireCleanContent, requireLength } from "./lib";
+
+const AUTO_HIDE_REPORT_THRESHOLD = 3;
 
 export const list = query({
   args: {
@@ -16,6 +18,7 @@ export const list = query({
       score: v.number(),
       myVote: v.union(v.literal(0), v.literal(1), v.literal(-1)),
       parentId: v.union(v.id("comments"), v.null()),
+      hidden: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -33,6 +36,7 @@ export const list = query({
 
     return await Promise.all(
       comments.map(async (c) => {
+        const hidden = c.hidden === true;
         const myVoteRow = await ctx.db
           .query("votes")
           .withIndex("by_comment_device", (q) =>
@@ -42,11 +46,14 @@ export const list = query({
         return {
           _id: c._id,
           _creationTime: c._creationTime,
-          displayName: c.displayName,
-          body: c.body,
+          // Hidden comments keep their slot in the thread but expose no
+          // content (and never the report count).
+          displayName: hidden ? "" : c.displayName,
+          body: hidden ? "" : c.body,
           score: c.score,
           myVote: myVoteRow === null ? (0 as const) : myVoteRow.value,
           parentId: c.parentId ?? null,
+          hidden,
         };
       }),
     );
@@ -66,6 +73,11 @@ export const add = mutation({
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const displayName = requireLength("displayName", args.displayName, 1, 40);
     const body = requireLength("body", args.body, 1, 2000);
+
+    await enforceRateLimit(ctx, "commentAdd", deviceId);
+
+    requireCleanContent(displayName);
+    requireCleanContent(body);
 
     const product = await ctx.db
       .query("products")
@@ -130,9 +142,17 @@ export const vote = mutation({
   handler: async (ctx, args) => {
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
 
+    await enforceRateLimit(ctx, "commentVote", deviceId);
+
     const comment = await ctx.db.get(args.commentId);
     if (comment === null) {
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown comment" });
+    }
+    if (comment.hidden === true) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "cannot vote on a hidden comment",
+      });
     }
 
     const existing = await ctx.db
@@ -169,5 +189,44 @@ export const vote = mutation({
     });
 
     return { score: newScore };
+  },
+});
+
+export const report = mutation({
+  args: {
+    commentId: v.id("comments"),
+    deviceId: v.string(),
+  },
+  returns: v.object({ ok: v.boolean(), alreadyReported: v.boolean() }),
+  handler: async (ctx, args) => {
+    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+
+    const comment = await ctx.db.get(args.commentId);
+    if (comment === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "unknown comment" });
+    }
+
+    // Dedupe per (commentId, deviceId): a repeat report is a no-op and does
+    // not consume a rate-limit token.
+    const existing = await ctx.db
+      .query("reports")
+      .withIndex("by_comment_device", (q) =>
+        q.eq("commentId", args.commentId).eq("deviceId", deviceId),
+      )
+      .unique();
+    if (existing !== null) {
+      return { ok: true, alreadyReported: true };
+    }
+
+    await enforceRateLimit(ctx, "commentReport", deviceId);
+
+    await ctx.db.insert("reports", { commentId: args.commentId, deviceId });
+    const reportCount = (comment.reportCount ?? 0) + 1;
+    await ctx.db.patch(args.commentId, {
+      reportCount,
+      ...(reportCount >= AUTO_HIDE_REPORT_THRESHOLD ? { hidden: true } : {}),
+    });
+
+    return { ok: true, alreadyReported: false };
   },
 });

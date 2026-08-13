@@ -567,6 +567,15 @@
       return wrap;
     }
 
+    // Hidden by community reports: placeholder keeps thread structure intact.
+    if (c.hidden) {
+      const ph = el("div", "mk-comment mk-hidden-row", "Hidden by the community");
+      wrap.append(ph);
+      const kidsH = c.children.slice().sort((a, b) => a._creationTime - b._creationTime);
+      for (const child of kidsH) wrap.append(renderComment(child, depth + 1));
+      return wrap;
+    }
+
     const row = el("div", "mk-comment");
     const rail = el("button", "mk-rail");
     rail.title = "Collapse thread";
@@ -621,6 +630,13 @@
       });
       actions.append(replyBtn);
     }
+    const reportBtn = el("button", "mk-reply-btn mk-report-btn", "Report");
+    reportBtn.addEventListener("click", async () => {
+      const res = await send({ type: "comments:report", commentId: c._id });
+      if (res.error) toast(friendlyError(res, "Couldn't report — try again"));
+      else toast(res.result.alreadyReported ? "You already reported this" : "Reported — thanks for keeping the aisle clean");
+    });
+    actions.append(reportBtn);
     main.append(meta, body, actions);
     row.append(rail, voteBox, main);
     wrap.append(row);
@@ -633,6 +649,16 @@
     const kids = c.children.slice().sort((a, b) => a._creationTime - b._creationTime);
     for (const child of kids) wrap.append(renderComment(child, depth + 1));
     return wrap;
+  }
+
+  function friendlyError(res, fallback) {
+    switch (res.code) {
+      case "RATE_LIMITED": return "Easy there — you're going too fast. Try again in a bit.";
+      case "LINKS_NOT_ALLOWED": return "Links aren't allowed in comments";
+      case "CONTACT_INFO_NOT_ALLOWED": return "Please don't post contact info";
+      case "CONTENT_REJECTED": return "Keep it civil — comment rejected";
+      default: return fallback;
+    }
   }
 
   function escapeHtml(s) {
@@ -662,7 +688,7 @@
       const res = await send(args);
       btn.disabled = false;
       if (res.error) {
-        toast("Couldn't post — try again");
+        toast(friendlyError(res, "Couldn't post — try again"));
         return;
       }
       replyTo = null;
