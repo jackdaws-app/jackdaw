@@ -14,6 +14,7 @@ export const report = mutation({
     price: v.number(),
     storeNum: v.string(),
     inStock: v.boolean(),
+    openBoxPrice: v.optional(v.number()),
     availability: v.optional(v.string()),
     brand: v.optional(v.string()),
     category: v.optional(v.string()),
@@ -27,6 +28,18 @@ export const report = mutation({
       throw new ConvexError({
         code: "INVALID_ARGUMENT",
         message: "price must be a finite number greater than 0 and less than 100000",
+      });
+    }
+    if (
+      args.openBoxPrice !== undefined &&
+      (!Number.isFinite(args.openBoxPrice) ||
+        args.openBoxPrice <= 0 ||
+        args.openBoxPrice >= 100_000)
+    ) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message:
+          "openBoxPrice must be a finite number greater than 0 and less than 100000",
       });
     }
 
@@ -116,7 +129,20 @@ export const report = mutation({
       .order("desc")
       .first();
 
-    if (latest !== null && latest.price === args.price && latest.inStock === args.inStock) {
+    // Open-box prices are the "same" when both absent or within $0.01.
+    const openBoxSame =
+      latest !== null &&
+      (latest.openBoxPrice === undefined
+        ? args.openBoxPrice === undefined
+        : args.openBoxPrice !== undefined &&
+          Math.abs(latest.openBoxPrice - args.openBoxPrice) <= 0.01);
+
+    if (
+      latest !== null &&
+      latest.price === args.price &&
+      latest.inStock === args.inStock &&
+      openBoxSame
+    ) {
       await ctx.db.patch(latest._id, {
         lastSeenAt: now,
         reportCount: latest.reportCount + 1,
@@ -129,6 +155,7 @@ export const report = mutation({
         price: args.price,
         inStock: args.inStock,
         availability,
+        openBoxPrice: args.openBoxPrice,
         firstSeenAt: now,
         lastSeenAt: now,
         reportCount: 1,

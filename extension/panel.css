@@ -253,6 +253,17 @@
   border-color: rgba(217, 119, 6, 0.3);
   background: #fdf8f0;
 }
+.jd-chip-early {
+  color: #6b7280;
+  border-style: dashed;
+  margin-left: 6px;
+}
+.jd-chip-ob {
+  color: #92400e;
+  border-color: rgba(217, 119, 6, 0.3);
+  background: #fdf8f0;
+  margin-left: 6px;
+}
 
 /* ---------- Chart ---------- */
 .jd-chart {
@@ -266,7 +277,50 @@
   from { clip-path: inset(0 100% 0 0); }
   to { clip-path: inset(0 0 0 0); }
 }
-.jd-chart-toolbar { display: flex; justify-content: flex-end; padding: 0 2px 6px; }
+.jd-chart-toolbar { display: flex; align-items: center; gap: 10px; padding: 0 2px 6px; }
+.jd-legend { display: flex; gap: 10px; margin-right: auto; }
+.jd-key { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #8a92a0; letter-spacing: 0.03em; }
+.jd-swatch { display: inline-block; width: 8px; height: 3px; border-radius: 2px; }
+.jd-chart-controls { display: flex; gap: 2px; }
+.jd-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa1ab;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.12s var(--ease-out);
+}
+.jd-icon-btn svg { width: 14px; height: 14px; }
+@media (hover: hover) and (pointer: fine) {
+  .jd-icon-btn:hover { color: var(--jd-navy); background: rgba(22, 35, 58, 0.06); }
+}
+.jd-icon-btn:active { transform: scale(0.9); }
+
+.jd-watch {
+  border: 1px solid var(--jd-hairline);
+  background: transparent;
+  color: var(--jd-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease, transform 0.12s var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .jd-watch:hover { color: var(--jd-ink); border-color: #cfccc6; background: #f6f5f2; }
+}
+.jd-watch:active { transform: scale(0.96); }
+.jd-watch.jd-watching {
+  color: var(--jd-green-deep);
+  border-color: rgba(22, 163, 74, 0.35);
+  background: #f2faf5;
+}
 .jd-ranges { display: flex; gap: 4px; }
 .jd-range-btn {
   border: 1px solid transparent;
@@ -330,6 +384,7 @@
   box-shadow: 0 4px 14px rgba(13, 22, 38, 0.3);
 }
 .jd-tt-price { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.jd-tt-ob { font-size: 11px; color: #fbbf24; font-variant-numeric: tabular-nums; }
 .jd-tt-date { font-size: 10px; color: rgba(255, 255, 255, 0.7); }
 .jd-tt-date.jd-tt-oos { color: #fca5a5; }
 
@@ -408,6 +463,46 @@
 }
 .mk-post:active { transform: scale(0.97); }
 .mk-post:disabled { opacity: 0.6; cursor: default; }
+
+/* ---------- Dark mode (toggle in the chart toolbar) ---------- */
+#jackdaw-drawer.jd-dark {
+  --jd-ink: #e6eaf2;
+  --jd-muted: #8b94a8;
+  --jd-hairline: #253049;
+  --jd-paper: #0f1726;
+  background: var(--jd-paper);
+  border-color: #1e293e;
+}
+#jackdaw-drawer.jd-dark .jd-header { background: #131e30; border-bottom-color: #1e293e; }
+#jackdaw-drawer.jd-dark .jd-wordmark { color: #cdd6e4; }
+#jackdaw-drawer.jd-dark .jd-product-name { color: #aeb8c9; }
+#jackdaw-drawer.jd-dark .jd-minimize,
+#jackdaw-drawer.jd-dark .jd-watch { border-color: #2a3752; color: #8b94a8; }
+#jackdaw-drawer.jd-dark .jd-watch.jd-watching { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); background: rgba(22, 163, 74, 0.12); }
+#jackdaw-drawer.jd-dark .mk-stat,
+#jackdaw-drawer.jd-dark .jd-chart,
+#jackdaw-drawer.jd-dark .jd-chip,
+#jackdaw-drawer.jd-dark .mk-input { background: #16213a; border-color: #253049; }
+#jackdaw-drawer.jd-dark .mk-stat.jd-at-low { background: linear-gradient(180deg, #16213a, #14283a); border-color: rgba(74, 222, 128, 0.35); }
+#jackdaw-drawer.jd-dark .mk-stat.jd-at-low .mk-stat-value { color: #4ade80; }
+#jackdaw-drawer.jd-dark .jd-chip { color: #aeb8c9; }
+#jackdaw-drawer.jd-dark .jd-chip-low { color: #4ade80; border-color: rgba(74, 222, 128, 0.3); background: rgba(22, 163, 74, 0.1); }
+#jackdaw-drawer.jd-dark .jd-chip-high,
+#jackdaw-drawer.jd-dark .jd-chip-ob { color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); background: rgba(217, 119, 6, 0.1); }
+#jackdaw-drawer.jd-dark .mk-empty { background: rgba(22, 163, 74, 0.08); border-color: rgba(74, 222, 128, 0.25); }
+#jackdaw-drawer.jd-dark .mk-empty-title { color: #4ade80; }
+#jackdaw-drawer.jd-dark .mk-comment { border-top-color: #1e293e; }
+#jackdaw-drawer.jd-dark .mk-author { color: #cdd6e4; }
+#jackdaw-drawer.jd-dark .mk-vote-btn { color: #55617a; }
+#jackdaw-drawer.jd-dark .jd-icon-btn { color: #8b94a8; }
+@media (hover: hover) and (pointer: fine) {
+  #jackdaw-drawer.jd-dark .jd-icon-btn:hover { color: #e6eaf2; background: rgba(203, 213, 225, 0.08); }
+  #jackdaw-drawer.jd-dark .jd-minimize:hover,
+  #jackdaw-drawer.jd-dark .jd-watch:hover { color: #e6eaf2; border-color: #3a4a6b; background: #1a2740; }
+  #jackdaw-drawer.jd-dark .mk-vote-btn:hover { color: #cdd6e4; }
+  #jackdaw-drawer.jd-dark .mk-post:hover { background: #2a3f66; }
+}
+#jackdaw-drawer.jd-dark .mk-post { background: #24365a; }
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {

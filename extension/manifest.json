@@ -3,7 +3,7 @@
   "name": "Jackdaw — Micro Center Price History",
   "version": "0.1.0",
   "description": "Community price history, charts, and discussion for Micro Center product pages. Data comes from what your own browser already sees — no scraping.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "alarms", "notifications"],
   "host_permissions": ["https://www.microcenter.com/*"],
   "background": {
     "service_worker": "background.js",

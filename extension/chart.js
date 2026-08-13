@@ -30,17 +30,48 @@
     return rows.length ? rows[rows.length - 1].price : 0;
   }
 
+  const PALETTES = {
+    light: {
+      grid: "rgba(120, 130, 145, 0.14)",
+      axis: "#8a92a0",
+      tick: "rgba(22, 35, 58, 0.18)",
+      typicalLine: "rgba(22, 35, 58, 0.3)",
+      typicalText: "rgba(22, 35, 58, 0.55)",
+      cross: "rgba(22, 35, 58, 0.35)",
+      crossDot: "#16233a",
+      crossRing: "#fff",
+    },
+    dark: {
+      grid: "rgba(148, 163, 184, 0.12)",
+      axis: "#7c8598",
+      tick: "rgba(203, 213, 225, 0.22)",
+      typicalLine: "rgba(203, 213, 225, 0.3)",
+      typicalText: "rgba(203, 213, 225, 0.6)",
+      cross: "rgba(203, 213, 225, 0.4)",
+      crossDot: "#e6eaf2",
+      crossRing: "#0f1726",
+    },
+  };
+
   function build(points, opts = {}) {
+    const pal = PALETTES[opts.theme === "dark" ? "dark" : "light"];
     const root = document.createElement("div");
     root.className = "jd-chart" + (opts.reveal ? " mk-chart-reveal" : "");
 
     const toolbar = document.createElement("div");
     toolbar.className = "jd-chart-toolbar";
+    const legend = document.createElement("div");
+    legend.className = "jd-legend";
     const storeWrap = document.createElement("div");
     storeWrap.className = "jd-ranges";
     const rangeWrap = document.createElement("div");
     rangeWrap.className = "jd-ranges";
-    toolbar.append(storeWrap, rangeWrap);
+    toolbar.append(legend, storeWrap, rangeWrap);
+
+    const hasOpenBox = points.some((p) => p.openBoxPrice != null);
+    legend.innerHTML =
+      `<span class="jd-key"><i class="jd-swatch" style="background:#16a34a"></i>New</span>` +
+      (hasOpenBox ? `<span class="jd-key"><i class="jd-swatch" style="background:#d97706"></i>Open-box</span>` : "");
 
     const stage = document.createElement("div");
     stage.className = "jd-chart-stage";
@@ -72,6 +103,7 @@
           t1: Math.max(p.lastSeenAt, p.firstSeenAt),
           price: p.price,
           inStock: p.inStock,
+          openBox: p.openBoxPrice != null ? p.openBoxPrice : null,
         }));
       if (all.length) all[all.length - 1].t1 = Math.max(all[all.length - 1].t1, Date.now());
       return all;
@@ -157,12 +189,12 @@
       const t0 = segs[0].t0;
       const t1 = segs[segs.length - 1].t1;
       const span = Math.max(t1 - t0, 60_000);
-      let pMin = Infinity, pMax = -Infinity;
+      let pMin = Infinity, pMax = -Infinity, lowest = Infinity;
       for (const s of segs) {
-        pMin = Math.min(pMin, s.price);
+        pMin = Math.min(pMin, s.price, s.openBox != null ? s.openBox : Infinity);
         pMax = Math.max(pMax, s.price);
+        lowest = Math.min(lowest, s.price); // LOW line tracks the new-price series
       }
-      const lowest = pMin;
       const typical = typicalPrice(activePoints());
       const pad = Math.max((pMax - pMin) * 0.18, pMax * 0.03, 1);
       const yMin = pMin - pad, yMax = pMax + pad;
@@ -175,8 +207,8 @@
 
       // grid + right-axis labels
       ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.strokeStyle = "rgba(120, 130, 145, 0.14)";
-      ctx.fillStyle = "#8a92a0";
+      ctx.strokeStyle = pal.grid;
+      ctx.fillStyle = pal.axis;
       for (let i = 0; i <= 3; i++) {
         const p = yMin + ((yMax - yMin) * i) / 3;
         const yy = y(p);
@@ -191,7 +223,7 @@
       ctx.fillText(ll, W - padR - ctx.measureText(ll).width, H - 8);
 
       // observation-density ticks: one per sighting window start (data honesty)
-      ctx.strokeStyle = "rgba(22, 35, 58, 0.18)";
+      ctx.strokeStyle = pal.tick;
       ctx.lineWidth = 1;
       for (const s of segs) {
         const tx = x(s.t0);
@@ -250,16 +282,32 @@
           ctx.stroke();
         }
       }
+
+      // open-box series (Keepa-style second line; gaps where none was seen)
+      ctx.strokeStyle = "#d97706";
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < segs.length; i++) {
+        const s = segs[i];
+        if (s.openBox == null) continue;
+        ctx.beginPath();
+        ctx.moveTo(x(s.t0), y(s.openBox));
+        ctx.lineTo(x(s.t1), y(s.openBox));
+        const n = segs[i + 1];
+        if (n && n.openBox != null && n.t0 - s.t1 < 86400000) {
+          ctx.lineTo(x(n.t0), y(n.openBox));
+        }
+        ctx.stroke();
+      }
       ctx.restore(); // end sweep clip
 
       // typical-price dotted line (only once it separates visually from LOW)
       if (Math.abs(y(typical) - y(lowest)) > 9) {
         ctx.setLineDash([2, 5]);
-        ctx.strokeStyle = "rgba(22, 35, 58, 0.3)";
+        ctx.strokeStyle = pal.typicalLine;
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(padL, y(typical)); ctx.lineTo(W - padR + 6, y(typical)); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = "rgba(22, 35, 58, 0.55)";
+        ctx.fillStyle = pal.typicalText;
         ctx.font = "600 9px system-ui, sans-serif";
         ctx.fillText("TYPICAL " + fmtPrice(typical), padL + 2, y(typical) - 4);
       }
@@ -287,25 +335,32 @@
           segs.reduce((a, b) => (Math.abs(t - (a.t0 + a.t1) / 2) < Math.abs(t - (b.t0 + b.t1) / 2) ? a : b));
         const hx = Math.min(Math.max(x(t), x(seg.t0)), x(seg.t1));
         const hy = y(seg.price);
-        ctx.strokeStyle = "rgba(22, 35, 58, 0.35)";
+        ctx.strokeStyle = pal.cross;
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 3]);
         ctx.beginPath(); ctx.moveTo(hx, padT); ctx.lineTo(hx, H - padB); ctx.stroke();
         ctx.setLineDash([]);
         ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = "#16233a"; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+        ctx.fillStyle = pal.crossDot; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = pal.crossRing; ctx.stroke();
 
         tooltip.style.opacity = "1";
         tooltip.textContent = "";
         const priceEl = document.createElement("div");
         priceEl.className = "jd-tt-price";
         priceEl.textContent = fmtPrice(seg.price);
+        tooltip.append(priceEl);
+        if (seg.openBox != null) {
+          const obEl = document.createElement("div");
+          obEl.className = "jd-tt-ob";
+          obEl.textContent = "Open-box " + fmtPrice(seg.openBox);
+          tooltip.append(obEl);
+        }
         const dateEl = document.createElement("div");
         dateEl.className = "jd-tt-date";
         dateEl.textContent = fmtDateFull(t) + (seg.inStock ? "" : " · out of stock");
         if (!seg.inStock) dateEl.classList.add("jd-tt-oos");
-        tooltip.append(priceEl, dateEl);
+        tooltip.append(dateEl);
         const tw = tooltip.offsetWidth;
         tooltip.style.transform = `translate(${Math.min(Math.max(hx - tw / 2, 4), W - tw - 4)}px, 0)`;
       } else {

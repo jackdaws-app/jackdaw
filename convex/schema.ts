@@ -19,6 +19,7 @@ export default defineSchema({
     price: v.number(),
     inStock: v.boolean(),
     availability: v.optional(v.string()),
+    openBoxPrice: v.optional(v.number()),
     firstSeenAt: v.number(),
     lastSeenAt: v.number(),
     reportCount: v.number(),
@@ -42,6 +43,15 @@ export default defineSchema({
   })
     .index("by_comment_device", ["commentId", "deviceId"])
     .index("by_comment", ["commentId"]),
+
+  watches: defineTable({
+    deviceId: v.string(),
+    productDocId: v.id("products"),
+    priceAtWatch: v.number(),
+    active: v.boolean(),
+  })
+    .index("by_device", ["deviceId"])
+    .index("by_device_product", ["deviceId", "productDocId"]),
 
   devices: defineTable({
     deviceId: v.string(),

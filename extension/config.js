@@ -1,4 +1,5 @@
-// Convex deployment URL. Production cloud deployment (always on).
-// For local backend dev, swap in the dev deployment from .env.local
-// or the anonymous local deployment (http://127.0.0.1:3210).
-export const CONVEX_URL = "https://insightful-wren-655.convex.cloud";
+// Convex deployment URL.
+// DEV (current): carries seeded demo data so every feature is visible.
+// For release, switch to the production deployment (kept clean of mock data):
+//   export const CONVEX_URL = "https://insightful-wren-655.convex.cloud";
+export const CONVEX_URL = "https://calculating-shepherd-148.convex.cloud";

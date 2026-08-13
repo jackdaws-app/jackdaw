@@ -21,7 +21,18 @@
     const name = (document.querySelector('[data-name]')?.getAttribute('data-name')
       || document.querySelector('h1 [itemprop="name"], h1')?.textContent
       || '').trim().slice(0, 300);
+    // Best-effort open-box price: Micro Center shows "OPEN BOX ... $x.xx" near the buy box.
+    let openBoxPrice;
+    const obEl = [...document.querySelectorAll('a, span, div')].find(
+      (n) => n.children.length === 0 && /open\s*box/i.test(n.textContent || "") && /\$\s*\d/.test(n.textContent || ""),
+    );
+    if (obEl) {
+      const m = (obEl.textContent || "").match(/\$\s*([\d,]+\.?\d*)/);
+      const v = m ? parseFloat(m[1].replace(/,/g, "")) : NaN;
+      if (isFinite(v) && v > 0 && v < price) openBoxPrice = v;
+    }
     return {
+      openBoxPrice,
       productId: String(e.productID),
       sku: String(e.SKU),
       name: name || String(e.mpn || e.SKU),

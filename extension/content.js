@@ -10,6 +10,9 @@
   let drawerBody = null;
   let everOpened = false;
   let pendingReveal = false; // one-time stagger + chart reveal on first drawer open
+  let theme = "light";
+  let watching = false;
+  let watchBtn = null;
 
   const send = (msg) =>
     new Promise((resolve) => {
@@ -115,13 +118,46 @@
       `<span class="jd-live" title="Live community data"></span>` +
       `<span class="jd-wordmark">Jackdaw</span>`;
     const prodName = el("div", "jd-product-name", product.name);
+
+    watchBtn = el("button", "jd-watch", "Watch");
+    watchBtn.title = "Get notified when the flock sees this cheaper";
+    watchBtn.addEventListener("click", async () => {
+      watchBtn.disabled = true;
+      const res = await send({ type: "watch:toggle", productId: product.productId });
+      watchBtn.disabled = false;
+      if (!res.error) setWatching(res.result.watching);
+    });
     const minimize = el("button", "jd-minimize", "Minimize");
     minimize.addEventListener("click", closeDrawer);
-    header.append(brand, prodName, minimize);
+    header.append(brand, prodName, watchBtn, minimize);
 
     drawerBody = el("div", "jd-drawer-body");
     drawerEl.append(header, drawerBody);
     document.body.appendChild(drawerEl);
+
+    chrome.storage.local.get("jdTheme").then((v) => {
+      if (v.jdTheme === "dark") {
+        theme = "dark";
+        drawerEl.classList.add("jd-dark");
+        render();
+      }
+    });
+    send({ type: "watch:status", productId: product.productId }).then((res) => {
+      if (!res.error) setWatching(res.result.watching);
+    });
+  }
+
+  function setWatching(v) {
+    watching = v;
+    watchBtn.textContent = watching ? "Watching" : "Watch";
+    watchBtn.classList.toggle("jd-watching", watching);
+  }
+
+  function toggleTheme() {
+    theme = theme === "dark" ? "light" : "dark";
+    drawerEl.classList.toggle("jd-dark", theme === "dark");
+    chrome.storage.local.set({ jdTheme: theme });
+    render();
   }
 
   function openDrawer() {
@@ -193,11 +229,25 @@
       }
       left.append(chip);
 
-      left.append(window.__jackdawChart.build(history.points, { reveal: pendingReveal }));
+      // Confidence framing: thin evidence gets said out loud.
+      const sightings = history.points.reduce((n, p) => n + (p.reportCount || 1), 0);
+      if (sightings < 5) {
+        left.append(el("div", "jd-chip jd-chip-early", `Early data — ${sightings} sighting${sightings === 1 ? "" : "s"} so far. Take the chart lightly.`));
+      }
+
+      // Open-box summary: cheapest recently-seen open-box unit.
+      const obPoints = history.points.filter((p) => p.openBoxPrice != null);
+      if (obPoints.length) {
+        const cheapest = obPoints.reduce((a, b) => (a.openBoxPrice <= b.openBoxPrice ? a : b));
+        left.append(el("div", "jd-chip jd-chip-ob", `Open-box seen from ${fmtPrice(cheapest.openBoxPrice)} (${fmtDate(cheapest.lastSeenAt)})`));
+      }
+
+      const chart = window.__jackdawChart.build(history.points, { reveal: pendingReveal, theme });
+      addChartControls(chart);
+      left.append(chart);
 
       const note = el("div", "mk-note");
       const first = history.points.reduce((m, p) => Math.min(m, p.firstSeenAt), Infinity);
-      const sightings = history.points.reduce((n, p) => n + (p.reportCount || 1), 0);
       note.textContent = `Community-tracked since ${fmtDate(first)} · ${sightings} sighting${sightings === 1 ? "" : "s"} · store #${product.storeNum}`;
       left.append(note);
     } else {
@@ -214,6 +264,75 @@
 
     drawerBody.append(left, right);
     pendingReveal = false;
+  }
+
+  // Theme + share controls live at the chart toolbar's right end.
+  function addChartControls(chartRoot) {
+    const toolbar = chartRoot.querySelector(".jd-chart-toolbar");
+    if (!toolbar) return;
+    const controls = el("div", "jd-chart-controls");
+
+    const themeBtn = el("button", "jd-icon-btn");
+    themeBtn.title = theme === "dark" ? "Light mode" : "Dark mode";
+    themeBtn.innerHTML = theme === "dark"
+      ? `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+      : `<svg viewBox="0 0 16 16" fill="none"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
+    themeBtn.addEventListener("click", toggleTheme);
+
+    const shareBtn = el("button", "jd-icon-btn");
+    shareBtn.title = "Copy chart as image";
+    shareBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none"><path d="M8 10V2.5M8 2.5 5.2 5.3M8 2.5l2.8 2.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 8.5v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+    shareBtn.addEventListener("click", () => shareChart(chartRoot, shareBtn));
+
+    controls.append(themeBtn, shareBtn);
+    toolbar.append(controls);
+  }
+
+  // Compose chart + verdict into a PNG; copy to clipboard, download as fallback.
+  async function shareChart(chartRoot, btn) {
+    const src = chartRoot.querySelector("canvas");
+    if (!src) return;
+    const dark = theme === "dark";
+    const dpr = 2;
+    const W = 760, H = 120 + (src.height / (window.devicePixelRatio || 1)) + 40;
+    const out = document.createElement("canvas");
+    out.width = W * dpr;
+    out.height = H * dpr;
+    const ctx = out.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = dark ? "#0f1726" : "#fcfbf9";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = dark ? "#e6eaf2" : "#16233a";
+    ctx.font = "600 15px system-ui, sans-serif";
+    ctx.fillText(product.name.slice(0, 70), 24, 34);
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillStyle = dark ? "#8b94a8" : "#6b7280";
+    const typical = window.__jackdawChart.typicalPrice(history.points);
+    ctx.fillText(`Current ${fmtPrice(product.price)} · typical ${fmtPrice(typical)} · Micro Center store #${product.storeNum}`, 24, 56);
+    const srcCssW = src.width / (window.devicePixelRatio || 1);
+    const srcCssH = src.height / (window.devicePixelRatio || 1);
+    const scale = Math.min((W - 48) / srcCssW, 1);
+    ctx.drawImage(src, 24, 76, srcCssW * scale, srcCssH * scale);
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillStyle = dark ? "#5b667a" : "#9aa1ab";
+    ctx.fillText("Jackdaw · community price history · data from shoppers like you", 24, H - 16);
+
+    const blob = await new Promise((r) => out.toBlob(r, "image/png"));
+    let copied = false;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      copied = true;
+    } catch {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `jackdaw-${product.productId}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+    const old = btn.innerHTML;
+    btn.innerHTML = `<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5 6.5 12 13 4.5" stroke="#16a34a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    btn.title = copied ? "Copied to clipboard" : "Downloaded";
+    setTimeout(() => { btn.innerHTML = old; btn.title = "Copy chart as image"; }, 1600);
   }
 
   function stat(label, price, sub, animate) {

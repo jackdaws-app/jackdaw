@@ -13,6 +13,8 @@ import type * as comments from "../comments.js";
 import type * as lib from "../lib.js";
 import type * as observations from "../observations.js";
 import type * as products from "../products.js";
+import type * as seed from "../seed.js";
+import type * as watches from "../watches.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +28,8 @@ declare const fullApi: ApiFromModules<{
   lib: typeof lib;
   observations: typeof observations;
   products: typeof products;
+  seed: typeof seed;
+  watches: typeof watches;
 }>;
 
 /**

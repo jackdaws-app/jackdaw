@@ -1,5 +1,5 @@
-// Service worker: owns the anonymous device id and all network calls to the
-// Convex backend via its plain HTTP API (no client library needed).
+// Service worker: owns the anonymous device id, all Convex HTTP calls, and
+// the price-drop alert loop (hourly check of watched products).
 import { CONVEX_URL } from "./config.js";
 
 async function getDeviceId() {
@@ -43,6 +43,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
       case "comments:vote":
         return convexMutation("comments:vote", { commentId: msg.commentId, deviceId, value: msg.value });
+      case "watch:toggle":
+        return convexMutation("watches:toggle", { deviceId, productId: msg.productId });
+      case "watch:status":
+        return convexQuery("watches:status", { deviceId, productId: msg.productId });
       default:
         throw new Error("Unknown message type: " + msg.type);
     }
@@ -50,4 +54,43 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .then((result) => sendResponse({ result }))
     .catch((e) => sendResponse({ error: String(e && e.message ? e.message : e) }));
   return true; // async response
+});
+
+// ---------- Price-drop alerts ----------
+
+const ALARM = "jackdaw-watch-check";
+
+function ensureAlarm() {
+  chrome.alarms.get(ALARM, (a) => {
+    if (!a) chrome.alarms.create(ALARM, { delayInMinutes: 2, periodInMinutes: 60 });
+  });
+}
+chrome.runtime.onInstalled.addListener(ensureAlarm);
+chrome.runtime.onStartup.addListener(ensureAlarm);
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== ALARM) return;
+  try {
+    const deviceId = await getDeviceId();
+    const drops = await convexQuery("watches:check", { deviceId });
+    for (const d of drops) {
+      chrome.notifications.create(d.urlPath, {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: `Price drop: $${d.currentPrice.toFixed(2)}`,
+        message: `${d.name}\nWas $${d.priceAtWatch.toFixed(2)} when you started watching · store #${d.storeNum}`,
+        priority: 1,
+      });
+      await convexMutation("watches:ack", { deviceId, productId: d.productId, newPrice: d.currentPrice });
+    }
+  } catch {
+    // network hiccups are fine; next hourly tick retries
+  }
+});
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId.startsWith("/")) {
+    chrome.tabs.create({ url: "https://www.microcenter.com" + notificationId });
+    chrome.notifications.clear(notificationId);
+  }
 });
