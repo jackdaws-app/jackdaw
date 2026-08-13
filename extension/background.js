@@ -45,6 +45,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return convexMutation("comments:vote", { commentId: msg.commentId, deviceId, value: msg.value });
       case "watch:toggle":
         return convexMutation("watches:toggle", { deviceId, productId: msg.productId });
+      case "watch:setTarget":
+        return convexMutation("watches:setTarget", { deviceId, productId: msg.productId, targetPrice: msg.targetPrice });
       case "watch:status":
         return convexQuery("watches:status", { deviceId, productId: msg.productId });
       default:

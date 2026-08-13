@@ -14,6 +14,19 @@
 }
 #jackdaw-drawer *, #jackdaw-tab * { box-sizing: border-box; }
 
+/* The host page's focus styles (Micro Center ships a red dotted outline)
+   bleed into our DOM — reset them and provide our own focus-visible ring. */
+#jackdaw-drawer button, #jackdaw-drawer input, #jackdaw-drawer textarea, #jackdaw-tab {
+  outline: none !important;
+}
+#jackdaw-drawer button:focus-visible, #jackdaw-tab:focus-visible {
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45) !important;
+}
+#jackdaw-drawer input:focus-visible, #jackdaw-drawer textarea:focus-visible {
+  border-color: var(--jd-green);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.13);
+}
+
 /* ---------- "Price history" tab — left edge of the product image ---------- */
 #jackdaw-tab {
   position: absolute; /* in <body>; content.js sets left/top to the image box's outer left edge */
@@ -143,12 +156,23 @@
   flex-shrink: 0;
 }
 .jd-brand { display: flex; align-items: center; gap: 7px; }
+/* Idle spell: a quiet sheen sweeps the wordmark every ~9s */
 .jd-wordmark {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  color: var(--jd-navy);
+  background: linear-gradient(100deg, var(--jd-navy) 42%, #16a34a 50%, var(--jd-navy) 58%);
+  background-size: 320% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: jd-sheen 9s var(--ease-in-out) infinite;
+}
+@keyframes jd-sheen {
+  0%, 68% { background-position: 100% 0; }
+  88%, 100% { background-position: 0% 0; }
 }
 .jd-live {
   width: 7px;
@@ -332,6 +356,32 @@
   background: #f2faf5;
 }
 
+/* Alert popover */
+.jd-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 12px;
+  z-index: 6;
+  width: 230px;
+  background: #fff;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 10px 32px rgba(28, 30, 33, 0.16);
+  animation: jd-pop-in 0.18s var(--ease-out);
+  transform-origin: top right;
+}
+@keyframes jd-pop-in {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.jd-popover-label { font-size: 11px; font-weight: 600; color: var(--jd-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.jd-popover-input { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.jd-popover-dollar { font-weight: 700; color: var(--jd-ink); }
+.jd-price-input { flex: 1; font-variant-numeric: tabular-nums; font-weight: 600; }
+.jd-price-input::-webkit-outer-spin-button, .jd-price-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.jd-popover-hint { font-size: 10.5px; color: var(--jd-muted); margin-bottom: 10px; }
+
 .jd-toast {
   position: absolute;
   left: 50%;
@@ -443,9 +493,93 @@
 
 /* ---------- Discussion ---------- */
 .mk-comments { min-width: 0; }
-.mk-section-title { font-weight: 700; margin-bottom: 8px; font-size: 13px; }
+.mk-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.mk-section-title { font-weight: 700; font-size: 13px; }
+.jd-sort { display: flex; gap: 2px; }
+.jd-sort-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9aa1ab;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .jd-sort-btn:hover { color: var(--jd-ink); }
+}
+.jd-sort-active { color: var(--jd-navy); border-color: var(--jd-hairline); background: var(--jd-paper); }
 .mk-comment-list { max-height: 230px; overflow-y: auto; }
-.mk-comment { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid #efedea; }
+.mk-comment { display: flex; gap: 8px; padding: 9px 0; border-top: 1px solid #efedea; }
+/* Reddit-style collapse rail: hover it and the whole thread highlights */
+.mk-rail {
+  width: 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+  flex-shrink: 0;
+}
+.mk-rail::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: #e3e1dd;
+  transition: background-color 0.15s ease, width 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mk-rail:hover::before { background: var(--jd-green); width: 3px; }
+}
+.mk-collapsed-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 8px 0;
+  border-top: 1px solid #efedea;
+  animation: mk-body-in 0.18s var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .mk-collapsed-row:hover .mk-expander { color: var(--jd-green-deep); border-color: var(--jd-green); }
+}
+.mk-expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--jd-muted);
+  transition: color 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+  transform: translateY(2px);
+}
+.mk-collapsed-snippet {
+  color: var(--jd-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+.mk-collapsed-count { font-size: 11px; color: #9aa1ab; flex-shrink: 0; }
+.mk-author { cursor: pointer; }
 .mk-votes { display: flex; flex-direction: column; align-items: center; width: 26px; }
 .mk-vote-btn {
   border: 0;
@@ -576,6 +710,19 @@
 #jackdaw-drawer.jd-dark .mk-stat-value { color: #e6eaf2; }
 #jackdaw-drawer.jd-dark .mk-section-title { color: #cdd6e4; }
 #jackdaw-drawer.jd-dark .mk-comment-body { color: #c4cddb; }
+#jackdaw-drawer.jd-dark .jd-wordmark {
+  background: linear-gradient(100deg, #cdd6e4 42%, #4ade80 50%, #cdd6e4 58%);
+  background-size: 320% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+#jackdaw-drawer.jd-dark .jd-popover { background: #131e30; border-color: #253049; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4); }
+#jackdaw-drawer.jd-dark .jd-popover-dollar { color: #e6eaf2; }
+#jackdaw-drawer.jd-dark .jd-sort-active { color: #cdd6e4; border-color: #253049; background: #16213a; }
+#jackdaw-drawer.jd-dark .mk-rail::before { background: #253049; }
+#jackdaw-drawer.jd-dark .mk-collapsed-row { border-top-color: #1e293e; }
+#jackdaw-drawer.jd-dark .mk-expander { border-color: #2a3752; color: #8b94a8; }
+#jackdaw-drawer.jd-dark button:focus-visible { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45) !important; }
 @media (hover: hover) and (pointer: fine) {
   #jackdaw-drawer.jd-dark .jd-icon-btn:hover { color: #e6eaf2; background: rgba(203, 213, 225, 0.08); }
   #jackdaw-drawer.jd-dark .jd-minimize:hover,
@@ -597,6 +744,8 @@
   .jd-live { animation: none; }
   .jd-skeleton > * { animation: none; }
   .mk-input-nudge { animation: none; }
+  .jd-wordmark { animation: none; background-position: 100% 0; }
+  .jd-popover { animation: jd-fade 0.15s ease; }
   #jackdaw-tab:active { transform: translate(-100%, -50%); }
   .jd-icon-btn:active, .jd-watch:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }

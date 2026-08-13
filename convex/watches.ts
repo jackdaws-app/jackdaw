@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireLength } from "./lib";
 
-// A drop must exceed this epsilon to notify (guards float noise).
+// Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
 
 export const toggle = mutation({
@@ -56,18 +56,73 @@ export const toggle = mutation({
   },
 });
 
+export const setTarget = mutation({
+  args: {
+    deviceId: v.string(),
+    productId: v.string(),
+    targetPrice: v.number(),
+  },
+  returns: v.object({ watching: v.literal(true), target: v.number() }),
+  handler: async (ctx, args) => {
+    if (
+      !Number.isFinite(args.targetPrice) ||
+      args.targetPrice <= 0 ||
+      args.targetPrice >= 100_000
+    ) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "targetPrice must be a finite number between 0 and 100000",
+      });
+    }
+    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_productId", (q) => q.eq("productId", args.productId))
+      .unique();
+    if (product === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
+    }
+
+    const existing = await ctx.db
+      .query("watches")
+      .withIndex("by_device_product", (q) =>
+        q.eq("deviceId", deviceId).eq("productDocId", product._id),
+      )
+      .first();
+
+    if (existing !== null) {
+      await ctx.db.patch(existing._id, {
+        priceAtWatch: args.targetPrice,
+        active: true,
+      });
+    } else {
+      await ctx.db.insert("watches", {
+        deviceId,
+        productDocId: product._id,
+        priceAtWatch: args.targetPrice,
+        active: true,
+      });
+    }
+    return { watching: true as const, target: args.targetPrice };
+  },
+});
+
 export const status = query({
   args: {
     deviceId: v.string(),
     productId: v.string(),
   },
-  returns: v.object({ watching: v.boolean() }),
+  returns: v.object({
+    watching: v.boolean(),
+    target: v.union(v.number(), v.null()),
+  }),
   handler: async (ctx, args) => {
     const product = await ctx.db
       .query("products")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .unique();
-    if (product === null) return { watching: false };
+    if (product === null) return { watching: false, target: null };
 
     const watch = await ctx.db
       .query("watches")
@@ -75,7 +130,8 @@ export const status = query({
         q.eq("deviceId", args.deviceId).eq("productDocId", product._id),
       )
       .first();
-    return { watching: watch !== null && watch.active };
+    const watching = watch !== null && watch.active;
+    return { watching, target: watching ? watch.priceAtWatch : null };
   },
 });
 
@@ -116,7 +172,8 @@ export const check = query({
         .order("desc")
         .first();
       if (latest === null) continue;
-      if (latest.price >= watch.priceAtWatch - DROP_EPSILON) continue;
+      // Fire when current <= target + epsilon (at-or-below the chosen target).
+      if (latest.price > watch.priceAtWatch + DROP_EPSILON) continue;
 
       const product = await ctx.db.get(watch.productDocId);
       if (product === null) continue;
@@ -168,8 +225,11 @@ export const ack = mutation({
         q.eq("deviceId", deviceId).eq("productDocId", product._id),
       )
       .first();
+    // One-shot alert: acknowledging turns the watch off, preserving the
+    // user's chosen target. Re-arm via setTarget/toggle. `newPrice` is
+    // accepted (and validated) only for wire compatibility.
     if (watch !== null) {
-      await ctx.db.patch(watch._id, { priceAtWatch: args.newPrice });
+      await ctx.db.patch(watch._id, { active: false });
     }
     return null;
   },

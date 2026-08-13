@@ -16,6 +16,10 @@
   let chartHeight = 190;
   let watchBtn = null;
   let replyTo = null; // comment _id an open reply form belongs to
+  let watchTarget = null; // active alert target price, or null
+  let alertPopover = null;
+  let commentSort = "top"; // "top" | "new"
+  const collapsedThreads = new Set(); // comment _ids collapsed reddit-style
 
   const send = (msg) =>
     new Promise((resolve) => {
@@ -161,16 +165,10 @@
     });
     watchBtn = el("button", "jd-watch");
     watchBtn.innerHTML = `${ICONS.bell}<span>Set alert</span>`;
-    watchBtn.title = "Get notified when the flock sees this cheaper";
-    watchBtn.addEventListener("click", async () => {
-      watchBtn.disabled = true;
-      const res = await send({ type: "watch:toggle", productId: product.productId });
-      watchBtn.disabled = false;
-      if (res.error) toast("Couldn't update the alert — try again");
-      else {
-        setWatching(res.result.watching);
-        toast(res.result.watching ? "Alert set — we'll ping you on a price drop" : "Alert removed");
-      }
+    watchBtn.title = "Pick a price — get notified when the flock sees it";
+    watchBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleAlertPopover();
     });
     const minBtn = iconBtn(ICONS.minimize, "Minimize");
     minBtn.addEventListener("click", closeDrawer);
@@ -189,13 +187,86 @@
     });
 
     send({ type: "watch:status", productId: product.productId }).then((res) => {
-      if (!res.error) setWatching(res.result.watching);
+      if (!res.error) setWatching(res.result.watching, res.result.target);
     });
   }
 
-  function setWatching(v) {
+  function setWatching(v, target) {
+    watchTarget = v ? target : null;
     watchBtn.classList.toggle("jd-watching", v);
-    watchBtn.querySelector("span").textContent = v ? "Alert on" : "Set alert";
+    watchBtn.querySelector("span").textContent = v && target != null ? `Alert at ${fmtPrice(target)}` : "Set alert";
+  }
+
+  // Small anchored popover: choose the price that triggers the alert.
+  function toggleAlertPopover() {
+    if (alertPopover) {
+      alertPopover.remove();
+      alertPopover = null;
+      return;
+    }
+    alertPopover = el("div", "jd-popover");
+    alertPopover.addEventListener("click", (e) => e.stopPropagation());
+    const label = el("div", "jd-popover-label", "Notify me at or below");
+    const inputRow = el("div", "jd-popover-input");
+    const dollar = el("span", "jd-popover-dollar", "$");
+    const input = el("input", "mk-input jd-price-input");
+    input.type = "number";
+    input.min = "0.01";
+    input.step = "0.01";
+    const suggested = watchTarget != null ? watchTarget : Math.max(product.price - 0.01, 0.01);
+    input.value = suggested.toFixed(2);
+    inputRow.append(dollar, input);
+    const hint = el("div", "jd-popover-hint",
+      history && history.points.length
+        ? `Current ${fmtPrice(product.price)} · all-time low ${fmtPrice(computeStats(history.points).lowest)}`
+        : `Current ${fmtPrice(product.price)}`);
+    const row = el("div", "mk-form-row");
+    if (watchTarget != null) {
+      const remove = el("button", "mk-cancel", "Remove alert");
+      remove.addEventListener("click", async () => {
+        const res = await send({ type: "watch:toggle", productId: product.productId });
+        if (res.error) toast("Couldn't remove the alert — try again");
+        else {
+          setWatching(false, null);
+          toast("Alert removed");
+        }
+        toggleAlertPopover();
+      });
+      row.append(remove);
+    }
+    const save = el("button", "mk-post", "Save alert");
+    save.addEventListener("click", async () => {
+      const v = parseFloat(input.value);
+      if (!isFinite(v) || v <= 0) {
+        input.classList.add("mk-input-nudge");
+        setTimeout(() => input.classList.remove("mk-input-nudge"), 400);
+        return;
+      }
+      save.disabled = true;
+      const res = await send({ type: "watch:setTarget", productId: product.productId, targetPrice: Math.round(v * 100) / 100 });
+      save.disabled = false;
+      if (res.error) toast("Couldn't set the alert — try again");
+      else {
+        setWatching(true, res.result.target);
+        toast(res.result.target >= product.price
+          ? `Today's price already qualifies — you'll be pinged within the hour`
+          : `Alert set — we'll ping you at ${fmtPrice(res.result.target)} or less`);
+      }
+      toggleAlertPopover();
+    });
+    row.append(save);
+    alertPopover.append(label, inputRow, hint, row);
+    drawerEl.querySelector(".jd-header").append(alertPopover);
+    input.focus();
+    input.select();
+    const dismiss = (e) => {
+      if (alertPopover && !alertPopover.contains(e.target) && e.target !== watchBtn) {
+        alertPopover.remove();
+        alertPopover = null;
+        document.removeEventListener("click", dismiss);
+      }
+    };
+    setTimeout(() => document.addEventListener("click", dismiss), 0);
   }
 
   function openDrawer() {
@@ -238,6 +309,15 @@
 
   function fmtDate(ms) {
     return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  function fmtRel(ms) {
+    const d = Date.now() - ms;
+    if (d < 90_000) return "just now";
+    if (d < 3_600_000) return Math.round(d / 60_000) + "m ago";
+    if (d < 86_400_000) return Math.round(d / 3_600_000) + "h ago";
+    if (d < 7 * 86_400_000) return Math.round(d / 86_400_000) + "d ago";
+    return fmtDate(ms);
   }
 
   function renderLeft() {
@@ -368,6 +448,14 @@
 
   // Compose chart + verdict into a PNG; copy to clipboard, download as fallback.
   async function shareChart(btn) {
+    try {
+      await shareChartInner(btn);
+    } catch (e) {
+      toast("Share failed — " + String(e && e.message ? e.message : e).slice(0, 60));
+    }
+  }
+
+  async function shareChartInner(btn) {
     const src = leftCol && leftCol.querySelector(".jd-chart canvas");
     if (!src || !history) {
       toast("Nothing to share yet");
@@ -428,12 +516,31 @@
     return roots;
   }
 
+  function countReplies(c) {
+    return c.children.reduce((n, ch) => n + 1 + countReplies(ch), 0);
+  }
+
   function renderComments() {
     const sec = el("div", "mk-comments");
-    sec.append(el("div", "mk-section-title", comments.length ? `Aisle intel (${comments.length})` : "Aisle intel"));
+    const titleRow = el("div", "mk-section-head");
+    titleRow.append(el("div", "mk-section-title", comments.length ? `Aisle intel (${comments.length})` : "Aisle intel"));
+    if (comments.length > 1) {
+      const sortWrap = el("div", "jd-sort");
+      for (const s of ["top", "new"]) {
+        const b = el("button", "jd-sort-btn" + (commentSort === s ? " jd-sort-active" : ""), s === "top" ? "Top" : "New");
+        b.addEventListener("click", () => {
+          commentSort = s;
+          renderRight();
+        });
+        sortWrap.append(b);
+      }
+      titleRow.append(sortWrap);
+    }
+    sec.append(titleRow);
 
     const list = el("div", "mk-comment-list");
     const roots = commentTree();
+    roots.sort(commentSort === "top" ? (a, b) => b.score - a.score : (a, b) => b._creationTime - a._creationTime);
     if (!roots.length) {
       list.append(el("div", "mk-note", "Quiet aisle. Spotted an open-box deal, a price match, or empty shelves? Leave a note for the flock."));
     }
@@ -445,7 +552,29 @@
 
   function renderComment(c, depth) {
     const wrap = el("div", "mk-thread" + (depth ? " mk-thread-nested" : ""));
+
+    // Reddit-style collapse: clicking a collapsed row (or the thread rail)
+    // toggles this comment and everything beneath it.
+    if (collapsedThreads.has(c._id)) {
+      const replies = countReplies(c);
+      const row = el("button", "mk-comment mk-collapsed-row");
+      row.innerHTML = `<span class="mk-expander">+</span><span class="mk-author">${escapeHtml(c.displayName)}</span><span class="mk-collapsed-snippet"> · ${escapeHtml(c.body.slice(0, 64))}${c.body.length > 64 ? "…" : ""}</span>${replies ? `<span class="mk-collapsed-count">${replies} repl${replies === 1 ? "y" : "ies"}</span>` : ""}`;
+      row.addEventListener("click", () => {
+        collapsedThreads.delete(c._id);
+        renderRight();
+      });
+      wrap.append(row);
+      return wrap;
+    }
+
     const row = el("div", "mk-comment");
+    const rail = el("button", "mk-rail");
+    rail.title = "Collapse thread";
+    rail.setAttribute("aria-label", "Collapse thread");
+    rail.addEventListener("click", () => {
+      collapsedThreads.add(c._id);
+      renderRight();
+    });
 
     const voteBox = el("div", "mk-votes");
     const up = el("button", "mk-vote-btn" + (c.myVote === 1 ? " mk-active-up" : ""), "▲");
@@ -475,7 +604,13 @@
 
     const main = el("div", "mk-comment-main");
     const meta = el("div", "mk-comment-meta");
-    meta.append(el("span", "mk-author", c.displayName), el("span", null, " · " + fmtDate(c._creationTime)));
+    const authorEl = el("span", "mk-author", c.displayName);
+    authorEl.title = "Collapse thread";
+    authorEl.addEventListener("click", () => {
+      collapsedThreads.add(c._id);
+      renderRight();
+    });
+    meta.append(authorEl, el("span", null, " · " + fmtRel(c._creationTime)));
     const body = el("div", "mk-comment-body", c.body);
     const actions = el("div", "mk-comment-actions");
     if (depth < 3) {
@@ -487,7 +622,7 @@
       actions.append(replyBtn);
     }
     main.append(meta, body, actions);
-    row.append(voteBox, main);
+    row.append(rail, voteBox, main);
     wrap.append(row);
 
     if (replyTo === c._id) {
@@ -495,8 +630,13 @@
       form.classList.add("mk-reply-form");
       wrap.append(form);
     }
-    for (const child of c.children) wrap.append(renderComment(child, depth + 1));
+    const kids = c.children.slice().sort((a, b) => a._creationTime - b._creationTime);
+    for (const child of kids) wrap.append(renderComment(child, depth + 1));
     return wrap;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
   function composeForm(parentId, placeholder, cta) {
