@@ -128,7 +128,12 @@ export const demo = internalMutation({
       },
     ];
     let voterSeq = 0;
-    for (const c of comments) {
+    const insertComment = async (c: {
+      displayName: string;
+      body: string;
+      score: number;
+      parentId?: Id<"comments">;
+    }): Promise<Id<"comments">> => {
       const commentId = await ctx.db.insert("comments", {
         productDocId: asusId,
         deviceId: `seed-author-${c.displayName}`,
@@ -136,6 +141,7 @@ export const demo = internalMutation({
         body: c.body,
         score: c.score,
         voteCount: c.score, // all upvotes, so voteCount === score
+        parentId: c.parentId,
       });
       inserted++;
       for (let i = 0; i < c.score; i++) {
@@ -146,7 +152,37 @@ export const demo = internalMutation({
         });
         inserted++;
       }
+      return commentId;
+    };
+
+    const topLevelIds: Id<"comments">[] = [];
+    for (const c of comments) {
+      topLevelIds.push(await insertComment(c));
     }
+
+    // --- Threaded replies under the open-box tip (TenGigTinkerer) ---
+    const openBoxThreadId = topLevelIds[0];
+    await insertComment({
+      displayName: "DanFromDenver",
+      body:
+        "Seconding the service-desk tip — Tustin had three more in the back when I asked. Mine came with both brackets too.",
+      score: 4,
+      parentId: openBoxThreadId,
+    });
+    const heatsinkReplyId = await insertComment({
+      displayName: "NASNerdNina",
+      body:
+        "How warm is warm? Mine idles around 70C in a cramped ITX case even with the stock heatsink. Wondering if I got a dud or if that's just the AQC107.",
+      score: 2,
+      parentId: openBoxThreadId,
+    });
+    await insertComment({
+      displayName: "TenGigTinkerer",
+      body:
+        "70C idle is on the high side but within spec — the AQC107 throttles around 100C. Zip-tie a 40mm fan to the heatsink and it'll drop 20C easy.",
+      score: 3,
+      parentId: heatsinkReplyId,
+    });
 
     // --- Skeletal product 2: Logitech USB Unifying Receiver ---
     const logiId = await ctx.db.insert("products", {

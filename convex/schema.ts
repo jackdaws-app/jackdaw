@@ -34,6 +34,7 @@ export default defineSchema({
     body: v.string(),
     score: v.number(),
     voteCount: v.number(),
+    parentId: v.optional(v.id("comments")),
   }).index("by_product", ["productDocId"]),
 
   votes: defineTable({

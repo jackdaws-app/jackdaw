@@ -15,6 +15,7 @@ export const list = query({
       body: v.string(),
       score: v.number(),
       myVote: v.union(v.literal(0), v.literal(1), v.literal(-1)),
+      parentId: v.union(v.id("comments"), v.null()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -28,7 +29,7 @@ export const list = query({
       .query("comments")
       .withIndex("by_product", (q) => q.eq("productDocId", product._id))
       .order("desc")
-      .take(100);
+      .take(200);
 
     return await Promise.all(
       comments.map(async (c) => {
@@ -45,6 +46,7 @@ export const list = query({
           body: c.body,
           score: c.score,
           myVote: myVoteRow === null ? (0 as const) : myVoteRow.value,
+          parentId: c.parentId ?? null,
         };
       }),
     );
@@ -57,6 +59,7 @@ export const add = mutation({
     deviceId: v.string(),
     displayName: v.string(),
     body: v.string(),
+    parentId: v.optional(v.id("comments")),
   },
   returns: v.id("comments"),
   handler: async (ctx, args) => {
@@ -72,6 +75,39 @@ export const add = mutation({
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
     }
 
+    if (args.parentId !== undefined) {
+      const parent = await ctx.db.get(args.parentId);
+      if (parent === null) {
+        throw new ConvexError({
+          code: "NOT_FOUND",
+          message: "unknown parent comment",
+        });
+      }
+      if (parent.productDocId !== product._id) {
+        throw new ConvexError({
+          code: "INVALID_ARGUMENT",
+          message: "parent comment belongs to a different product",
+        });
+      }
+      // Walk the parent chain to enforce max thread depth of 4 (a top-level
+      // comment is depth 1; the new reply counts as one more level).
+      const MAX_DEPTH = 4;
+      let depth = 2; // new comment + its direct parent
+      let ancestorId = parent.parentId;
+      while (ancestorId !== undefined) {
+        depth++;
+        if (depth > MAX_DEPTH) {
+          throw new ConvexError({
+            code: "INVALID_ARGUMENT",
+            message: `thread depth may not exceed ${MAX_DEPTH}`,
+          });
+        }
+        const ancestor = await ctx.db.get(ancestorId);
+        if (ancestor === null) break;
+        ancestorId = ancestor.parentId;
+      }
+    }
+
     return await ctx.db.insert("comments", {
       productDocId: product._id,
       deviceId,
@@ -79,6 +115,7 @@ export const add = mutation({
       body,
       score: 0,
       voteCount: 0,
+      parentId: args.parentId,
     });
   },
 });

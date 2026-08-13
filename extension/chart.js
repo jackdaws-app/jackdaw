@@ -68,10 +68,32 @@
     rangeWrap.className = "jd-ranges";
     toolbar.append(legend, storeWrap, rangeWrap);
 
+    // Legend doubles as series toggles (New is the primary line and stays on).
     const hasOpenBox = points.some((p) => p.openBoxPrice != null);
-    legend.innerHTML =
-      `<span class="jd-key"><i class="jd-swatch" style="background:#16a34a"></i>New</span>` +
-      (hasOpenBox ? `<span class="jd-key"><i class="jd-swatch" style="background:#d97706"></i>Open-box</span>` : "");
+    let showOpenBox = true;
+    let showTypical = true;
+    const key = (label, color, toggleable) => {
+      const b = document.createElement(toggleable ? "button" : "span");
+      b.className = "jd-key" + (toggleable ? " jd-key-toggle" : "");
+      b.innerHTML = `<i class="jd-swatch" style="background:${color}"></i>${label}`;
+      legend.append(b);
+      return b;
+    };
+    key("New", "#16a34a", false);
+    if (hasOpenBox) {
+      const obKey = key("Open-box", "#d97706", true);
+      obKey.addEventListener("click", () => {
+        showOpenBox = !showOpenBox;
+        obKey.classList.toggle("jd-key-off", !showOpenBox);
+        update();
+      });
+    }
+    const typKey = key("Typical", "currentColor", true);
+    typKey.addEventListener("click", () => {
+      showTypical = !showTypical;
+      typKey.classList.toggle("jd-key-off", !showTypical);
+      update();
+    });
 
     const stage = document.createElement("div");
     stage.className = "jd-chart-stage";
@@ -81,7 +103,32 @@
     const liveDot = document.createElement("span");
     liveDot.className = "jd-live-dot";
     stage.append(canvas, tooltip, liveDot);
-    root.append(toolbar, stage);
+
+    // Drag handle: resize the chart's height (clamped), persisted by the caller.
+    let chartH = Math.min(Math.max(opts.height || 190, 140), 340);
+    const resizer = document.createElement("div");
+    resizer.className = "jd-resizer";
+    resizer.title = "Drag to resize";
+    resizer.innerHTML = "<span></span>";
+    resizer.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      resizer.setPointerCapture(e.pointerId);
+      const startY = e.clientY;
+      const startH = chartH;
+      const move = (ev) => {
+        chartH = Math.min(Math.max(startH + (ev.clientY - startY), 140), 340);
+        update();
+      };
+      const up = () => {
+        resizer.removeEventListener("pointermove", move);
+        resizer.removeEventListener("pointerup", up);
+        if (opts.onHeightChange) opts.onHeightChange(chartH);
+      };
+      resizer.addEventListener("pointermove", move);
+      resizer.addEventListener("pointerup", up);
+    });
+
+    root.append(toolbar, stage, resizer);
 
     const stores = [...new Set(points.map((p) => p.storeNum))].sort();
     let store = "All";
@@ -176,7 +223,7 @@
       }
 
       const W = stage.clientWidth || 420;
-      const H = 190;
+      const H = chartH;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = W * dpr;
       canvas.height = H * dpr;
@@ -286,7 +333,7 @@
       // open-box series (Keepa-style second line; gaps where none was seen)
       ctx.strokeStyle = "#d97706";
       ctx.lineWidth = 1.5;
-      for (let i = 0; i < segs.length; i++) {
+      for (let i = 0; showOpenBox && i < segs.length; i++) {
         const s = segs[i];
         if (s.openBox == null) continue;
         ctx.beginPath();
@@ -301,7 +348,7 @@
       ctx.restore(); // end sweep clip
 
       // typical-price dotted line (only once it separates visually from LOW)
-      if (Math.abs(y(typical) - y(lowest)) > 9) {
+      if (showTypical && Math.abs(y(typical) - y(lowest)) > 9) {
         ctx.setLineDash([2, 5]);
         ctx.strokeStyle = pal.typicalLine;
         ctx.lineWidth = 1;
@@ -350,7 +397,7 @@
         priceEl.className = "jd-tt-price";
         priceEl.textContent = fmtPrice(seg.price);
         tooltip.append(priceEl);
-        if (seg.openBox != null) {
+        if (showOpenBox && seg.openBox != null) {
           const obEl = document.createElement("div");
           obEl.className = "jd-tt-ob";
           obEl.textContent = "Open-box " + fmtPrice(seg.openBox);
