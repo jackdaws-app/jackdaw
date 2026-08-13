@@ -577,6 +577,15 @@
     }
 
     const row = el("div", "mk-comment");
+    // The whole row collapses the thread — except interactive elements and
+    // real text selections (so copying a comment never collapses it).
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("button, textarea, input, a")) return;
+      if (String(window.getSelection() || "").length) return;
+      collapsedThreads.add(c._id);
+      renderRight();
+    });
+    row.classList.add("mk-collapsible");
     const rail = el("button", "mk-rail");
     rail.title = "Collapse thread";
     rail.setAttribute("aria-label", "Collapse thread");

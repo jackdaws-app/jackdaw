@@ -208,7 +208,26 @@
   gap: 20px;
   padding: 16px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 130, 145, 0.35) transparent;
 }
+/* Sleek minimal scrollbars: thin, rounded, only visible when needed */
+.jd-drawer-body::-webkit-scrollbar,
+.mk-textarea::-webkit-scrollbar { width: 5px; height: 5px; }
+.jd-drawer-body::-webkit-scrollbar-track,
+.mk-textarea::-webkit-scrollbar-track { background: transparent; }
+.jd-drawer-body::-webkit-scrollbar-thumb,
+.mk-textarea::-webkit-scrollbar-thumb {
+  background: rgba(120, 130, 145, 0.3);
+  border-radius: 8px;
+}
+.jd-drawer-body::-webkit-scrollbar-thumb:hover,
+.mk-textarea::-webkit-scrollbar-thumb:hover { background: rgba(120, 130, 145, 0.55); }
+#jackdaw-drawer.jd-dark .jd-drawer-body { scrollbar-color: rgba(140, 152, 175, 0.28) transparent; }
+#jackdaw-drawer.jd-dark .jd-drawer-body::-webkit-scrollbar-thumb,
+#jackdaw-drawer.jd-dark .mk-textarea::-webkit-scrollbar-thumb { background: rgba(140, 152, 175, 0.25); }
+#jackdaw-drawer.jd-dark .jd-drawer-body::-webkit-scrollbar-thumb:hover,
+#jackdaw-drawer.jd-dark .mk-textarea::-webkit-scrollbar-thumb:hover { background: rgba(140, 152, 175, 0.5); }
 @media (max-width: 760px) {
   .jd-drawer-body { grid-template-columns: 1fr; }
 }
@@ -513,7 +532,7 @@
   .jd-sort-btn:hover { color: var(--jd-ink); }
 }
 .jd-sort-active { color: var(--jd-navy); border-color: var(--jd-hairline); background: var(--jd-paper); }
-.mk-comment-list { max-height: 230px; overflow-y: auto; }
+.mk-comment-list { min-width: 0; } /* scrolls with the drawer body — one scroll context, not nested bars */
 .mk-comment { display: flex; gap: 8px; padding: 9px 0; border-top: 1px solid #efedea; }
 /* Reddit-style collapse rail: hover it and the whole thread highlights */
 .mk-rail {
@@ -582,6 +601,8 @@
 }
 .mk-collapsed-count { font-size: 11px; color: #9aa1ab; flex-shrink: 0; }
 .mk-author { cursor: pointer; }
+.mk-collapsible { cursor: pointer; }
+.mk-collapsible .mk-comment-body { cursor: auto; } /* text stays selectable-feeling */
 .mk-hidden-row { color: #9aa1ab; font-style: italic; font-size: 12px; }
 .mk-report-btn { margin-left: 10px; opacity: 0.65; }
 #jackdaw-drawer.jd-dark .mk-hidden-row { color: #5b667a; }
