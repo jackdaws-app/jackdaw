@@ -917,16 +917,32 @@
   from { offset-distance: 0%; transform: scale(0.55); }
   to { offset-distance: 100%; transform: scale(1); }
 }
-/* wings: flap on approach, spread to glide before touchdown */
-.jd-w1, .jd-w2 { transform-box: fill-box; transform-origin: 15% 90%; }
-.jd-flight-full .jd-w1 { animation: jd-flap 0.26s ease-in-out 3 alternate; }
-.jd-flight-full .jd-w2 { animation: jd-flap 0.26s ease-in-out 0.08s 3 alternate; }
-.jd-flight-mini .jd-w1 { animation: jd-flap 0.2s ease-in-out 2 alternate; }
-.jd-flight-mini .jd-w2 { animation: jd-flap 0.2s ease-in-out 0.06s 2 alternate; }
-@keyframes jd-flap {
-  from { transform: rotate(6deg); }
-  to { transform: rotate(-38deg); }
+/* Wings morph through a true flight cycle (path interpolation — the vector
+   equivalent of a sprite sheet): raised → swept forward → downstroke bottom
+   → recovery. The body bobs against the wingbeat (bodies rise on the
+   downstroke). Finite cycles, then wings lock into a glide for touchdown. */
+@keyframes jd-wing-front {
+  0%, 100% { d: path("M24 21 Q30 -2 52 -2 Q40 12 33 21 Z"); }
+  30% { d: path("M24 21 Q40 14 61 17 Q44 21 33 22 Z"); }
+  55% { d: path("M24 21 Q36 31 53 38 Q40 29 32 22 Z"); }
+  78% { d: path("M24 21 Q33 10 50 6 Q40 15 32 21 Z"); }
 }
+@keyframes jd-wing-back {
+  0%, 100% { d: path("M26 20 Q30 2 44 0 Q36 11 32 20 Z"); }
+  30% { d: path("M26 20 Q38 13 52 15 Q40 19 32 21 Z"); }
+  55% { d: path("M26 20 Q34 28 46 33 Q36 26 31 21 Z"); }
+  78% { d: path("M26 20 Q31 8 44 4 Q36 13 31 20 Z"); }
+}
+@keyframes jd-bob {
+  0%, 100% { transform: translateY(1.6px); }
+  42% { transform: translateY(-1.6px); }
+}
+.jd-flight-full .jd-w1 { animation: jd-wing-front 0.3s linear 3; }
+.jd-flight-full .jd-w2 { animation: jd-wing-back 0.3s linear 0.05s 3; }
+.jd-flight-full .jd-bob { animation: jd-bob 0.3s ease-in-out 3; }
+.jd-flight-mini .jd-w1 { animation: jd-wing-front 0.25s linear 2; }
+.jd-flight-mini .jd-w2 { animation: jd-wing-back 0.25s linear 0.04s 2; }
+.jd-flight-mini .jd-bob { animation: jd-bob 0.25s ease-in-out 2; }
 /* touchdown: a tiny settle, then the bird becomes the banner */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
 .jd-flight.jd-bird-out { opacity: 0; transform: scale(0.6); }

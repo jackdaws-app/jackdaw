@@ -218,15 +218,15 @@
   // A stylized jackdaw in flight, facing its direction of travel:
   // black body, grey nape, pale eye, two independently flapping wings.
   const BIRD_SVG =
-    `<svg class="jd-flight-bird" viewBox="0 0 64 44" fill="none" aria-hidden="true">` +
-    `<path class="jd-w2" d="M26 20 Q30 6 44 3 Q36 13 32 20 Z" fill="#0d1626" opacity=".85"/>` +
+    `<svg class="jd-flight-bird" viewBox="0 0 64 44" fill="none" aria-hidden="true"><g class="jd-bob">` +
+    `<path class="jd-w2" d="M26 20 Q31 4 46 2 Q37 12 32 20 Z" fill="#0d1626" opacity=".85"/>` +
     `<path d="M2 20 L15 16 L15 25 L2 27 Z" fill="#1a1d23"/>` + // tail fan
     `<path d="M12 22 Q26 13 42 15 Q52 16 57 21 Q52 27 40 28 Q24 30 12 26 Z" fill="#1a1d23"/>` + // body+head
     `<path d="M55 19.5 L63 22.5 L55 24.5 Z" fill="#3d434c"/>` + // beak
     `<path d="M40 14.5 Q47 12.5 53 16 Q47 15.5 41 16.5 Z" fill="#8b95a3"/>` + // grey nape
     `<circle cx="53.5" cy="19.5" r="1.4" fill="#e8edf4"/>` + // pale eye
-    `<path class="jd-w1" d="M24 21 Q30 2 50 1 Q40 14 33 22 Z" fill="#16233a"/>` +
-    `</svg>`;
+    `<path class="jd-w1" d="M24 21 Q32 2 54 1 Q41 13 33 21 Z" fill="#16233a"/>` +
+    `</g></svg>`;
 
   // The jackdaw flies in and becomes the banner. Full flight on the very
   // first visit; a quick swoop afterwards. Skipped under reduced motion.
