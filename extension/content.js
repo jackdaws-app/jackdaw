@@ -16,6 +16,21 @@
   let chartHeight = 190;
   let watchBtn = null;
   let replyTo = null; // comment _id an open reply form belongs to
+  let uiRoot = null; // ShadowRoot — isolates our UI from the host page's CSS entirely
+
+  async function ensureRoot() {
+    if (uiRoot) return uiRoot;
+    const host = document.createElement("div");
+    host.id = "jackdaw-root";
+    host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;";
+    document.documentElement.appendChild(host);
+    uiRoot = host.attachShadow({ mode: "open" });
+    const css = await fetch(chrome.runtime.getURL("panel.css")).then((r) => r.text());
+    const style = document.createElement("style");
+    style.textContent = css;
+    uiRoot.append(style);
+    return uiRoot;
+  }
   let watchTarget = null; // active alert target price, or null
   let alertPopover = null;
   let commentSort = "top"; // "top" | "new"
@@ -42,7 +57,8 @@
       return;
     }
     if (!product) return;
-    chrome.storage.local.get(["jdTheme", "jdChartH"]).then((v) => {
+    await ensureRoot();
+    await chrome.storage.local.get(["jdTheme", "jdChartH"]).then((v) => {
       if (v.jdTheme === "dark") theme = "dark";
       if (v.jdChartH) chartHeight = v.jdChartH;
     });
@@ -104,7 +120,7 @@
     // positioned against the image box's outer left edge.
     const host = document.querySelector(".slides-container");
     if (host) {
-      document.body.appendChild(tabEl);
+      uiRoot.appendChild(tabEl);
       const place = () => {
         const r = host.getBoundingClientRect();
         tabEl.style.left = r.left + window.scrollX + "px";
@@ -116,7 +132,7 @@
       setTimeout(place, 2500);
     } else {
       tabEl.classList.add("jd-tab-fixed");
-      document.body.appendChild(tabEl);
+      uiRoot.appendChild(tabEl);
     }
   }
 
@@ -128,6 +144,8 @@
     sun: `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
     moon: `<svg viewBox="0 0 16 16" fill="none"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
     minimize: `<svg viewBox="0 0 16 16" fill="none"><path d="M3.5 9.5 8 13l4.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 4.5 8 8l4.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/></svg>`,
+    expand: `<svg viewBox="0 0 16 16" fill="none"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    shrink: `<svg viewBox="0 0 16 16" fill="none"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5 14 2M6.5 9.5 2 14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     bell: `<svg viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 0 0-4 4v2.4L2.8 11h10.4L12 8.4V6a4 4 0 0 0-4-4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.5 13a1.6 1.6 0 0 0 3 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
   };
 
@@ -152,6 +170,13 @@
     const prodName = el("div", "jd-product-name", product.name);
 
     const controls = el("div", "jd-header-controls");
+    const expandBtn = iconBtn(ICONS.expand, "Expand");
+    expandBtn.addEventListener("click", () => {
+      const max = drawerEl.classList.toggle("jd-max");
+      expandBtn.innerHTML = max ? ICONS.shrink : ICONS.expand;
+      expandBtn.title = max ? "Shrink" : "Expand";
+      renderLeft(); // chart re-measures to the new width
+    });
     const shareBtn = iconBtn(ICONS.share, "Copy chart as image");
     shareBtn.addEventListener("click", () => shareChart(shareBtn));
     const themeBtn = iconBtn(theme === "dark" ? ICONS.sun : ICONS.moon, theme === "dark" ? "Light mode" : "Dark mode");
@@ -172,7 +197,7 @@
     });
     const minBtn = iconBtn(ICONS.minimize, "Minimize");
     minBtn.addEventListener("click", closeDrawer);
-    controls.append(shareBtn, themeBtn, watchBtn, minBtn);
+    controls.append(expandBtn, shareBtn, themeBtn, watchBtn, minBtn);
     header.append(brand, prodName, controls);
 
     const body = el("div", "jd-drawer-body");
@@ -180,7 +205,7 @@
     rightCol = el("div", "jd-col");
     body.append(leftCol, rightCol);
     drawerEl.append(header, body);
-    document.body.appendChild(drawerEl);
+    uiRoot.appendChild(drawerEl);
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && drawerEl.classList.contains("jd-open")) closeDrawer();
@@ -357,6 +382,19 @@
       if (atLow) {
         chip.classList.add("jd-chip-low");
         chip.textContent = "All-time low — as good as the flock has ever seen it";
+        // Rare-moment spell: a one-time sparkle burst on first reveal only.
+        if (pendingReveal && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          setTimeout(() => {
+            for (let i = 0; i < 7; i++) {
+              const p = el("span", "jd-spark-particle");
+              p.style.setProperty("--dx", (Math.cos((i / 7) * Math.PI * 2) * (26 + Math.random() * 14)).toFixed(0) + "px");
+              p.style.setProperty("--dy", (Math.sin((i / 7) * Math.PI * 2) * (18 + Math.random() * 10)).toFixed(0) + "px");
+              p.style.animationDelay = (Math.random() * 90) + "ms";
+              chip.appendChild(p);
+              setTimeout(() => p.remove(), 900);
+            }
+          }, 350);
+        }
       } else if (product.price <= typical * 0.97) {
         chip.classList.add("jd-chip-low");
         chip.textContent = `Good price — ${fmtPrice(typical - product.price)} below typical`;

@@ -19,8 +19,13 @@
     {
       "matches": ["https://www.microcenter.com/product/*"],
       "js": ["chart.js", "content.js"],
-      "css": ["panel.css"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.css"],
+      "matches": ["https://www.microcenter.com/*"]
     }
   ],
   "icons": {

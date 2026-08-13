@@ -156,8 +156,27 @@
       return all;
     }
 
-    // Store pills (only when the flock has seen more than one store)
-    if (stores.length > 1) {
+    // Store filter: pills up to 3 stores, a compact dropdown beyond that.
+    if (stores.length > 3) {
+      const sel = document.createElement("select");
+      sel.className = "jd-store-select";
+      const optAll = document.createElement("option");
+      optAll.value = "All";
+      optAll.textContent = "All stores";
+      sel.append(optAll);
+      for (const s of stores) {
+        const o = document.createElement("option");
+        o.value = s;
+        o.textContent = "Store #" + s;
+        sel.append(o);
+      }
+      sel.addEventListener("change", () => {
+        store = sel.value;
+        syncRanges();
+        update();
+      });
+      storeWrap.append(sel);
+    } else if (stores.length > 1) {
       const mk = (key, label) => {
         const b = document.createElement("button");
         b.className = "jd-range-btn";

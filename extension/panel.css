@@ -144,6 +144,52 @@
   opacity: 1;
   pointer-events: auto;
 }
+/* Expanded mode: near-full workspace; size switches instantly (no layout
+   animation), the body settles with a quick fade instead. */
+#jackdaw-drawer.jd-max {
+  width: min(1280px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  bottom: 16px;
+}
+#jackdaw-drawer.jd-max .jd-drawer-body {
+  grid-template-columns: 1.5fr 1fr;
+  gap: 26px;
+  padding: 20px;
+  animation: jd-fade-settle 0.2s var(--ease-out);
+}
+@keyframes jd-fade-settle {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+.jd-store-select {
+  border: 1px solid var(--jd-hairline);
+  background: #fff;
+  color: var(--jd-navy);
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* Rare-moment spell: sparkle burst on the all-time-low chip (first open only) */
+.jd-chip-low { position: relative; }
+.jd-spark-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #34d399;
+  pointer-events: none;
+  animation: jd-burst 0.7s var(--ease-out) forwards;
+}
+@keyframes jd-burst {
+  from { transform: translate(0, 0) scale(1); opacity: 1; }
+  to { transform: translate(var(--dx), var(--dy)) scale(0.3); opacity: 0; }
+}
 
 /* Light header: hairline, wordmark, breathing live-dot (the one orb that stayed) */
 .jd-header {
@@ -745,6 +791,13 @@
 #jackdaw-drawer.jd-dark .jd-popover { background: #131e30; border-color: #253049; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4); }
 #jackdaw-drawer.jd-dark .jd-popover-dollar { color: #e6eaf2; }
 #jackdaw-drawer.jd-dark .jd-sort-active { color: #cdd6e4; border-color: #253049; background: #16213a; }
+/* the sweep miss: active store/range pills were navy-on-navy in dark */
+#jackdaw-drawer.jd-dark .jd-range-btn { color: #7c8598; }
+#jackdaw-drawer.jd-dark .jd-range-btn.jd-range-active { color: #e6eaf2; border-color: #2a3752; background: #1a2740; }
+@media (hover: hover) and (pointer: fine) {
+  #jackdaw-drawer.jd-dark .jd-range-btn:hover { color: #cdd6e4; }
+}
+#jackdaw-drawer.jd-dark .jd-store-select { background: #16213a; border-color: #253049; color: #cdd6e4; }
 #jackdaw-drawer.jd-dark .mk-rail::before { background: #253049; }
 #jackdaw-drawer.jd-dark .mk-collapsed-row { border-top-color: #1e293e; }
 #jackdaw-drawer.jd-dark .mk-expander { border-color: #2a3752; color: #8b94a8; }

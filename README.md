@@ -6,12 +6,14 @@ Community price tracking for Micro Center — like the jackdaw, we collect shiny
 
 ## Layout
 
-- `extension/` — Manifest V3 Chrome extension, no build step.
-  - `page-world.js` reads the page's `dataLayer` (MAIN world) and relays it via a CustomEvent.
-  - `content.js` renders the panel: price stats, canvas step-chart of price history, discussion with up/down votes.
-  - `background.js` owns the anonymous device ID and all Convex HTTP calls.
-  - `config.js` — set `CONVEX_URL` here.
-- `convex/` — backend: `observations.report`, `products.history`, `comments.list/add/vote`.
+- `extension/` — Manifest V3 Chrome extension, no build step, all UI in a Shadow DOM (immune to host-page CSS).
+  - `page-world.js` reads the page's `dataLayer` + open-box price (MAIN world), relays via CustomEvent with an ack handshake.
+  - `content.js` — the "Price history" tab on the product image and the bottom drawer: stats, verdict chips, threaded reddit-style discussion (collapse, votes, replies, reports), price-target alerts, dark mode, expand mode, share-as-image.
+  - `chart.js` — dependency-free canvas chart: range + store filters, open-box series, typical/low lines, crosshair tooltip, drag-resize.
+  - `background.js` — anonymous device ID, all Convex HTTP calls, hourly price-drop alert notifications.
+  - `config.js` — `CONVEX_URL`: dev (seeded demo data) vs prod, one-line swap.
+- `convex/` — backend: observations (dedupe + throttle), products.history, threaded comments with votes/reports/auto-hide, watches (price targets), rate limiting, content filters, internal moderation tools, `seed:demo` for dev.
+- `PRIVACY.md` / `TERMS.md` — Web Store policy drafts. `CLA.md` + cla-assistant workflow — contributions require signing.
 
 ## Run it
 
