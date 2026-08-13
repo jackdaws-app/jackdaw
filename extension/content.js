@@ -239,6 +239,7 @@
     watchTarget = v ? target : null;
     watchBtn.classList.toggle("jd-watching", v);
     watchBtn.querySelector("span").textContent = v && target != null ? `Alert at ${fmtPrice(target)}` : "Set alert";
+    if (tabButtons) updateTabChrome(); // async status arrives after first paint
   }
 
   // ---------- Tabs ----------
