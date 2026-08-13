@@ -1,13 +1,15 @@
 // Isolated-world content script: receives product data from page-world.js,
-// reports the observation, and renders the Jackdaw panel (price history
-// chart + community discussion) on Micro Center product pages.
+// reports the observation, anchors a "Price check?" tab to the product image,
+// and opens a bottom drawer with price history + community discussion.
 (() => {
   let product = null;
   let history = null;
   let comments = [];
-  let panelEl = null;
-  let collapsed = false;
-  let pendingReveal = false; // one-time stagger + chart reveal on first data render
+  let tabEl = null;
+  let drawerEl = null;
+  let drawerBody = null;
+  let everOpened = false;
+  let pendingReveal = false; // one-time stagger + chart reveal on first drawer open
 
   const send = (msg) =>
     new Promise((resolve) => {
@@ -22,13 +24,15 @@
     });
 
   window.addEventListener("jackdaw:product", async (ev) => {
+    window.dispatchEvent(new CustomEvent("jackdaw:ack"));
+    if (tabEl) return;
     try {
       product = JSON.parse(ev.detail);
     } catch {
       return;
     }
-    if (!product || panelEl) return;
-    buildPanel();
+    if (!product) return;
+    buildTab();
     // Report what this browser already sees, then load community data.
     send({ type: "report", data: product });
     await refreshAll();
@@ -41,18 +45,62 @@
     ]);
     history = h && !h.error ? h.result : null;
     comments = c && !c.error && Array.isArray(c.result) ? c.result : [];
-    pendingReveal = true;
-    render();
+    if (drawerEl && drawerEl.classList.contains("jd-open")) render();
   }
 
-  // ---------- UI ----------
+  // ---------- Tab on the product image ----------
 
-  function buildPanel() {
-    panelEl = document.createElement("div");
-    panelEl.id = "jackdaw-panel";
-    document.body.appendChild(panelEl);
-    render();
+  function buildTab() {
+    tabEl = document.createElement("button");
+    tabEl.id = "jackdaw-tab";
+    const icon = el("span", "jd-tab-icon", "📈");
+    tabEl.append(icon, el("span", null, "Price check?"));
+    tabEl.addEventListener("click", openDrawer);
+
+    const host = document.querySelector(".slides-container");
+    if (host) {
+      if (getComputedStyle(host).position === "static") host.style.position = "relative";
+      host.appendChild(tabEl);
+    } else {
+      tabEl.classList.add("jd-tab-fixed");
+      document.body.appendChild(tabEl);
+    }
   }
+
+  // ---------- Bottom drawer ----------
+
+  function buildDrawer() {
+    drawerEl = document.createElement("div");
+    drawerEl.id = "jackdaw-drawer";
+
+    const header = el("div", "mk-header");
+    const title = el("div", "mk-title");
+    title.append(el("span", "mk-logo", "JD"), el("span", null, "Jackdaw"));
+    const prodName = el("div", "jd-product-name", product.name);
+    const minimize = el("button", "mk-toggle", "Minimize ▾");
+    minimize.addEventListener("click", closeDrawer);
+    header.append(title, prodName, minimize);
+
+    drawerBody = el("div", "jd-drawer-body");
+    drawerEl.append(header, drawerBody);
+    document.body.appendChild(drawerEl);
+  }
+
+  function openDrawer() {
+    if (!drawerEl) buildDrawer();
+    pendingReveal = !everOpened;
+    everOpened = true;
+    render();
+    tabEl.classList.add("jd-hidden");
+    requestAnimationFrame(() => requestAnimationFrame(() => drawerEl.classList.add("jd-open")));
+  }
+
+  function closeDrawer() {
+    drawerEl.classList.remove("jd-open");
+    tabEl.classList.remove("jd-hidden");
+  }
+
+  // ---------- Rendering ----------
 
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -70,50 +118,36 @@
   }
 
   function render() {
-    if (!panelEl) return;
-    panelEl.textContent = "";
-    panelEl.classList.toggle("mk-collapsed", collapsed);
+    if (!drawerBody) return;
+    drawerBody.textContent = "";
 
-    const header = el("div", "mk-header");
-    const title = el("div", "mk-title");
-    title.append(el("span", "mk-logo", "JD"), el("span", null, "Jackdaw"));
-    const toggle = el("button", "mk-toggle", collapsed ? "Price history ▴" : "▾");
-    toggle.addEventListener("click", () => {
-      collapsed = !collapsed;
-      render();
-    });
-    header.append(title, toggle);
-    panelEl.append(header);
-    if (collapsed) return;
-
-    const body = el("div", "mk-body" + (pendingReveal ? " mk-stagger" : ""));
-    panelEl.append(body);
-
-    // Price summary
+    const left = el("div", "jd-col" + (pendingReveal ? " mk-stagger" : ""));
     if (history && history.points.length) {
       const s = el("div", "mk-stats");
-      const stats = history.stats || computeStats(history.points);
+      // Compute locally: the backend's stats lack the dates the panel shows.
+      const stats = computeStats(history.points);
       s.append(
         stat("Current", fmtPrice(product.price), product.inStock ? "in stock" : "out of stock"),
         stat("Lowest seen", fmtPrice(stats.lowest), fmtDate(stats.lowestAt)),
         stat("Highest seen", fmtPrice(stats.highest), fmtDate(stats.highestAt)),
       );
-      body.append(s);
-      body.append(renderChart(history.points));
+      left.append(s, renderChart(history.points));
       const note = el("div", "mk-note");
       note.textContent = `${history.points.length} price point${history.points.length === 1 ? "" : "s"} from the community · store #${product.storeNum}`;
-      body.append(note);
+      left.append(note);
     } else {
       const empty = el("div", "mk-empty");
       empty.append(
         el("div", "mk-empty-title", "You're the first one here 🎉"),
         el("div", null, "Your visit just recorded today's price. Come back — or spread the word — and a price history chart will grow here."),
       );
-      body.append(empty);
+      left.append(empty);
     }
 
-    // Comments
-    body.append(renderComments());
+    const right = el("div", "jd-col" + (pendingReveal ? " mk-stagger" : ""));
+    right.append(renderComments());
+
+    drawerBody.append(left, right);
     pendingReveal = false;
   }
 
@@ -148,7 +182,7 @@
 
     requestAnimationFrame(() => {
       const W = wrap.clientWidth || 360;
-      const H = 160;
+      const H = 170;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = W * dpr;
       canvas.height = H * dpr;

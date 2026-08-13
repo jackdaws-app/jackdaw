@@ -1,34 +1,91 @@
-#jackdaw-panel {
+/* ---------- Tokens ---------- */
+#jackdaw-tab, #jackdaw-drawer {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+#jackdaw-drawer *, #jackdaw-tab * { box-sizing: border-box; }
+
+/* ---------- "Price check?" tab on the product image ---------- */
+#jackdaw-tab {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  writing-mode: vertical-rl;
+  transform: translateY(-50%) rotate(180deg);
+  border: 0;
+  background: linear-gradient(160deg, #16a34a, #0e7a37 55%, #0b6a3e);
+  background-size: 100% 220%;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  padding: 13px 8px;
+  border-radius: 0 8px 8px 0;
+  box-shadow: -2px 4px 14px rgba(13, 22, 38, 0.25);
+  cursor: pointer;
+  animation: jd-tab-in 0.3s var(--ease-out), jd-breathe 7s var(--ease-in-out) infinite alternate;
+  transition: transform 0.15s var(--ease-out), opacity 0.2s ease, box-shadow 0.15s ease;
+}
+#jackdaw-tab.jd-tab-fixed {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
-  width: 400px;
-  max-width: calc(100vw - 32px);
-  max-height: min(72vh, 720px);
+  right: 0;
+  top: 40%;
+  border-radius: 8px 0 0 8px;
+  transform: translateY(-50%);
+}
+.jd-tab-icon { transform: rotate(90deg); font-size: 14px; }
+@keyframes jd-tab-in {
+  from { opacity: 0; transform: translateY(-50%) rotate(180deg) translateY(-10px); }
+  to { opacity: 1; transform: translateY(-50%) rotate(180deg) translateY(0); }
+}
+/* Orbs-inspired: the gradient slowly breathes instead of sitting still. */
+@keyframes jd-breathe {
+  from { background-position: 50% 0%; }
+  to { background-position: 50% 100%; }
+}
+@media (hover: hover) and (pointer: fine) {
+  #jackdaw-tab:hover {
+    transform: translateY(-50%) rotate(180deg) translateY(2px);
+    box-shadow: -3px 6px 18px rgba(13, 22, 38, 0.35);
+  }
+}
+#jackdaw-tab:active { transform: translateY(-50%) rotate(180deg) scale(0.97); }
+#jackdaw-tab.jd-hidden { opacity: 0; pointer-events: none; }
+
+/* ---------- Bottom drawer ---------- */
+#jackdaw-drawer {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  z-index: 2147483000;
+  width: min(960px, calc(100vw - 24px));
+  max-height: min(52vh, 560px);
   display: flex;
   flex-direction: column;
   background: #ffffff;
   color: #1c1e21;
   border: 1px solid #d8dce1;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
   font-size: 13px;
   line-height: 1.45;
-  z-index: 2147483000;
   overflow: hidden;
-  animation: mk-panel-in 0.3s var(--ease-out);
+  transform: translate(-50%, calc(100% + 24px));
+  opacity: 0.4;
+  pointer-events: none;
+  transition: transform 0.4s var(--ease-drawer), opacity 0.3s ease;
 }
-@keyframes mk-panel-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+#jackdaw-drawer.jd-open {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  pointer-events: auto;
 }
-#jackdaw-panel.mk-collapsed {
-  width: auto;
-}
-#jackdaw-panel * { box-sizing: border-box; }
 
 .mk-header {
   position: relative;
@@ -36,10 +93,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   background: #16233a;
   color: #fff;
   overflow: hidden;
+  flex-shrink: 0;
 }
 /* Ambient orb: slow breathing glow behind the brand (orbs.jakubantalik.com-inspired). */
 .mk-header::before {
@@ -59,8 +117,18 @@
   from { transform: translateX(0) scale(1); opacity: 0.7; }
   to { transform: translateX(18px) scale(1.18); opacity: 1; }
 }
-.mk-title, .mk-toggle { position: relative; }
-.mk-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.mk-title { display: flex; align-items: center; gap: 8px; font-weight: 600; position: relative; }
+.jd-product-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  position: relative;
+}
 .mk-logo {
   display: inline-flex;
   align-items: center;
@@ -81,6 +149,7 @@
   padding: 4px 10px;
   cursor: pointer;
   font-size: 12px;
+  position: relative;
   transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -88,23 +157,32 @@
 }
 .mk-toggle:active { transform: scale(0.96); }
 
-.mk-body {
-  padding: 12px;
+/* Two columns: chart | discussion. Stacks when narrow. */
+.jd-drawer-body {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 18px;
+  padding: 14px;
   overflow-y: auto;
-  animation: mk-body-in 0.2s var(--ease-out);
 }
-@keyframes mk-body-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
+@media (max-width: 760px) {
+  .jd-drawer-body { grid-template-columns: 1fr; }
 }
-/* First-render stagger: sections cascade in 40ms apart. */
+.jd-col { min-width: 0; }
+
+/* First-open stagger: sections cascade in 40ms apart. */
 .mk-stagger > * {
   animation: mk-body-in 0.25s var(--ease-out) backwards;
 }
 .mk-stagger > *:nth-child(2) { animation-delay: 40ms; }
 .mk-stagger > *:nth-child(3) { animation-delay: 80ms; }
 .mk-stagger > *:nth-child(4) { animation-delay: 120ms; }
+@keyframes mk-body-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
+/* ---------- Content ---------- */
 .mk-stats { display: flex; gap: 8px; margin-bottom: 10px; }
 .mk-stat {
   flex: 1;
@@ -118,7 +196,7 @@
 .mk-stat-sub { font-size: 11px; color: #6b7280; }
 
 .mk-chart-wrap { border: 1px solid #e4e8ec; border-radius: 8px; padding: 4px; }
-/* One-time left-to-right reveal on first mount only (content.js gates the class). */
+/* One-time left-to-right reveal on first open only (content.js gates the class). */
 .mk-chart-reveal { animation: mk-chart-in 0.4s var(--ease-out); }
 @keyframes mk-chart-in {
   from { clip-path: inset(0 100% 0 0); }
@@ -131,12 +209,12 @@
   border: 1px solid #bbf7d0;
   border-radius: 8px;
   padding: 12px;
-  margin-bottom: 8px;
 }
 .mk-empty-title { font-weight: 700; margin-bottom: 4px; }
 
-.mk-comments { margin-top: 14px; }
+.mk-comments { min-width: 0; }
 .mk-section-title { font-weight: 700; margin-bottom: 8px; }
+.mk-comment-list { max-height: 220px; overflow-y: auto; }
 .mk-comment { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #eef1f4; }
 .mk-votes { display: flex; flex-direction: column; align-items: center; width: 28px; }
 .mk-vote-btn {
@@ -173,6 +251,12 @@
   font: inherit;
   background: #fff;
   color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mk-input:focus {
+  outline: none;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 .mk-textarea { resize: vertical; min-height: 56px; }
 .mk-post {
@@ -184,28 +268,22 @@
   padding: 7px 16px;
   font-weight: 600;
   cursor: pointer;
-}
-.mk-post:disabled { opacity: 0.6; cursor: default; }
-.mk-post {
   transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .mk-post:hover { background: #15803d; }
 }
 .mk-post:active { transform: scale(0.97); }
-.mk-input {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.mk-input:focus {
-  outline: none;
-  border-color: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
-}
+.mk-post:disabled { opacity: 0.6; cursor: default; }
 
+/* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  #jackdaw-panel { animation: mk-fade 0.2s ease; }
-  .mk-body, .mk-stagger > *, .mk-chart-reveal, .mk-score.mk-pop { animation: mk-fade 0.2s ease; }
+  #jackdaw-tab { animation: jd-fade 0.2s ease; }
+  #jackdaw-drawer { transition: opacity 0.2s ease; transform: translate(-50%, 0); }
+  #jackdaw-drawer:not(.jd-open) { opacity: 0; }
+  .mk-stagger > *, .mk-chart-reveal, .mk-score.mk-pop { animation: jd-fade 0.2s ease; }
   .mk-header::before { animation: none; }
+  .mk-toggle:active, .mk-vote-btn:active, .mk-post:active, #jackdaw-tab:active { transform: translateY(-50%) rotate(180deg); }
   .mk-toggle:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
-  @keyframes mk-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }
 }

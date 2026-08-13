@@ -37,14 +37,18 @@
     };
   }
 
+  // Re-announce until the isolated content script acks — injection order
+  // between the MAIN and ISOLATED worlds is not guaranteed.
+  let acked = false;
+  window.addEventListener("jackdaw:ack", () => { acked = true; }, { once: true });
   let tries = 0;
   const attempt = () => {
+    if (acked || ++tries > 40) return;
     const data = extract();
     if (data) {
       window.dispatchEvent(new CustomEvent("jackdaw:product", { detail: JSON.stringify(data) }));
-    } else if (++tries < 20) {
-      setTimeout(attempt, 500);
     }
+    setTimeout(attempt, 500);
   };
   attempt();
 })();
