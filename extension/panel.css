@@ -54,14 +54,25 @@
   color: rgba(255, 255, 255, 0.92);
 }
 .jd-spark {
-  width: 16px;
+  width: 15px;
   height: 13px;
   color: #34d399;
+  transform: rotate(90deg); /* flows with the vertical text */
 }
-/* spell: the sparkline draws itself on hover */
+/* spell: the sparkline draws itself — once on arrival, again on hover */
 .jd-spark path {
   stroke-dasharray: 100;
   stroke-dashoffset: 0;
+  animation: jd-spark-draw 0.8s var(--ease-out) 0.35s backwards;
+}
+/* idle spell: the green spine glimmers every so often */
+#jackdaw-tab::before {
+  background-size: 100% 300%;
+  animation: jd-spine-drift 9s var(--ease-in-out) infinite alternate;
+}
+@keyframes jd-spine-drift {
+  from { background-position: 50% 0%; opacity: 0.75; }
+  to { background-position: 50% 100%; opacity: 1; }
 }
 @keyframes jd-tab-in {
   from { opacity: 0; transform: translate(calc(-100% + 8px), -50%); }
@@ -237,6 +248,11 @@
   border-color: rgba(22, 163, 74, 0.3);
   background: #f2faf5;
 }
+.jd-chip-high {
+  color: #92400e;
+  border-color: rgba(217, 119, 6, 0.3);
+  background: #fdf8f0;
+}
 
 /* ---------- Chart ---------- */
 .jd-chart {
@@ -274,6 +290,31 @@
 }
 .jd-chart-stage { position: relative; }
 .jd-chart-stage canvas { display: block; cursor: crosshair; }
+/* the current price, alive: pinned to the line's end by chart.js */
+.jd-live-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--jd-green);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.jd-live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(22, 163, 74, 0.5);
+  animation: jd-dot-pulse 2.4s var(--ease-in-out) infinite;
+}
+@keyframes jd-dot-pulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
 .jd-tooltip {
   position: absolute;
   top: -6px;
@@ -371,7 +412,9 @@
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   #jackdaw-tab { animation: jd-fade 0.2s ease; }
-  #jackdaw-tab:hover .jd-spark path { animation: none; }
+  #jackdaw-tab:hover .jd-spark path, .jd-spark path { animation: none; }
+  #jackdaw-tab::before { animation: none; }
+  .jd-live-dot::after { animation: none; }
   #jackdaw-drawer { transition: opacity 0.2s ease; transform: translate(-50%, 0); }
   #jackdaw-drawer:not(.jd-open) { opacity: 0; }
   .mk-stagger > *, .mk-chart-reveal, .mk-score.mk-pop { animation: jd-fade 0.2s ease; }

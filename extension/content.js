@@ -45,7 +45,27 @@
     ]);
     history = h && !h.error ? h.result : null;
     comments = c && !c.error && Array.isArray(c.result) ? c.result : [];
+    updateTabSparkline();
     if (drawerEl && drawerEl.classList.contains("jd-open")) render();
+  }
+
+  // Once real history exists, the tab's glyph becomes this product's actual trend.
+  function updateTabSparkline() {
+    if (!tabEl || !history || history.points.length < 3) return;
+    const pts = history.points.slice().sort((a, b) => a.firstSeenAt - b.firstSeenAt);
+    const t0 = pts[0].firstSeenAt;
+    const t1 = Math.max(pts[pts.length - 1].lastSeenAt, t0 + 1);
+    let lo = Infinity, hi = -Infinity;
+    for (const p of pts) { lo = Math.min(lo, p.price); hi = Math.max(hi, p.price); }
+    const spread = Math.max(hi - lo, 0.01);
+    const X = (t) => 1 + ((t - t0) / (t1 - t0)) * 20;
+    const Y = (p) => 15 - ((p - lo) / spread) * 11;
+    let d = `M${X(pts[0].firstSeenAt).toFixed(1)} ${Y(pts[0].price).toFixed(1)}`;
+    for (const p of pts) {
+      d += ` L${X(p.firstSeenAt).toFixed(1)} ${Y(p.price).toFixed(1)} L${X(p.lastSeenAt).toFixed(1)} ${Y(p.price).toFixed(1)}`;
+    }
+    const path = tabEl.querySelector(".jd-spark path");
+    if (path) path.setAttribute("d", d);
   }
 
   // ---------- Tab on the product image (left edge) ----------
@@ -145,25 +165,31 @@
       const atLow = product.price <= stats.lowest;
 
       const s = el("div", "mk-stats");
-      const current = stat("Current", fmtPrice(product.price), product.inStock ? "in stock" : "out of stock");
+      const animateNums = pendingReveal;
+      const current = stat("Current", product.price, product.inStock ? "in stock" : "out of stock", animateNums);
       if (atLow) current.classList.add("jd-at-low");
       s.append(
         current,
-        stat("Lowest seen", fmtPrice(stats.lowest), fmtDate(stats.lowestAt)),
-        stat("Highest seen", fmtPrice(stats.highest), fmtDate(stats.highestAt)),
+        stat("Lowest seen", stats.lowest, fmtDate(stats.lowestAt), animateNums),
+        stat("Highest seen", stats.highest, fmtDate(stats.highestAt), animateNums),
       );
       left.append(s);
 
-      // Delta chip: the one-line verdict a shopper actually wants.
+      // Verdict chip: the one-line answer a shopper actually wants,
+      // judged against the duration-weighted typical price.
+      const typical = window.__jackdawChart.typicalPrice(history.points);
       const chip = el("div", "jd-chip");
       if (atLow) {
         chip.classList.add("jd-chip-low");
         chip.textContent = "All-time low — as good as the flock has ever seen it";
+      } else if (product.price <= typical * 0.97) {
+        chip.classList.add("jd-chip-low");
+        chip.textContent = `Good price — ${fmtPrice(typical - product.price)} below typical`;
+      } else if (product.price < typical * 1.03) {
+        chip.textContent = `Fair price — right around the typical ${fmtPrice(typical)}`;
       } else {
-        const diff = stats.highest - product.price;
-        chip.textContent = diff > 0.005
-          ? `${fmtPrice(diff)} under the recorded high`
-          : "At the recorded high";
+        chip.classList.add("jd-chip-high");
+        chip.textContent = `${fmtPrice(product.price - typical)} above typical — patience may pay`;
       }
       left.append(chip);
 
@@ -190,10 +216,30 @@
     pendingReveal = false;
   }
 
-  function stat(label, value, sub) {
+  function stat(label, price, sub, animate) {
     const d = el("div", "mk-stat");
-    d.append(el("div", "mk-stat-label", label), el("div", "mk-stat-value", value), el("div", "mk-stat-sub", sub));
+    const valueEl = el("div", "mk-stat-value", fmtPrice(animate ? price * 0.9 : price));
+    d.append(el("div", "mk-stat-label", label), valueEl, el("div", "mk-stat-sub", sub));
+    if (animate) countUp(valueEl, price);
     return d;
+  }
+
+  // Numbers roll up to their value on first open (tabular-nums: no layout shift).
+  function countUp(node, target) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      node.textContent = fmtPrice(target);
+      return;
+    }
+    const from = target * 0.9;
+    const start = performance.now();
+    const dur = 450;
+    const tick = (now) => {
+      const t = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      node.textContent = fmtPrice(from + (target - from) * eased);
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   function computeStats(points) {
