@@ -62,10 +62,21 @@
       `<span class="jd-tab-text">Price history</span>`;
     tabEl.addEventListener("click", openDrawer);
 
+    // The carousel clips overflow, so the tab lives in <body> and is
+    // positioned against the image box's outer left edge.
     const host = document.querySelector(".slides-container");
     if (host) {
-      if (getComputedStyle(host).position === "static") host.style.position = "relative";
-      host.appendChild(tabEl);
+      document.body.appendChild(tabEl);
+      const place = () => {
+        const r = host.getBoundingClientRect();
+        tabEl.style.left = r.left + window.scrollX + "px";
+        tabEl.style.top = r.top + window.scrollY + r.height / 2 + "px";
+      };
+      place();
+      window.addEventListener("resize", place);
+      // late layout shifts (carousel init, images loading)
+      setTimeout(place, 800);
+      setTimeout(place, 2500);
     } else {
       tabEl.classList.add("jd-tab-fixed");
       document.body.appendChild(tabEl);

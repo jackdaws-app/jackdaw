@@ -16,27 +16,25 @@
 
 /* ---------- "Price history" tab — left edge of the product image ---------- */
 #jackdaw-tab {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  z-index: 60;
+  position: absolute; /* in <body>; content.js sets left/top to the image box's outer left edge */
+  z-index: 2147483000;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  transform: translateY(-50%);
+  transform: translate(-100%, -50%); /* hangs outward from the anchor point */
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 0;
+  border-right: 0;
   background: var(--jd-navy);
   color: #fff;
-  padding: 12px 7px 12px 6px;
-  border-radius: 0 9px 9px 0;
-  box-shadow: 2px 4px 16px rgba(13, 22, 38, 0.22);
+  padding: 12px 6px 12px 7px;
+  border-radius: 9px 0 0 9px;
+  box-shadow: -2px 4px 16px rgba(13, 22, 38, 0.22);
   cursor: pointer;
   animation: jd-tab-in 0.3s var(--ease-out);
   transition: transform 0.15s var(--ease-out), box-shadow 0.15s ease, opacity 0.2s ease;
 }
-/* the green thread: a quiet accent along the spine */
+/* the green thread: a quiet accent along the outer spine */
 #jackdaw-tab::before {
   content: "";
   position: absolute;
@@ -49,7 +47,6 @@
 }
 .jd-tab-text {
   writing-mode: vertical-rl;
-  transform: rotate(180deg);
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -67,8 +64,8 @@
   stroke-dashoffset: 0;
 }
 @keyframes jd-tab-in {
-  from { opacity: 0; transform: translateY(-50%) translateX(-8px); }
-  to { opacity: 1; transform: translateY(-50%) translateX(0); }
+  from { opacity: 0; transform: translate(calc(-100% + 8px), -50%); }
+  to { opacity: 1; transform: translate(-100%, -50%); }
 }
 @keyframes jd-spark-draw {
   from { stroke-dashoffset: 100; }
@@ -76,19 +73,23 @@
 }
 @media (hover: hover) and (pointer: fine) {
   #jackdaw-tab:hover {
-    transform: translateY(-50%) translateX(3px);
-    box-shadow: 3px 6px 20px rgba(13, 22, 38, 0.3);
+    transform: translate(calc(-100% - 3px), -50%);
+    box-shadow: -3px 6px 20px rgba(13, 22, 38, 0.3);
   }
   #jackdaw-tab:hover .jd-spark path {
     animation: jd-spark-draw 0.6s var(--ease-out);
   }
 }
-#jackdaw-tab:active { transform: translateY(-50%) scale(0.97); }
+#jackdaw-tab:active { transform: translate(-100%, -50%) scale(0.97); }
 #jackdaw-tab.jd-hidden { opacity: 0; pointer-events: none; }
 #jackdaw-tab.jd-tab-fixed {
   position: fixed;
   left: 0;
   top: 40%;
+  transform: translateY(-50%);
+  border-radius: 0 9px 9px 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 0;
 }
 
 /* ---------- Bottom drawer ---------- */
@@ -375,7 +376,7 @@
   #jackdaw-drawer:not(.jd-open) { opacity: 0; }
   .mk-stagger > *, .mk-chart-reveal, .mk-score.mk-pop { animation: jd-fade 0.2s ease; }
   .jd-live { animation: none; }
-  #jackdaw-tab:active { transform: translateY(-50%); }
+  #jackdaw-tab:active { transform: translate(-100%, -50%); }
   .jd-minimize:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }
 }
