@@ -3,60 +3,93 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --jd-ink: #1c1e21;
+  --jd-navy: #16233a;
+  --jd-green: #16a34a;
+  --jd-green-deep: #0e7a37;
+  --jd-muted: #6b7280;
+  --jd-hairline: #e6e4e0;
+  --jd-paper: #fcfbf9;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 #jackdaw-drawer *, #jackdaw-tab * { box-sizing: border-box; }
 
-/* ---------- "Price check?" tab on the product image ---------- */
+/* ---------- "Price history" tab — left edge of the product image ---------- */
 #jackdaw-tab {
   position: absolute;
-  right: 0;
+  left: 0;
   top: 50%;
   z-index: 60;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  writing-mode: vertical-rl;
-  transform: translateY(-50%) rotate(180deg);
-  border: 0;
-  background: linear-gradient(160deg, #16a34a, #0e7a37 55%, #0b6a3e);
-  background-size: 100% 220%;
-  color: #fff;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.03em;
-  padding: 13px 8px;
-  border-radius: 0 8px 8px 0;
-  box-shadow: -2px 4px 14px rgba(13, 22, 38, 0.25);
-  cursor: pointer;
-  animation: jd-tab-in 0.3s var(--ease-out), jd-breathe 7s var(--ease-in-out) infinite alternate;
-  transition: transform 0.15s var(--ease-out), opacity 0.2s ease, box-shadow 0.15s ease;
-}
-#jackdaw-tab.jd-tab-fixed {
-  position: fixed;
-  right: 0;
-  top: 40%;
-  border-radius: 8px 0 0 8px;
+  gap: 8px;
   transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 0;
+  background: var(--jd-navy);
+  color: #fff;
+  padding: 12px 7px 12px 6px;
+  border-radius: 0 9px 9px 0;
+  box-shadow: 2px 4px 16px rgba(13, 22, 38, 0.22);
+  cursor: pointer;
+  animation: jd-tab-in 0.3s var(--ease-out);
+  transition: transform 0.15s var(--ease-out), box-shadow 0.15s ease, opacity 0.2s ease;
 }
-.jd-tab-icon { transform: rotate(90deg); font-size: 14px; }
+/* the green thread: a quiet accent along the spine */
+#jackdaw-tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.9), rgba(52, 211, 153, 0.5));
+}
+.jd-tab-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.92);
+}
+.jd-spark {
+  width: 16px;
+  height: 13px;
+  color: #34d399;
+}
+/* spell: the sparkline draws itself on hover */
+.jd-spark path {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+}
 @keyframes jd-tab-in {
-  from { opacity: 0; transform: translateY(-50%) rotate(180deg) translateY(-10px); }
-  to { opacity: 1; transform: translateY(-50%) rotate(180deg) translateY(0); }
+  from { opacity: 0; transform: translateY(-50%) translateX(-8px); }
+  to { opacity: 1; transform: translateY(-50%) translateX(0); }
 }
-/* Orbs-inspired: the gradient slowly breathes instead of sitting still. */
-@keyframes jd-breathe {
-  from { background-position: 50% 0%; }
-  to { background-position: 50% 100%; }
+@keyframes jd-spark-draw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
 }
 @media (hover: hover) and (pointer: fine) {
   #jackdaw-tab:hover {
-    transform: translateY(-50%) rotate(180deg) translateY(2px);
-    box-shadow: -3px 6px 18px rgba(13, 22, 38, 0.35);
+    transform: translateY(-50%) translateX(3px);
+    box-shadow: 3px 6px 20px rgba(13, 22, 38, 0.3);
+  }
+  #jackdaw-tab:hover .jd-spark path {
+    animation: jd-spark-draw 0.6s var(--ease-out);
   }
 }
-#jackdaw-tab:active { transform: translateY(-50%) rotate(180deg) scale(0.97); }
+#jackdaw-tab:active { transform: translateY(-50%) scale(0.97); }
 #jackdaw-tab.jd-hidden { opacity: 0; pointer-events: none; }
+#jackdaw-tab.jd-tab-fixed {
+  position: fixed;
+  left: 0;
+  top: 40%;
+}
 
 /* ---------- Bottom drawer ---------- */
 #jackdaw-drawer {
@@ -65,14 +98,14 @@
   bottom: 12px;
   z-index: 2147483000;
   width: min(960px, calc(100vw - 24px));
-  max-height: min(52vh, 560px);
+  max-height: min(54vh, 580px);
   display: flex;
   flex-direction: column;
-  background: #ffffff;
-  color: #1c1e21;
-  border: 1px solid #d8dce1;
+  background: var(--jd-paper);
+  color: var(--jd-ink);
+  border: 1px solid var(--jd-hairline);
   border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 1px 2px rgba(28, 30, 33, 0.04), 0 12px 40px rgba(28, 30, 33, 0.18);
   font-size: 13px;
   line-height: 1.45;
   overflow: hidden;
@@ -87,37 +120,36 @@
   pointer-events: auto;
 }
 
-.mk-header {
-  position: relative;
+/* Light header: hairline, wordmark, breathing live-dot (the one orb that stayed) */
+.jd-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  background: #16233a;
-  color: #fff;
-  overflow: hidden;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--jd-hairline);
+  background: #fff;
   flex-shrink: 0;
 }
-/* Ambient orb: slow breathing glow behind the brand (orbs.jakubantalik.com-inspired). */
-.mk-header::before {
-  content: "";
-  position: absolute;
-  left: -30px;
-  top: -46px;
-  width: 130px;
-  height: 130px;
+.jd-brand { display: flex; align-items: center; gap: 7px; }
+.jd-wordmark {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--jd-navy);
+}
+.jd-live {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 45%, rgba(52, 211, 153, 0.55), rgba(59, 130, 246, 0.28) 55%, transparent 72%);
-  filter: blur(14px);
-  pointer-events: none;
-  animation: mk-orb 7s var(--ease-in-out) infinite alternate;
+  background: radial-gradient(circle at 35% 35%, #6ee7a0, var(--jd-green));
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35);
+  animation: jd-live-breathe 3.5s var(--ease-in-out) infinite;
 }
-@keyframes mk-orb {
-  from { transform: translateX(0) scale(1); opacity: 0.7; }
-  to { transform: translateX(18px) scale(1.18); opacity: 1; }
+@keyframes jd-live-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); }
+  50% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
 }
-.mk-title { display: flex; align-items: center; gap: 8px; font-weight: 600; position: relative; }
 .jd-product-name {
   flex: 1;
   min-width: 0;
@@ -125,44 +157,32 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.75);
-  position: relative;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #3b4351;
 }
-.mk-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: #16a34a;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-}
-.mk-toggle {
-  border: 0;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border-radius: 6px;
-  padding: 4px 10px;
+.jd-minimize {
+  border: 1px solid var(--jd-hairline);
+  background: transparent;
+  color: var(--jd-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
   cursor: pointer;
-  font-size: 12px;
-  position: relative;
-  transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease, transform 0.12s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .mk-toggle:hover { background: rgba(255, 255, 255, 0.22); }
+  .jd-minimize:hover { color: var(--jd-ink); border-color: #cfccc6; background: #f6f5f2; }
 }
-.mk-toggle:active { transform: scale(0.96); }
+.jd-minimize:active { transform: scale(0.96); }
 
 /* Two columns: chart | discussion. Stacks when narrow. */
 .jd-drawer-body {
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  gap: 18px;
-  padding: 14px;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 20px;
+  padding: 16px;
   overflow-y: auto;
 }
 @media (max-width: 760px) {
@@ -170,84 +190,154 @@
 }
 .jd-col { min-width: 0; }
 
-/* First-open stagger: sections cascade in 40ms apart. */
-.mk-stagger > * {
-  animation: mk-body-in 0.25s var(--ease-out) backwards;
-}
+/* First-open stagger */
+.mk-stagger > * { animation: mk-body-in 0.25s var(--ease-out) backwards; }
 .mk-stagger > *:nth-child(2) { animation-delay: 40ms; }
 .mk-stagger > *:nth-child(3) { animation-delay: 80ms; }
 .mk-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.mk-stagger > *:nth-child(5) { animation-delay: 160ms; }
 @keyframes mk-body-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ---------- Content ---------- */
-.mk-stats { display: flex; gap: 8px; margin-bottom: 10px; }
+/* ---------- Stats ---------- */
+.mk-stats { display: flex; gap: 8px; margin-bottom: 8px; }
 .mk-stat {
   flex: 1;
-  background: #f4f6f8;
-  border: 1px solid #e4e8ec;
-  border-radius: 8px;
-  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 9px;
+  padding: 8px 10px;
 }
-.mk-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
-.mk-stat-value { font-size: 16px; font-weight: 700; }
-.mk-stat-sub { font-size: 11px; color: #6b7280; }
+.mk-stat-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #9aa1ab; font-weight: 600; }
+.mk-stat-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.mk-stat-sub { font-size: 11px; color: var(--jd-muted); }
+/* spell: when the current price IS the all-time low, the stat quietly glows */
+.mk-stat.jd-at-low {
+  border-color: rgba(22, 163, 74, 0.35);
+  background: linear-gradient(180deg, #fff, #f4fbf6);
+}
+.mk-stat.jd-at-low .mk-stat-value { color: var(--jd-green-deep); }
 
-.mk-chart-wrap { border: 1px solid #e4e8ec; border-radius: 8px; padding: 4px; }
-/* One-time left-to-right reveal on first open only (content.js gates the class). */
+.jd-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #4b5563;
+  border: 1px solid var(--jd-hairline);
+  background: #fff;
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+}
+.jd-chip-low {
+  color: var(--jd-green-deep);
+  border-color: rgba(22, 163, 74, 0.3);
+  background: #f2faf5;
+}
+
+/* ---------- Chart ---------- */
+.jd-chart {
+  border: 1px solid var(--jd-hairline);
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 8px 4px;
+}
 .mk-chart-reveal { animation: mk-chart-in 0.4s var(--ease-out); }
 @keyframes mk-chart-in {
   from { clip-path: inset(0 100% 0 0); }
   to { clip-path: inset(0 0 0 0); }
 }
-.mk-note { font-size: 11px; color: #6b7280; margin-top: 6px; }
+.jd-chart-toolbar { display: flex; justify-content: flex-end; padding: 0 2px 6px; }
+.jd-ranges { display: flex; gap: 4px; }
+.jd-range-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #8a92a0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .jd-range-btn:hover { color: var(--jd-ink); }
+}
+.jd-range-btn.jd-range-active {
+  color: var(--jd-navy);
+  border-color: var(--jd-hairline);
+  background: var(--jd-paper);
+}
+.jd-chart-stage { position: relative; }
+.jd-chart-stage canvas { display: block; cursor: crosshair; }
+.jd-tooltip {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  pointer-events: none;
+  background: var(--jd-navy);
+  color: #fff;
+  border-radius: 7px;
+  padding: 5px 9px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(13, 22, 38, 0.3);
+}
+.jd-tt-price { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.jd-tt-date { font-size: 10px; color: rgba(255, 255, 255, 0.7); }
+.jd-tt-date.jd-tt-oos { color: #fca5a5; }
+
+.mk-note { font-size: 11px; color: var(--jd-muted); margin-top: 8px; }
 
 .mk-empty {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  padding: 12px;
+  background: #f4faf6;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: 10px;
+  padding: 14px;
 }
-.mk-empty-title { font-weight: 700; margin-bottom: 4px; }
+.mk-empty-title { font-weight: 700; margin-bottom: 4px; color: var(--jd-green-deep); }
 
+/* ---------- Discussion ---------- */
 .mk-comments { min-width: 0; }
-.mk-section-title { font-weight: 700; margin-bottom: 8px; }
-.mk-comment-list { max-height: 220px; overflow-y: auto; }
-.mk-comment { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #eef1f4; }
-.mk-votes { display: flex; flex-direction: column; align-items: center; width: 28px; }
+.mk-section-title { font-weight: 700; margin-bottom: 8px; font-size: 13px; }
+.mk-comment-list { max-height: 230px; overflow-y: auto; }
+.mk-comment { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid #efedea; }
+.mk-votes { display: flex; flex-direction: column; align-items: center; width: 26px; }
 .mk-vote-btn {
   border: 0;
   background: transparent;
   cursor: pointer;
-  color: #9ca3af;
-  font-size: 12px;
-  padding: 0 4px;
+  color: #b6bcc4;
+  font-size: 11px;
+  padding: 1px 4px;
   transition: color 0.15s ease, transform 0.12s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .mk-vote-btn:hover { color: #374151; }
 }
 .mk-vote-btn:active { transform: scale(0.85); }
-.mk-vote-btn.mk-active-up { color: #16a34a; }
+.mk-vote-btn.mk-active-up { color: var(--jd-green); }
 .mk-vote-btn.mk-active-down { color: #dc2626; }
-.mk-score { font-weight: 700; font-size: 12px; }
+.mk-score { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
 .mk-score.mk-pop { animation: mk-pop 0.2s var(--ease-out); }
 @keyframes mk-pop {
   from { transform: scale(1.35); }
   to { transform: scale(1); }
 }
 .mk-comment-main { flex: 1; min-width: 0; }
-.mk-comment-meta { font-size: 11px; color: #6b7280; }
+.mk-comment-meta { font-size: 11px; color: var(--jd-muted); }
 .mk-author { font-weight: 600; color: #374151; }
 .mk-comment-body { white-space: pre-wrap; overflow-wrap: break-word; }
 
 .mk-form { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .mk-input {
-  border: 1px solid #d8dce1;
-  border-radius: 8px;
-  padding: 7px 9px;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 9px;
+  padding: 7px 10px;
   font: inherit;
   background: #fff;
   color: inherit;
@@ -255,23 +345,24 @@
 }
 .mk-input:focus {
   outline: none;
-  border-color: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+  border-color: var(--jd-green);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.13);
 }
-.mk-textarea { resize: vertical; min-height: 56px; }
+.mk-textarea { resize: vertical; min-height: 54px; }
 .mk-post {
   align-self: flex-end;
   border: 0;
-  background: #16a34a;
+  background: var(--jd-navy);
   color: #fff;
-  border-radius: 8px;
-  padding: 7px 16px;
+  border-radius: 999px;
+  padding: 7px 18px;
   font-weight: 600;
+  font-size: 12px;
   cursor: pointer;
   transition: background-color 0.15s ease, transform 0.12s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .mk-post:hover { background: #15803d; }
+  .mk-post:hover { background: #1f3252; }
 }
 .mk-post:active { transform: scale(0.97); }
 .mk-post:disabled { opacity: 0.6; cursor: default; }
@@ -279,11 +370,12 @@
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   #jackdaw-tab { animation: jd-fade 0.2s ease; }
+  #jackdaw-tab:hover .jd-spark path { animation: none; }
   #jackdaw-drawer { transition: opacity 0.2s ease; transform: translate(-50%, 0); }
   #jackdaw-drawer:not(.jd-open) { opacity: 0; }
   .mk-stagger > *, .mk-chart-reveal, .mk-score.mk-pop { animation: jd-fade 0.2s ease; }
-  .mk-header::before { animation: none; }
-  .mk-toggle:active, .mk-vote-btn:active, .mk-post:active, #jackdaw-tab:active { transform: translateY(-50%) rotate(180deg); }
-  .mk-toggle:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
+  .jd-live { animation: none; }
+  #jackdaw-tab:active { transform: translateY(-50%); }
+  .jd-minimize:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }
 }
