@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Jackdaw — Micro Center Price History",
   "version": "0.1.0",
-  "description": "Community price history, charts, and discussion for Micro Center product pages. Data comes from what your own browser already sees — no scraping.",
+  "description": "Community price history, charts, and discussion for Micro Center products.",
   "permissions": ["storage", "alarms", "notifications", "clipboardWrite"],
   "host_permissions": ["https://www.microcenter.com/*"],
   "background": {

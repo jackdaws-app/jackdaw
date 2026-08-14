@@ -997,15 +997,35 @@
 .jd-flight-mini .jd-w1 { animation: jd-wing-front 0.42s ease-in-out 2; }
 .jd-flight-mini .jd-w2 { animation: jd-wing-back 0.42s ease-in-out 2; }
 /* touchdown: wings flare up (real corvids brake with raised wings), a tiny
-   settle, then the bird is absorbed by the growing banner */
+   settle, then the bird collapses into a dot and the banner grows from it */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
+.jd-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--jd-navy, #16233a);
+  box-shadow: -1px 2px 8px rgba(13, 22, 38, 0.3);
+  opacity: 0;
+  transform: scale(0.25);
+  transition: opacity 0.15s ease, transform 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: 2147483002;
+  pointer-events: none;
+}
+.jd-dot.jd-dot-in { opacity: 1; transform: scale(1); }
+.jd-dot.jd-dot-in.jd-dot-out {
+  opacity: 0;
+  transform: scale(1.6);
+  transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
 .jd-flight .jd-w1, .jd-flight .jd-w2 { transition: d 0.18s ease-out; }
 .jd-flight.jd-land .jd-w1 { d: path("M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"); }
 .jd-flight.jd-land .jd-w2 { d: path("M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"); }
 .jd-flight.jd-bird-out {
   opacity: 0;
-  transform: scale(0.2);
-  transition: opacity 0.18s ease-in, transform 0.24s ease-in;
+  transform: scale(0.14);
+  transition: opacity 0.16s ease-in, transform 0.2s ease-in;
 }
 
 /* ---------- Onboarding: coach mark + spotlight tour ---------- */

@@ -87,7 +87,7 @@
     const mark = el("div", "jd-coach");
     mark.append(
       el("div", "jd-coach-title", "Price history lives here"),
-      el("div", "jd-coach-body", "Real prices, seen by real shoppers. Open the tab to see this product's story."),
+      el("div", "jd-coach-body", "Prices seen by real shoppers. Open the tab for this product's history."),
     );
     const ok = el("button", "jd-coach-btn", "Got it");
     mark.append(ok);
@@ -115,18 +115,18 @@
     const steps = [
       {
         target: () => paneEl.querySelector(".jd-chart") || paneEl,
-        title: "The flock's memory",
-        body: "Every point on this chart was a real shopper's visit. Hover for exact days, drag the handle below to resize, and watch the amber line for open-box steals.",
+        title: "Price history",
+        body: "Each point is a real shopper's visit. Hover for dates, drag the handle to resize. Amber marks open-box prices.",
       },
       {
         target: () => tabButtons.get("discussion"),
         title: "Aisle intel",
-        body: "Open-box finds, price matches, shelf reports. Your notes help the next shopper — theirs help you.",
+        body: "Open-box finds, price matches, stock reports — notes from shoppers, for shoppers.",
       },
       {
         target: () => watchBtn,
-        title: "Never overpay",
-        body: "Set your price and close the tab. The flock keeps watching and pings you the moment someone sees it lower.",
+        title: "Price alerts",
+        body: "Set a price. You'll get a notification when a shopper sees it lower.",
       },
     ];
     let i = 0;
@@ -252,7 +252,13 @@
       wrap.style.left = r.left + r.width / 2 + window.scrollX + "px";
       wrap.style.top = r.top + r.height / 2 + window.scrollY + "px";
       wrap.innerHTML = BIRD_SVG;
-      uiRoot.append(wrap);
+      // The shared intermediate: bird collapses into this dot, and the
+      // banner grows out of it. Sibling of the wrap so the bird's exit
+      // transform doesn't drag it along.
+      const dot = el("span", "jd-dot");
+      dot.style.left = wrap.style.left;
+      dot.style.top = wrap.style.top;
+      uiRoot.append(wrap, dot);
       const bird = wrap.querySelector(".jd-flight-bird");
       let done = false;
       const finish = () => {
@@ -260,10 +266,14 @@
         done = true;
         wrap.classList.add("jd-land");
         setTimeout(() => {
-          // banner growth and bird absorption start on the same frame
-          resolve();
-          requestAnimationFrame(() => wrap.classList.add("jd-bird-out"));
-          setTimeout(() => wrap.remove(), 550);
+          // bird -> dot -> banner: one object changing form
+          wrap.classList.add("jd-bird-out");
+          setTimeout(() => dot.classList.add("jd-dot-in"), 60);
+          setTimeout(() => {
+            resolve(); // banner grows out of the dot
+            requestAnimationFrame(() => dot.classList.add("jd-dot-out"));
+            setTimeout(() => { wrap.remove(); dot.remove(); }, 500);
+          }, 280);
         }, 300);
       };
       bird.addEventListener("animationend", (e) => {
@@ -369,7 +379,7 @@
     });
     watchBtn = el("button", "jd-watch");
     watchBtn.innerHTML = `${ICONS.bell}<span>Set alert</span>`;
-    watchBtn.title = "Pick a price — get notified when the flock sees it";
+    watchBtn.title = "Get notified at your price";
     watchBtn.addEventListener("click", () => switchTab("alerts"));
     const minBtn = iconBtn(ICONS.minimize, "Minimize");
     minBtn.classList.add("jd-ib-min");
@@ -491,7 +501,7 @@
         meter.append(fill);
         const gap = product.price - watchTarget;
         card.append(meter, el("div", "jd-meter-label",
-          gap <= 0 ? "Target met — alert will fire on the next hourly check" : `${fmtPrice(gap)} above your target`));
+          gap <= 0 ? "Target met — alert fires on the next check" : `${fmtPrice(gap)} above your target`));
       }
     }
 
@@ -524,8 +534,8 @@
       else {
         setWatching(true, res.result.target);
         toast(res.result.target >= product.price
-          ? `Today's price already qualifies — you'll be pinged within the hour`
-          : `Alert set — we'll ping you at ${fmtPrice(res.result.target)} or less`);
+          ? `Current price already qualifies — you'll be notified within the hour`
+          : `Alert set for ${fmtPrice(res.result.target)} or less`);
         renderAlerts();
       }
     });
@@ -534,7 +544,7 @@
     paneEl.append(card);
 
     paneEl.append(el("div", "mk-note",
-      "One alert per product. The flock checks hourly; when any member sees the price at or below your target, you get a Chrome notification. Alerts fire once, then disarm — re-arm any time."));
+      "One alert per product. Prices are checked hourly; when a shopper sees your target price or lower, you get a Chrome notification. Alerts fire once — re-arm any time."));
   }
 
   function openDrawer() {
@@ -608,7 +618,7 @@
     leftCol.className = "jd-pane" + (pendingReveal ? " mk-stagger" : "");
 
     if (!historyLoaded) {
-      // skeleton while the flock reports in
+      // skeleton while data loads
       const sk = el("div", "jd-skeleton");
       sk.append(el("div", "jd-sk-row"), el("div", "jd-sk-chip"), el("div", "jd-sk-chart"));
       leftCol.append(sk);
@@ -638,7 +648,7 @@
       const chip = el("span", "jd-chip");
       if (atLow) {
         chip.classList.add("jd-chip-low");
-        chip.textContent = "All-time low — as good as the flock has ever seen it";
+        chip.textContent = "All-time low";
         // Rare-moment spell: a one-time sparkle burst on first reveal only.
         if (pendingReveal && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
           setTimeout(() => {
@@ -656,15 +666,15 @@
         chip.classList.add("jd-chip-low");
         chip.textContent = `Good price — ${fmtPrice(typical - product.price)} below typical`;
       } else if (product.price < typical * 1.03) {
-        chip.textContent = `Fair price — right around the typical ${fmtPrice(typical)}`;
+        chip.textContent = `Fair price — near the typical ${fmtPrice(typical)}`;
       } else {
         chip.classList.add("jd-chip-high");
-        chip.textContent = `${fmtPrice(product.price - typical)} above typical — patience may pay`;
+        chip.textContent = `${fmtPrice(product.price - typical)} above typical`;
       }
       chips.append(chip);
 
       if (sightings < 5) {
-        chips.append(el("span", "jd-chip jd-chip-early", `Early data — ${sightings} sighting${sightings === 1 ? "" : "s"} so far`));
+        chips.append(el("span", "jd-chip jd-chip-early", `Early data — ${sightings} sighting${sightings === 1 ? "" : "s"}`));
       }
       const obPoints = history.points.filter((p) => p.openBoxPrice != null);
       if (obPoints.length) {
@@ -693,7 +703,7 @@
       const empty = el("div", "mk-empty");
       empty.append(
         el("div", "mk-empty-title", "No sightings yet"),
-        el("div", null, "Your visit just logged today's price — the first in the flock's memory. The chart begins here."),
+        el("div", null, "Your visit logged today's price — the first on record."),
       );
       leftCol.append(empty);
     }
@@ -782,7 +792,7 @@
     ctx.drawImage(src, 24, 76, srcCssW * scale, srcCssH * scale);
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillStyle = dark ? "#5b667a" : "#9aa1ab";
-    ctx.fillText("Jackdaw · community price history · data from shoppers like you", 24, H - 16);
+    ctx.fillText("Jackdaw · community price history", 24, H - 16);
 
     const blob = await new Promise((r) => out.toBlob(r, "image/png"));
     let copied = false;
@@ -840,7 +850,7 @@
     const roots = commentTree();
     roots.sort(commentSort === "top" ? (a, b) => b.score - a.score : (a, b) => b._creationTime - a._creationTime);
     if (!roots.length) {
-      list.append(el("div", "mk-note", "Quiet aisle. Spotted an open-box deal, a price match, or empty shelves? Leave a note for the flock."));
+      list.append(el("div", "mk-note", "No notes yet. Seen an open-box deal, price match, or empty shelf? Post it."));
     }
     for (const c of roots) list.append(renderComment(c, 0));
     sec.append(list);
@@ -902,7 +912,7 @@
     const applyVote = async (value) => {
       const res = await send({ type: "comments:vote", commentId: c._id, value });
       if (res.error) {
-        toast("Vote didn't stick — try again");
+        toast("Vote failed — try again");
         return;
       }
       c.score = res.result.score;
@@ -941,7 +951,7 @@
     reportBtn.addEventListener("click", async () => {
       const res = await send({ type: "comments:report", commentId: c._id });
       if (res.error) toast(friendlyError(res, "Couldn't report — try again"));
-      else toast(res.result.alreadyReported ? "You already reported this" : "Reported — thanks for keeping the aisle clean");
+      else toast(res.result.alreadyReported ? "You already reported this" : "Reported");
     });
     actions.append(reportBtn);
     main.append(meta, body, actions);
@@ -960,9 +970,9 @@
 
   function friendlyError(res, fallback) {
     switch (res.code) {
-      case "RATE_LIMITED": return "Easy there — you're going too fast. Try again in a bit.";
+      case "RATE_LIMITED": return "Too many requests — try again shortly.";
       case "LINKS_NOT_ALLOWED": return "Links aren't allowed in comments";
-      case "CONTACT_INFO_NOT_ALLOWED": return "Please don't post contact info";
+      case "CONTACT_INFO_NOT_ALLOWED": return "Contact info isn't allowed";
       case "CONTENT_REJECTED": return "Keep it civil — comment rejected";
       default: return fallback;
     }

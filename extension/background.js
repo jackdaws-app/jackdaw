@@ -84,7 +84,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         type: "basic",
         iconUrl: "icons/icon128.png",
         title: `Price drop: $${d.currentPrice.toFixed(2)}`,
-        message: `${d.name}\nWas $${d.priceAtWatch.toFixed(2)} when you started watching · store #${d.storeNum}`,
+        message: `${d.name}\nYour target: $${d.priceAtWatch.toFixed(2)} · store #${d.storeNum}`,
         priority: 1,
       });
       await convexMutation("watches:ack", { deviceId, productId: d.productId, newPrice: d.currentPrice });
