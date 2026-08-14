@@ -1,0 +1,231 @@
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --jd-ink: #1c1e21;
+  --jd-navy: #16233a;
+  --jd-green: #16a34a;
+  --jd-green-deep: #0e7a37;
+  --jd-muted: #6b7280;
+  --jd-hairline: #e6e4e0;
+  --jd-paper: #fcfbf9;
+}
+body.dark {
+  --jd-ink: #e6eaf2;
+  --jd-muted: #8b94a8;
+  --jd-hairline: #253049;
+  --jd-paper: #0f1726;
+}
+
+* { box-sizing: border-box; }
+body {
+  width: 340px;
+  margin: 0;
+  background: var(--jd-paper);
+  color: var(--jd-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+button { font-family: inherit; outline: none; }
+button:focus-visible { box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45); }
+
+/* ---------- Header ---------- */
+.pop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--jd-hairline);
+  background: #fff;
+}
+body.dark .pop-header { background: #131e30; }
+.pop-brand { display: flex; align-items: center; gap: 7px; }
+.pop-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #6ee7a0, var(--jd-green));
+  animation: pop-breathe 3.5s var(--ease-in-out) infinite;
+}
+@keyframes pop-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); }
+  50% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
+}
+/* idle spell: the wordmark's quiet sheen, same as the panel */
+.pop-wordmark {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  background: linear-gradient(100deg, var(--jd-navy) 42%, #16a34a 50%, var(--jd-navy) 58%);
+  background-size: 320% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: pop-sheen 9s var(--ease-in-out) infinite;
+}
+body.dark .pop-wordmark {
+  background: linear-gradient(100deg, #cdd6e4 42%, #4ade80 50%, #cdd6e4 58%);
+  background-size: 320% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+@keyframes pop-sheen {
+  0%, 68% { background-position: 100% 0; }
+  88%, 100% { background-position: 0% 0; }
+}
+.pop-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9aa1ab;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.12s var(--ease-out);
+}
+.pop-icon svg { width: 14px; height: 14px; }
+.pop-icon:hover { color: var(--jd-ink); background: rgba(22, 35, 58, 0.06); }
+body.dark .pop-icon:hover { background: rgba(203, 213, 225, 0.08); }
+.pop-icon:active { transform: scale(0.9); }
+/* idle: the moon tilts once every 16s */
+.pop-icon svg { animation: pop-tilt 16s var(--ease-in-out) 4s infinite; }
+@keyframes pop-tilt {
+  0%, 7%, 100% { transform: rotate(0deg); }
+  3.5% { transform: rotate(-16deg); }
+}
+
+/* ---------- Body ---------- */
+.pop-body { max-height: 420px; overflow-y: auto; padding: 8px; scrollbar-width: thin; scrollbar-color: rgba(120, 130, 145, 0.35) transparent; }
+.pop-body::-webkit-scrollbar { width: 5px; }
+.pop-body::-webkit-scrollbar-track { background: transparent; }
+.pop-body::-webkit-scrollbar-thumb { background: rgba(120, 130, 145, 0.3); border-radius: 8px; }
+
+.pop-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 11px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease-out), border-color 0.15s ease, box-shadow 0.15s ease;
+  animation: pop-in 0.28s var(--ease-out) backwards;
+}
+body.dark .pop-card { background: #16213a; }
+.pop-card:nth-child(2) { animation-delay: 40ms; }
+.pop-card:nth-child(3) { animation-delay: 80ms; }
+.pop-card:nth-child(4) { animation-delay: 120ms; }
+.pop-card:nth-child(5) { animation-delay: 160ms; }
+.pop-card:nth-child(n + 6) { animation-delay: 200ms; }
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.pop-card:hover { transform: translateY(-1px); border-color: #cfccc6; box-shadow: 0 4px 14px rgba(28, 30, 33, 0.08); }
+body.dark .pop-card:hover { border-color: #3a4a6b; }
+.pop-card:active { transform: translateY(0) scale(0.995); }
+.pop-card.met { border-color: rgba(22, 163, 74, 0.4); background: linear-gradient(180deg, #fff, #f4fbf6); }
+body.dark .pop-card.met { background: linear-gradient(180deg, #16213a, #14283a); }
+
+.pop-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pop-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.pop-price { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.pop-card.met .pop-price { color: var(--jd-green-deep); }
+body.dark .pop-card.met .pop-price { color: #4ade80; }
+.pop-sub { font-size: 10.5px; color: var(--jd-muted); font-variant-numeric: tabular-nums; }
+.pop-spark { width: 74px; height: 24px; flex-shrink: 0; }
+.pop-spark path { stroke: var(--jd-green); stroke-width: 1.6; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pop-spark .spark-draw { stroke-dasharray: 100; animation: pop-draw 0.9s var(--ease-out) 0.15s backwards; }
+@keyframes pop-draw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* distance meter: how close the price is to the target */
+.pop-meter { height: 4px; border-radius: 3px; background: rgba(120, 130, 145, 0.18); overflow: hidden; margin-top: 8px; }
+.pop-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(22, 163, 74, 0.5), #16a34a);
+  width: 0;
+  transition: width 0.6s var(--ease-out);
+}
+.pop-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--jd-green-deep);
+  border: 1px solid rgba(22, 163, 74, 0.3);
+  background: #f2faf5;
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-top: 7px;
+}
+body.dark .pop-badge { background: rgba(22, 163, 74, 0.12); color: #4ade80; }
+
+/* ---------- Empty + skeleton ---------- */
+.pop-empty { padding: 26px 18px; text-align: center; }
+.pop-empty-bird { width: 54px; height: 36px; margin: 0 auto 10px; display: block; color: var(--jd-navy); }
+body.dark .pop-empty-bird { color: #4a5875; }
+.pop-empty-bird path { fill: currentColor; }
+/* the empty-state jackdaw drifts, wings beating slowly */
+.pop-empty-bird { animation: pop-drift 6s var(--ease-in-out) infinite alternate; }
+@keyframes pop-drift {
+  from { transform: translate(-4px, 2px) rotate(-2deg); }
+  to { transform: translate(4px, -2px) rotate(2deg); }
+}
+.pop-empty-title { font-weight: 700; margin-bottom: 4px; }
+.pop-empty-body { font-size: 12px; color: var(--jd-muted); }
+
+.pop-skeleton { padding: 2px; }
+.pop-sk-row {
+  height: 74px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  background: linear-gradient(100deg, rgba(150, 155, 165, 0.12) 40%, rgba(150, 155, 165, 0.22) 50%, rgba(150, 155, 165, 0.12) 60%);
+  background-size: 200% 100%;
+  animation: pop-shimmer 1.4s linear infinite;
+}
+@keyframes pop-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ---------- Footer ---------- */
+.pop-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid var(--jd-hairline);
+  font-size: 11px;
+  color: var(--jd-muted);
+  background: #fff;
+}
+body.dark .pop-footer { background: #131e30; }
+.pop-link { color: var(--jd-muted); text-decoration: none; transition: color 0.15s ease; }
+.pop-link:hover { color: var(--jd-green-deep); }
+body.dark .pop-link:hover { color: #4ade80; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pop-live, .pop-wordmark, .pop-icon svg, .pop-empty-bird, .pop-sk-row { animation: none; }
+  .pop-card { animation: pop-fade 0.2s ease backwards; }
+  .pop-spark .spark-draw { animation: none; }
+  .pop-card:hover, .pop-card:active, .pop-icon:active { transform: none; }
+  @keyframes pop-fade { from { opacity: 0; } to { opacity: 1; } }
+}

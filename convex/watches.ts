@@ -5,6 +5,24 @@ import { requireLength } from "./lib";
 // Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
 
+// Dashboard bounds. A device is capped at 50 watches, and Convex allows
+// ~16k document reads per function — so the per-product history scan is
+// budgeted rather than a flat 500, or a full watch list would blow the
+// limit once history accumulates.
+const POINT_BUDGET = 12_000;
+const MAX_POINTS_PER_PRODUCT = 500;
+const MIN_POINTS_PER_PRODUCT = 60;
+const MAX_TREND_POINTS = 24;
+
+/** Evenly sample `values` down to at most `max`, keeping first and last. */
+function downsample(values: number[], max: number): number[] {
+  if (values.length <= max) return values;
+  const step = (values.length - 1) / (max - 1);
+  const out: number[] = [];
+  for (let i = 0; i < max; i++) out.push(values[Math.round(i * step)]);
+  return out;
+}
+
 export const toggle = mutation({
   args: {
     deviceId: v.string(),
@@ -188,6 +206,119 @@ export const check = query({
       });
     }
     return drops;
+  },
+});
+
+const dashboardRowValidator = v.object({
+  productId: v.string(),
+  name: v.string(),
+  urlPath: v.string(),
+  storeNum: v.string(),
+  target: v.number(),
+  currentPrice: v.number(),
+  inStock: v.boolean(),
+  lowest: v.number(),
+  trend: v.array(v.number()),
+  met: v.boolean(),
+});
+
+type DashboardRow = {
+  productId: string;
+  name: string;
+  urlPath: string;
+  storeNum: string;
+  target: number;
+  currentPrice: number;
+  inStock: boolean;
+  lowest: number;
+  trend: number[];
+  met: boolean;
+};
+
+/**
+ * Everything the toolbar popup needs for one device, in one round trip:
+ * every active watch with its target, current price, all-time low, and a
+ * downsampled series for a mini sparkline. Met alerts sort first, then the
+ * watches closest to their target.
+ */
+export const dashboard = query({
+  args: {
+    deviceId: v.string(),
+  },
+  returns: v.array(dashboardRowValidator),
+  handler: async (ctx, args) => {
+    const watches = await ctx.db
+      .query("watches")
+      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .take(50);
+
+    const active = watches.filter((w) => w.active);
+    if (active.length === 0) return [];
+
+    const perProduct = Math.min(
+      MAX_POINTS_PER_PRODUCT,
+      Math.max(
+        MIN_POINTS_PER_PRODUCT,
+        Math.floor(POINT_BUDGET / active.length),
+      ),
+    );
+
+    const rows: DashboardRow[] = [];
+
+    for (const watch of active) {
+      const product = await ctx.db.get(watch.productDocId);
+      if (product === null) continue;
+
+      // Newest-first, so currentPrice / lowest / trend all describe the same
+      // window (an oldest-first scan could report a "lowest" above the
+      // current price once a product exceeds the cap). Reversed below for a
+      // chronological sparkline.
+      const recent = await ctx.db
+        .query("pricePoints")
+        .withIndex("by_product", (q) => q.eq("productDocId", watch.productDocId))
+        .order("desc")
+        .take(perProduct);
+
+      const latest = recent.length > 0 ? recent[0] : null;
+      const currentPrice = latest === null ? 0 : latest.price;
+
+      let lowestSoFar: number | null = null;
+      for (const p of recent) {
+        if (lowestSoFar === null || p.price < lowestSoFar) lowestSoFar = p.price;
+      }
+
+      const chronological = recent
+        .slice()
+        .reverse()
+        .map((p) => p.price);
+
+      rows.push({
+        productId: product.productId,
+        name: product.name,
+        urlPath: product.urlPath,
+        storeNum: latest === null ? "000" : latest.storeNum,
+        target: watch.priceAtWatch,
+        currentPrice,
+        inStock: latest === null ? false : latest.inStock,
+        lowest: lowestSoFar ?? 0,
+        trend: downsample(chronological, MAX_TREND_POINTS),
+        met: currentPrice > 0 && currentPrice <= watch.priceAtWatch + DROP_EPSILON,
+      });
+    }
+
+    rows.sort((a, b) => {
+      // Met alerts first.
+      if (a.met !== b.met) return a.met ? -1 : 1;
+      // Then anything with a known price, closest-to-target first; watches
+      // with no price data yet sink to the bottom rather than sorting as if
+      // they were the biggest bargain.
+      const aKnown = a.currentPrice > 0;
+      const bKnown = b.currentPrice > 0;
+      if (aKnown !== bKnown) return aKnown ? -1 : 1;
+      return a.currentPrice - a.target - (b.currentPrice - b.target);
+    });
+
+    return rows;
   },
 });
 
