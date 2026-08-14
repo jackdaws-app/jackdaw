@@ -386,7 +386,9 @@
     const brand = el("div", "jd-brand");
     brand.innerHTML =
       `<span class="jd-live" title="Live community data"></span>` +
-      `<span class="jd-wordmark">Jackdaw</span>`;
+      `<span class="jd-wordmark">` +
+      "Jackdaw".split("").map((ch, i) => `<i style="--i:${i}">${ch}</i>`).join("") +
+      `</span>`;
     const prodName = el("div", "jd-product-name", product.name);
 
     const controls = el("div", "jd-header-controls");

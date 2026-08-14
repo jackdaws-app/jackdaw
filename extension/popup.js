@@ -126,6 +126,8 @@
     countEl.textContent = met
       ? `${met} of ${rows.length} at target`
       : `${rows.length} watched`;
+    // the live dot quickens when a target is met
+    document.querySelector(".pop-live").classList.toggle("alive", met > 0);
   }
 
   function renderError() {

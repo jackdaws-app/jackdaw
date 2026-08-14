@@ -40,40 +40,70 @@ button:focus-visible { box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45); }
 }
 body.dark .pop-header { background: #131e30; }
 .pop-brand { display: flex; align-items: center; gap: 7px; }
+/* The live dot has a pulse, not a ping: lub-dub, then rest. When something
+   is at target it beats sooner and brighter — motion as state. */
 .pop-live {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #6ee7a0, var(--jd-green));
-  animation: pop-breathe 3.5s var(--ease-in-out) infinite;
+  animation: pop-heart 5s var(--ease-in-out) infinite;
 }
-@keyframes pop-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); }
-  50% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
+.pop-live::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid rgba(22, 163, 74, 0.55);
+  opacity: 0;
+  animation: pop-echo 5s var(--ease-out) infinite;
 }
-/* idle spell: the wordmark's quiet sheen, same as the panel */
+@keyframes pop-heart {
+  0%, 100% { transform: scale(1); }
+  4% { transform: scale(1.3); }   /* lub */
+  9% { transform: scale(1); }
+  14% { transform: scale(1.15); } /* dub */
+  21% { transform: scale(1); }
+}
+@keyframes pop-echo {
+  0% { opacity: 0.5; transform: scale(0.9); }
+  24%, 100% { opacity: 0; transform: scale(2.7); }
+}
+/* something is at target: the pulse quickens and the glow warms */
+.pop-live.alive {
+  animation-duration: 2.6s;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.7);
+}
+.pop-live.alive::after { animation-duration: 2.6s; border-color: rgba(52, 211, 153, 0.8); }
+
+/* The wordmark's glint: a jackdaw chases shiny things, so light travels
+   the letters one at a time, each lifting as it passes. Rare — every 13s. */
 .pop-wordmark {
+  display: inline-flex;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  background: linear-gradient(100deg, var(--jd-navy) 42%, #16a34a 50%, var(--jd-navy) 58%);
-  background-size: 320% 100%;
-  background-position: 100% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: pop-sheen 9s var(--ease-in-out) infinite;
+  color: var(--jd-navy);
 }
-body.dark .pop-wordmark {
-  background: linear-gradient(100deg, #cdd6e4 42%, #4ade80 50%, #cdd6e4 58%);
-  background-size: 320% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
+body.dark .pop-wordmark { color: #cdd6e4; }
+.pop-wordmark i {
+  font-style: normal;
+  display: inline-block;
+  animation: pop-glint 13s var(--ease-in-out) infinite;
+  animation-delay: calc(4s + var(--i) * 0.06s);
 }
-@keyframes pop-sheen {
-  0%, 68% { background-position: 100% 0; }
-  88%, 100% { background-position: 0% 0; }
+@keyframes pop-glint {
+  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
+  1.1% { color: #16a34a; transform: translateY(-1.6px); }
+  2.2% { color: inherit; transform: translateY(0); }
+}
+body.dark .pop-wordmark i { animation-name: pop-glint-dark; }
+@keyframes pop-glint-dark {
+  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
+  1.1% { color: #4ade80; transform: translateY(-1.6px); }
+  2.2% { color: inherit; transform: translateY(0); }
 }
 .pop-icon {
   width: 24px;
@@ -260,7 +290,7 @@ body.dark .pop-footer { background: #131e30; }
 body.dark .pop-link:hover { color: #4ade80; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pop-live, .pop-wordmark, .pop-icon svg, .pop-empty-bird, .pop-sk-row, .pop-link-arrow { animation: none; }
+  .pop-live, .pop-live::after, .pop-wordmark i, .pop-icon svg, .pop-empty-bird, .pop-sk-row, .pop-link-arrow { animation: none; }
   .pop-link:hover .pop-link-arrow, .pop-link:active .pop-link-arrow { transform: none; }
   .pop-card { animation: pop-fade 0.2s ease backwards; }
   .pop-spark .spark-draw { animation: none; }

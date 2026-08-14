@@ -222,35 +222,55 @@
   z-index: 4;
 }
 .jd-brand { display: flex; align-items: center; gap: 7px; }
-/* Idle spell: a quiet sheen sweeps the wordmark every ~9s */
+/* Idle spell: a glint travels the letters one at a time — the jackdaw's
+   eye for shiny things, told in motion. Every 13s, ~400ms to pass. */
 .jd-wordmark {
+  display: inline-flex;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  background: linear-gradient(100deg, var(--jd-navy) 42%, #16a34a 50%, var(--jd-navy) 58%);
-  background-size: 320% 100%;
-  background-position: 100% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: jd-sheen 9s var(--ease-in-out) infinite;
+  color: var(--jd-navy);
 }
-@keyframes jd-sheen {
-  0%, 68% { background-position: 100% 0; }
-  88%, 100% { background-position: 0% 0; }
+.jd-wordmark i {
+  font-style: normal;
+  display: inline-block;
+  animation: jd-glint 13s var(--ease-in-out) infinite;
+  animation-delay: calc(4s + var(--i) * 0.06s);
 }
+@keyframes jd-glint {
+  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
+  1.1% { color: #16a34a; transform: translateY(-1.6px); }
+  2.2% { color: inherit; transform: translateY(0); }
+}
+/* lub-dub, then rest — a pulse rather than a notification ping */
 .jd-live {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #6ee7a0, var(--jd-green));
-  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35);
-  animation: jd-live-breathe 3.5s var(--ease-in-out) infinite;
+  animation: jd-live-beat 5s var(--ease-in-out) infinite;
 }
-@keyframes jd-live-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); }
-  50% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
+.jd-live::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid rgba(22, 163, 74, 0.55);
+  opacity: 0;
+  animation: jd-live-echo 5s var(--ease-out) infinite;
+}
+@keyframes jd-live-beat {
+  0%, 100% { transform: scale(1); }
+  4% { transform: scale(1.3); }
+  9% { transform: scale(1); }
+  14% { transform: scale(1.15); }
+  21% { transform: scale(1); }
+}
+@keyframes jd-live-echo {
+  0% { opacity: 0.5; transform: scale(0.9); }
+  24%, 100% { opacity: 0; transform: scale(2.7); }
 }
 .jd-product-name {
   flex: 1;
@@ -873,11 +893,11 @@
 #jackdaw-drawer.jd-dark .mk-stat-value { color: #e6eaf2; }
 #jackdaw-drawer.jd-dark .mk-section-title { color: #cdd6e4; }
 #jackdaw-drawer.jd-dark .mk-comment-body { color: #c4cddb; }
-#jackdaw-drawer.jd-dark .jd-wordmark {
-  background: linear-gradient(100deg, #cdd6e4 42%, #4ade80 50%, #cdd6e4 58%);
-  background-size: 320% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
+#jackdaw-drawer.jd-dark .jd-wordmark i { animation-name: jd-glint-dark; }
+@keyframes jd-glint-dark {
+  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
+  1.1% { color: #4ade80; transform: translateY(-1.6px); }
+  2.2% { color: inherit; transform: translateY(0); }
 }
 #jackdaw-drawer.jd-dark .jd-popover-dollar { color: #e6eaf2; }
 #jackdaw-drawer.jd-dark .jd-tabbar { background: #131e30; border-bottom-color: #1e293e; }
@@ -1273,7 +1293,8 @@
   .jd-live { animation: none; }
   .jd-skeleton > * { animation: none; }
   .mk-input-nudge { animation: none; }
-  .jd-wordmark { animation: none; background-position: 100% 0; }
+  .jd-wordmark i { animation: none; }
+  .jd-live, .jd-live::after { animation: none; }
   .jd-popover { animation: jd-fade 0.15s ease; }
   .jd-ib-expand svg, .jd-ib-share svg, .jd-ib-theme svg, .jd-ib-min svg, .jd-watch.jd-watching svg { animation: none; }
   .jd-coach, .jd-tour, .jd-tour-pop { animation: jd-fade 0.2s ease; }
