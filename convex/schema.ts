@@ -68,7 +68,11 @@ export default defineSchema({
     // read window to active rows keeps a long tail of dead watches from
     // pushing live ones out of check/dashboard's take(50).
     .index("by_device_active", ["deviceId", "active"])
-    .index("by_device_product", ["deviceId", "productDocId"]),
+    .index("by_device_product", ["deviceId", "productDocId"])
+    // Deployment-wide active watches, for the admin panel's aggregate watched
+    // value. Targets change, so that figure is a bounded live sum rather than
+    // a counter.
+    .index("by_active", ["active"]),
 
   devices: defineTable({
     deviceId: v.string(),

@@ -12,6 +12,7 @@ import type * as admin from "../admin.js";
 import type * as comments from "../comments.js";
 import type * as dashboard from "../dashboard.js";
 import type * as lib from "../lib.js";
+import type * as metrics from "../metrics.js";
 import type * as moderation from "../moderation.js";
 import type * as observations from "../observations.js";
 import type * as products from "../products.js";
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   dashboard: typeof dashboard;
   lib: typeof lib;
+  metrics: typeof metrics;
   moderation: typeof moderation;
   observations: typeof observations;
   products: typeof products;

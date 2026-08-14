@@ -1,6 +1,6 @@
 import { internalMutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { initCounter, setCounter, utcDay } from "./lib";
+import { categoryKey, initCounter, setCounter, utcDay } from "./lib";
 
 // Dev utility: wipe all data. Run with `npx convex run admin:clearAll`.
 export const clearAll = internalMutation({
@@ -38,10 +38,11 @@ const SCAN_LIMIT = 1000;
  *    (throws TRUNCATED). A partial scan would clobber an accurate live counter
  *    with an undercount, which is worse than not running — by then the
  *    counters are being maintained on write anyway and need no repair.
- * 2. alerts:armed / alerts:fired are event tallies with no ground truth left
- *    in the data (arming is a transition; acking clears the flag). They are
- *    seeded only when missing — armed from the watches row count, which is the
- *    lower bound, and fired at 0 — and never overwritten afterwards.
+ * 2. alerts:armed / alerts:fired / alerts:clicked are event tallies with no
+ *    ground truth left in the data (arming is a transition; acking clears the
+ *    flag; a click writes nothing but the counter). They are seeded only when
+ *    missing — armed from the watches row count, which is the lower bound, and
+ *    the other two at 0 — and never overwritten afterwards.
  *
  * Note that obs:day is an approximation (see below), so a re-run re-derives
  * the daily observation series rather than preserving what live traffic
@@ -90,12 +91,20 @@ export const backfillCounters = internalMutation({
 
     // A sighting either opens a price point (reportCount 1) or increments an
     // existing one's reportCount, so the sum is the observation total.
+    const categoryOf = new Map(
+      products.map((p) => [p._id, categoryKey(p.category)]),
+    );
     let observations = 0;
     const byStore = new Map<string, number>();
+    const byCategory = new Map<string, number>();
     const obsByDay = new Map<string, number>();
     for (const p of pricePoints) {
       observations += p.reportCount;
       byStore.set(p.storeNum, (byStore.get(p.storeNum) ?? 0) + p.reportCount);
+      const cat = categoryOf.get(p.productDocId) ?? null;
+      if (cat !== null) {
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + p.reportCount);
+      }
       // Approximation: repeat sightings of one price are attributed to the day
       // the point first appeared (the individual timestamps were never kept).
       // The daily series therefore still sums exactly to obs:total.
@@ -122,6 +131,12 @@ export const backfillCounters = internalMutation({
       ...[...byStore].map(
         ([storeNum, count]): [string, number] => [
           `obs:store:${storeNum}`,
+          count,
+        ],
+      ),
+      ...[...byCategory].map(
+        ([category, count]): [string, number] => [
+          `obs:cat:${category}`,
           count,
         ],
       ),
@@ -165,6 +180,7 @@ export const backfillCounters = internalMutation({
     // Event tallies: seed once, never clobber (see the note above).
     await initCounter(ctx, "alerts:armed", watches.length);
     await initCounter(ctx, "alerts:fired", 0);
+    await initCounter(ctx, "alerts:clicked", 0);
 
     return {
       products: products.length,
@@ -173,7 +189,7 @@ export const backfillCounters = internalMutation({
       comments: comments.length,
       reports: reports.length,
       watches: watches.length,
-      countersWritten: derived.length + 2 + zeroed,
+      countersWritten: derived.length + 3 + zeroed,
     };
   },
 });

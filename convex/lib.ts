@@ -39,6 +39,11 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Global (not per-device) ceiling on admin traffic. Read the note above
   // enforceAdminRateLimit before treating this as anti-guessing protection.
   adminAuth: { kind: "token bucket", rate: 20, period: MINUTE },
+  // Alert click-throughs carry no identifier at all (by design — see
+  // metrics.ts), so there is nothing to key a per-device bucket on. A single
+  // global bucket is the only option, which also makes it a ceiling on the
+  // metric itself: at most 1,440 clicks/day can ever be recorded.
+  alertClick: { kind: "token bucket", rate: 60, period: HOUR },
 });
 
 export type RateLimitName =
@@ -46,6 +51,28 @@ export type RateLimitName =
   | "commentVote"
   | "commentReport"
   | "priceReport";
+
+/**
+ * Consume one token from the named per-device bucket and report whether the
+ * caller is within budget, WITHOUT throwing.
+ *
+ * This exists so a rejection can be counted. A mutation that throws rolls back
+ * its whole transaction, so a counter bumped on the way out of a throwing
+ * handler is discarded (proven on dev — see enforceAdminRateLimit's note and
+ * the abuse-counter comment in observations.ts). Returning the verdict instead
+ * lets the handler record the rejection and still refuse the write.
+ *
+ * Only use this where the caller tolerates a structured refusal; anything the
+ * UI surfaces an error message for should keep using enforceRateLimit.
+ */
+export async function tryRateLimit(
+  ctx: MutationCtx,
+  name: RateLimitName,
+  deviceId: string,
+): Promise<boolean> {
+  const { ok } = await rateLimiter.limit(ctx, name, { key: deviceId });
+  return ok;
+}
 
 /**
  * Consume one token from the named per-device bucket, or throw
@@ -166,6 +193,17 @@ export async function checkAdminRateLimit(ctx: QueryCtx): Promise<void> {
 /** UTC calendar day (YYYY-MM-DD) for a millisecond timestamp. */
 export function utcDay(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
+}
+
+/**
+ * Normalize a Micro Center category into a counter key segment: trimmed,
+ * lowercased, capped at 60 chars. Returns null when there's nothing usable,
+ * so callers skip the bump rather than creating an "obs:cat:" empty bucket.
+ */
+export function categoryKey(raw: string | undefined): string | null {
+  if (raw === undefined) return null;
+  const cleaned = sanitize(raw).toLowerCase().slice(0, 60).trim();
+  return cleaned.length === 0 ? null : cleaned;
 }
 
 /**

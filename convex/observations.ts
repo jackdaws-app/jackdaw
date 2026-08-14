@@ -1,6 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
-import { bump, enforceRateLimit, requireLength, sanitize, utcDay } from "./lib";
+import {
+  bump,
+  categoryKey,
+  requireLength,
+  sanitize,
+  tryRateLimit,
+  utcDay,
+} from "./lib";
 
 const THROTTLE_MS = 60_000;
 
@@ -21,7 +28,15 @@ export const report = mutation({
     mpn: v.optional(v.string()),
     ean: v.optional(v.string()),
   },
-  returns: v.object({ ok: v.boolean(), throttled: v.boolean() }),
+  // `rateLimited` refuses the write in-band instead of throwing, which is what
+  // makes the abuse counter below possible. Safe here because the only caller
+  // discards the result (content.js fires `send({type:"report"})` without
+  // awaiting it); anything the UI shows an error for must keep throwing.
+  returns: v.object({
+    ok: v.boolean(),
+    throttled: v.boolean(),
+    rateLimited: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     // Validate numeric input.
     if (!Number.isFinite(args.price) || args.price <= 0 || args.price >= 100_000) {
@@ -75,11 +90,20 @@ export const report = mutation({
       device.lastReportAt !== undefined &&
       now - device.lastReportAt < THROTTLE_MS
     ) {
-      return { ok: true, throttled: true };
+      return { ok: true, throttled: true, rateLimited: false };
     }
 
     // Global per-device cap on price reports (token bucket, 120/hour).
-    await enforceRateLimit(ctx, "priceReport", deviceId);
+    //
+    // Refused in-band rather than thrown, purely so the rejection can be
+    // counted: a throw would roll back the transaction and take the counter
+    // bump with it (verified empirically on dev — scheduling an internal
+    // mutation before the throw is cancelled the same way). The write is
+    // refused either way; only the signalling differs.
+    if (!(await tryRateLimit(ctx, "priceReport", deviceId))) {
+      await bump(ctx, `abuse:ratelimited:day:${utcDay(now)}`);
+      return { ok: false, throttled: false, rateLimited: true };
+    }
 
     if (device === null) {
       await ctx.db.insert("devices", {
@@ -176,7 +200,11 @@ export const report = mutation({
     await bump(ctx, "obs:total");
     await bump(ctx, `obs:store:${storeNum}`);
     await bump(ctx, `obs:day:${utcDay(now)}`);
+    // Category mix, for the partnership pitch. Keyed off the normalized
+    // category so "Solid State Drives" and "solid state drives" are one row.
+    const catKey = categoryKey(category);
+    if (catKey !== null) await bump(ctx, `obs:cat:${catKey}`);
 
-    return { ok: true, throttled: false };
+    return { ok: true, throttled: false, rateLimited: false };
   },
 });
