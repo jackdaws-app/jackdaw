@@ -232,14 +232,14 @@
   // A stylized jackdaw in flight, facing its direction of travel:
   // black body, grey nape, pale eye, two independently flapping wings.
   const BIRD_SVG =
-    `<svg class="jd-flight-bird" viewBox="0 0 64 44" fill="none" aria-hidden="true"><g class="jd-bob">` +
-    `<path class="jd-w2" d="M26 20 Q31 4 46 2 Q37 12 32 20 Z" fill="#0d1626" opacity=".85"/>` +
-    `<path d="M2 20 L15 16 L15 25 L2 27 Z" fill="#1a1d23"/>` + // tail fan
-    `<path d="M12 22 Q26 13 42 15 Q52 16 57 21 Q52 27 40 28 Q24 30 12 26 Z" fill="#1a1d23"/>` + // body+head
-    `<path d="M55 19.5 L63 22.5 L55 24.5 Z" fill="#3d434c"/>` + // beak
-    `<path d="M40 14.5 Q47 12.5 53 16 Q47 15.5 41 16.5 Z" fill="#8b95a3"/>` + // grey nape
-    `<circle cx="53.5" cy="19.5" r="1.4" fill="#e8edf4"/>` + // pale eye
-    `<path class="jd-w1" d="M24 21 Q32 2 54 1 Q41 13 33 21 Z" fill="#16233a"/>` +
+    `<svg class="jd-flight-bird" viewBox="0 -4 66 48" fill="none" aria-hidden="true"><g class="jd-bob">` +
+    `<path class="jd-w2" d="M29 19 Q33 9 41 5 Q46 3 50 3 L46 7 L41 10 L36 13 Q32 16 29 19 Z" fill="#0d1626" opacity=".8"/>` + // far wing (feathered)
+    `<path d="M2 17.5 L16 16 L13 19.5 L16.5 19.5 L13.5 23 L17 23 L15 26 L3 25 Z" fill="#1a1d23"/>` + // notched fan tail
+    `<path d="M13 24 Q18 15.5 30 14 Q42 12.5 50 15.5 Q56 17.5 58.5 21 Q55.5 26.5 46 28 Q30 30.5 17 27 Q14 26 13 24 Z" fill="#1a1d23"/>` + // body+head
+    `<path d="M57.5 19.5 L63.5 22 L57 24 Q58 21.8 57.5 19.5 Z" fill="#3d434c"/>` + // short corvid beak
+    `<path d="M44 14.8 Q50 13.8 55 17 Q56.5 18.6 57 20.3 Q52 16.8 45.5 16.5 Z" fill="#8b95a3"/>` + // silver nape
+    `<circle cx="54.2" cy="19.6" r="1.5" fill="#e8edf4"/><circle cx="54.6" cy="19.6" r=".7" fill="#0d1626"/>` + // pale iris + pupil
+    `<path class="jd-w1" d="M27 20 Q33 9 43 4 Q49 1 55 1 L50 6 L44 10 L38 14 Q31 17 27 20 Z" fill="#16233a"/>` + // near wing (feathered)
     `</g></svg>`;
 
   // The jackdaw flies in and becomes the banner. Full flight on the very

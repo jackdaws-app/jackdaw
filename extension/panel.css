@@ -965,16 +965,16 @@
    → recovery. The body bobs against the wingbeat (bodies rise on the
    downstroke). Finite cycles, then wings lock into a glide for touchdown. */
 @keyframes jd-wing-front {
-  0%, 100% { d: path("M24 21 Q30 -2 52 -2 Q40 12 33 21 Z"); }
-  30% { d: path("M24 21 Q40 14 61 17 Q44 21 33 22 Z"); }
-  55% { d: path("M24 21 Q36 31 53 38 Q40 29 32 22 Z"); }
-  78% { d: path("M24 21 Q33 10 50 6 Q40 15 32 21 Z"); }
+  0%, 100% { d: path("M27 20 Q30 8 38 1 Q42 -2 47 -3 L44 3 L40 8 L36 12 Q31 16 27 20 Z"); }
+  30% { d: path("M27 20 Q37 13 48 11 Q55 10 61 11 L54 14 L47 17 L39 19 Q32 20 27 20 Z"); }
+  55% { d: path("M27 20 Q31 28 38 34 Q42 37 46 40 L43 33 L39 28 L35 24 Q30 21 27 20 Z"); }
+  78% { d: path("M27 20 Q31 11 38 6 Q42 3 46 2 L43 7 L39 11 L35 14 Q30 17 27 20 Z"); }
 }
 @keyframes jd-wing-back {
-  0%, 100% { d: path("M26 20 Q30 2 44 0 Q36 11 32 20 Z"); }
-  30% { d: path("M26 20 Q38 13 52 15 Q40 19 32 21 Z"); }
-  55% { d: path("M26 20 Q34 28 46 33 Q36 26 31 21 Z"); }
-  78% { d: path("M26 20 Q31 8 44 4 Q36 13 31 20 Z"); }
+  0%, 100% { d: path("M29 19 Q31 9 37 3 Q40 0 44 -1 L41 4 L38 8 L34 12 Q31 15 29 19 Z"); }
+  30% { d: path("M29 19 Q37 14 45 12 Q51 11 55 12 L49 14 L43 16 L37 18 Q32 19 29 19 Z"); }
+  55% { d: path("M29 19 Q32 25 37 30 Q40 33 43 35 L40 29 L37 25 L33 22 Q30 20 29 19 Z"); }
+  78% { d: path("M29 19 Q32 12 37 8 Q40 5 43 4 L40 8 L37 11 L34 14 Q31 16 29 19 Z"); }
 }
 @keyframes jd-bob {
   0%, 100% { transform: translateY(1.6px); }
@@ -986,8 +986,12 @@
 .jd-flight-mini .jd-w1 { animation: jd-wing-front 0.42s linear 2; }
 .jd-flight-mini .jd-w2 { animation: jd-wing-back 0.42s linear 0.07s 2; }
 .jd-flight-mini .jd-bob { animation: jd-bob 0.42s ease-in-out 2; }
-/* touchdown: a tiny settle, then the bird is absorbed by the growing banner */
+/* touchdown: wings flare up (real corvids brake with raised wings), a tiny
+   settle, then the bird is absorbed by the growing banner */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
+.jd-flight .jd-w1, .jd-flight .jd-w2 { transition: d 0.18s ease-out; }
+.jd-flight.jd-land .jd-w1 { d: path("M27 20 Q30 8 38 1 Q42 -2 47 -3 L44 3 L40 8 L36 12 Q31 16 27 20 Z"); }
+.jd-flight.jd-land .jd-w2 { d: path("M29 19 Q31 9 37 3 Q40 0 44 -1 L41 4 L38 8 L34 12 Q31 15 29 19 Z"); }
 .jd-flight.jd-bird-out {
   opacity: 0;
   transform: scale(0.2);
