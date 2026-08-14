@@ -62,6 +62,12 @@ export default defineSchema({
     productDocId: v.id("products"),
     priceAtWatch: v.number(),
     active: v.boolean(),
+    // Set when the device signs in (auth:verifyCode adopts the device's
+    // existing watches). Optional forever: anonymous use is the default and
+    // must keep working untouched, so every read path still keys off deviceId
+    // and this field is additive — a second handle on the same row, never a
+    // replacement for the first.
+    accountId: v.optional(v.id("accounts")),
   })
     // Watches are soft-deactivated (toggle/ack set active:false rather than
     // deleting), so a device's row count grows without bound. Scoping the
@@ -72,13 +78,73 @@ export default defineSchema({
     // Deployment-wide active watches, for the admin panel's aggregate watched
     // value. Targets change, so that figure is a bounded live sum rather than
     // a counter.
-    .index("by_active", ["active"]),
+    .index("by_active", ["active"])
+    // Account-scoped reads: the sign-out/delete unlink sweep today, and
+    // cross-device watch sync once the client learns about accounts. Same
+    // active-first shape as by_device_active, for the same reason.
+    .index("by_account_active", ["accountId", "active"]),
 
   devices: defineTable({
     deviceId: v.string(),
     lastReportKey: v.optional(v.string()),
     lastReportAt: v.optional(v.number()),
   }).index("by_deviceId", ["deviceId"]),
+
+  // -------------------------------------------------------------------------
+  // Optional accounts
+  //
+  // Identity in Jackdaw is the anonymous deviceId in browser storage, and it
+  // stays that way: nothing below is required to use anything. An account
+  // exists for exactly one reason — clearing browser data currently destroys a
+  // person's alerts with no way back — so it is a durable handle that ADOPTS
+  // what the device already has (auth:verifyCode), never a gate in front of it.
+  //
+  // The email address is the only personal data Jackdaw has ever stored, which
+  // is why deleteAccount removes the row outright and merely unlinks the
+  // watches: deleting the account must not cost an anonymous user the alerts
+  // they had before they ever signed in.
+  // -------------------------------------------------------------------------
+
+  accounts: defineTable({
+    // Lowercased and trimmed before both storage and lookup, so "A@b.com" and
+    // "a@b.com " are one account rather than two.
+    email: v.string(),
+    createdAt: v.number(),
+    lastLoginAt: v.number(),
+  }).index("by_email", ["email"]),
+
+  // A session is a bearer token: whoever holds it is the account. Only the
+  // hash is ever stored, so a database dump is not a pile of live credentials —
+  // the token itself is returned to the client exactly once, by verifyCode.
+  sessions: defineTable({
+    accountId: v.id("accounts"),
+    tokenHash: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    lastUsedAt: v.number(),
+  })
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_account", ["accountId"]),
+
+  // One live code per email (storeCode replaces rather than appends), hashed
+  // the same way sessions are. `attempts` is what makes a 6-digit secret
+  // defensible at all: the code dies after MAX_CODE_ATTEMPTS wrong guesses,
+  // which is why auth:consumeCode returns its verdict in-band instead of
+  // throwing — a throwing mutation would roll the increment back and hand an
+  // attacker unlimited guesses at a one-in-a-million number.
+  loginCodes: defineTable({
+    email: v.string(),
+    codeHash: v.string(),
+    expiresAt: v.number(),
+    attempts: v.number(),
+    consumedAt: v.optional(v.number()),
+    // DEVELOPMENT ONLY. Written by auth:sendCode solely when RESEND_API_KEY is
+    // unset — i.e. when there is no mail provider to deliver the code and
+    // `npx convex run auth:devPeekCode` is the only way to read it. A
+    // deployment with mail configured never populates this field, so the
+    // plaintext of a live code is never at rest in production.
+    devCode: v.optional(v.string()),
+  }).index("by_email", ["email"]),
 
   // Incremental metrics for the admin panel. Every number the dashboard shows
   // is maintained on write, because counting on demand (e.g. all pricePoints)

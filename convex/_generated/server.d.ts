@@ -26,6 +26,9 @@ import type { DataModel } from "./dataModel.js";
  */
 type Env = {
   readonly ADMIN_KEY: string | undefined;
+  readonly AUTH_PEPPER: string | undefined;
+  readonly JACKDAW_FROM_EMAIL: string | undefined;
+  readonly RESEND_API_KEY: string | undefined;
 };
 
 /**

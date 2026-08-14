@@ -55,6 +55,21 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // every panel breaks at once is the moment every client has something to
   // flush. Raise this before the user base reaches it, not after.
   clientEvents: { kind: "token bucket", rate: 3000, period: HOUR },
+  // Sign-in codes, keyed on the normalized email. Five an hour is generous for
+  // a human who mistyped or lost the first mail, and low enough that this
+  // endpoint can't be used to mailbomb a stranger — requestCode sends to any
+  // syntactically valid address, so the address itself is the only thing worth
+  // keying on.
+  authCodeRequest: { kind: "token bucket", rate: 5, period: HOUR },
+  // Deployment-wide ceiling on the same endpoint, consumed only after the
+  // per-email bucket allows the request, so one hammered address can never
+  // drain everyone else's budget. This is the bill-shock stop: 200 sends/hour
+  // is the most Jackdaw can ever be made to pay Resend for.
+  authCodeGlobal: { kind: "token bucket", rate: 200, period: HOUR },
+  // Verify attempts per email. The per-code `attempts` field (5, then the code
+  // is dead) is the real defence; this is the outer bound that stops an
+  // attacker cycling fresh codes to buy fresh attempt budgets.
+  authVerify: { kind: "token bucket", rate: 10, period: HOUR },
 });
 
 export type RateLimitName =
@@ -117,8 +132,12 @@ const ADMIN_BUCKET_KEY = "admin";
 /**
  * Length check, then a full XOR sweep of every char code — no early return, so
  * the comparison doesn't leak the matching prefix length through timing.
+ *
+ * Exported because every secret comparison in the codebase has to go through
+ * one implementation: the admin key here, and the sign-in code hash in
+ * auth.ts.
  */
-function secretsMatch(a: string, b: string): boolean {
+export function secretsMatch(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) {
@@ -195,6 +214,112 @@ export async function checkAdminRateLimit(ctx: QueryCtx): Promise<void> {
       retryAfter,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Optional accounts: email normalization, secret hashing, session lookup
+// ---------------------------------------------------------------------------
+
+const MAX_EMAIL_LENGTH = 254; // RFC 5321 practical ceiling
+// Deliberately permissive: one @, no whitespace, a dot-bearing domain. The
+// authoritative validity test for an address is whether a code sent to it ever
+// comes back, and a regex strict enough to satisfy a spec lawyer mostly
+// succeeds at rejecting real people's real addresses.
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+
+/**
+ * Lowercase, trim, and shape-check an address. One normalization used by both
+ * storage and lookup, so "A@B.com " and "a@b.com" can never become two
+ * accounts. Throws ConvexError { code: "INVALID_ARGUMENT" }.
+ */
+export function normalizeEmail(raw: string): string {
+  const cleaned = sanitize(raw).toLowerCase();
+  if (
+    cleaned.length === 0 ||
+    cleaned.length > MAX_EMAIL_LENGTH ||
+    !EMAIL_SHAPE.test(cleaned)
+  ) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: "that doesn't look like an email address",
+    });
+  }
+  return cleaned;
+}
+
+const encoder = new TextEncoder();
+
+// HMAC needs a key, and a zero-length one is rejected outright by some Web
+// Crypto implementations — so an unset pepper falls back to this constant
+// rather than "". It is in the public source and provides exactly no secrecy;
+// it exists so the unconfigured path is a weaker hash, not a crash.
+const UNPEPPERED = "jackdaw-no-pepper-configured";
+
+/**
+ * Keyed digest of a secret, hex encoded. HMAC-SHA256 with AUTH_PEPPER as the
+ * key, so the stored hash is only reversible by someone who has the pepper as
+ * well as the database.
+ *
+ * That distinction is the whole point for sign-in codes: a plain SHA-256 of a
+ * 6-digit number is a table of a million entries anybody can build, which is
+ * to say no protection at all. Session tokens carry 256 bits of entropy and
+ * would be safe unhashed-but-unguessable either way; they go through the same
+ * function so there is one construction to reason about instead of two.
+ */
+export async function hashSecret(secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(env.AUTH_PEPPER ?? UNPEPPERED),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(secret));
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** 90 days, refreshed on use — see auth:touch. */
+export const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+// A real token is 64 hex characters. The cap is only here so a caller can't
+// make the server hash a megabyte of junk.
+const MAX_SESSION_TOKEN_LENGTH = 200;
+
+/**
+ * The session row for a bearer token, expired or not. Only signOut should want
+ * this — deleting a stale row is still worth doing. Everything else wants
+ * {@link resolveSession}.
+ */
+export async function sessionByToken(ctx: QueryCtx, sessionToken: string) {
+  if (
+    sessionToken.length === 0 ||
+    sessionToken.length > MAX_SESSION_TOKEN_LENGTH
+  ) {
+    return null;
+  }
+  const tokenHash = await hashSecret(sessionToken);
+  return await ctx.db
+    .query("sessions")
+    .withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash))
+    .unique();
+}
+
+/**
+ * Resolve a bearer token to its live session and account, or null.
+ *
+ * Null covers every failure the same way — malformed, unknown, expired, or
+ * pointing at an account that has since been deleted — because the caller's
+ * only useful question is "is this person signed in", and a signed-out client
+ * is a normal state rather than an error.
+ */
+export async function resolveSession(ctx: QueryCtx, sessionToken: string) {
+  const session = await sessionByToken(ctx, sessionToken);
+  if (session === null || session.expiresAt <= Date.now()) return null;
+  const account = await ctx.db.get(session.accountId);
+  if (account === null) return null;
+  return { session, account };
 }
 
 // ---------------------------------------------------------------------------
