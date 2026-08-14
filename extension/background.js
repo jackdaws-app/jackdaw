@@ -97,8 +97,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 chrome.notifications.onClicked.addListener((notificationId) => {
-  if (notificationId.startsWith("/")) {
-    chrome.tabs.create({ url: "https://www.microcenter.com" + notificationId });
-    chrome.notifications.clear(notificationId);
-  }
+  if (!notificationId.startsWith("/")) return;
+  chrome.tabs.create({ url: "https://www.microcenter.com" + notificationId });
+  chrome.notifications.clear(notificationId);
+  // A click is the one moment we can honestly say Jackdaw sent someone to a
+  // store's product page. Counted in aggregate only (no device, no product).
+  convexMutation("metrics:alertClicked", {}).catch(() => {});
 });

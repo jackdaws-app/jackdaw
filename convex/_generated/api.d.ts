@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as comments from "../comments.js";
+import type * as dashboard from "../dashboard.js";
 import type * as lib from "../lib.js";
 import type * as moderation from "../moderation.js";
 import type * as observations from "../observations.js";
@@ -26,6 +27,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   comments: typeof comments;
+  dashboard: typeof dashboard;
   lib: typeof lib;
   moderation: typeof moderation;
   observations: typeof observations;

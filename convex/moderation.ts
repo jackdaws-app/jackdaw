@@ -1,5 +1,6 @@
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { flaggedComments, resolveCommentReport } from "./lib";
 
 /**
  * Admin-only (run via `npx convex run moderation:flagged`): comments with at
@@ -19,12 +20,8 @@ export const flagged = internalQuery({
     }),
   ),
   handler: async (ctx) => {
-    const rows = await ctx.db
-      .query("comments")
-      .withIndex("by_reportCount", (q) => q.gte("reportCount", 1))
-      .take(500);
-    rows.sort((a, b) => b._creationTime - a._creationTime);
-    return rows.slice(0, 100).map((c) => ({
+    const rows = await flaggedComments(ctx);
+    return rows.map((c) => ({
       _id: c._id,
       _creationTime: c._creationTime,
       productDocId: c.productDocId,
@@ -41,6 +38,9 @@ export const flagged = internalQuery({
  * - "unhide": clear hidden + reportCount and delete the comment's reports.
  * - "delete": remove the comment, its reports and votes, and re-parent its
  *   direct children to the deleted comment's parent (or top level).
+ *
+ * The implementation lives in lib.ts so the CLI path here and the key-gated
+ * `dashboard:resolve` used by the web panel can never drift apart.
  */
 export const resolve = internalMutation({
   args: {
@@ -49,46 +49,7 @@ export const resolve = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const comment = await ctx.db.get(args.commentId);
-    if (comment === null) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "unknown comment" });
-    }
-
-    const reports = await ctx.db
-      .query("reports")
-      .withIndex("by_comment", (q) => q.eq("commentId", args.commentId))
-      .collect();
-    for (const r of reports) {
-      await ctx.db.delete(r._id);
-    }
-
-    if (args.action === "unhide") {
-      await ctx.db.patch(args.commentId, {
-        hidden: undefined,
-        reportCount: undefined,
-      });
-      return null;
-    }
-
-    // action === "delete"
-    const votes = await ctx.db
-      .query("votes")
-      .withIndex("by_comment", (q) => q.eq("commentId", args.commentId))
-      .collect();
-    for (const voteRow of votes) {
-      await ctx.db.delete(voteRow._id);
-    }
-
-    // Re-parent direct children so threads don't orphan.
-    const children = await ctx.db
-      .query("comments")
-      .withIndex("by_parent", (q) => q.eq("parentId", args.commentId))
-      .collect();
-    for (const child of children) {
-      await ctx.db.patch(child._id, { parentId: comment.parentId });
-    }
-
-    await ctx.db.delete(args.commentId);
+    await resolveCommentReport(ctx, args.commentId, args.action);
     return null;
   },
 });

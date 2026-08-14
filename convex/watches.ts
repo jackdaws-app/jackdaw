@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireLength } from "./lib";
+import { bump, requireLength } from "./lib";
 
 // Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
@@ -70,6 +70,11 @@ export const toggle = mutation({
         active: true,
       });
     }
+    // Reaching this branch always means the watch went from off to on (the
+    // already-active case returned above), which is the same "alert armed"
+    // event setTarget records — the bell arms watches too, so counting only
+    // setTarget would undercount.
+    await bump(ctx, "alerts:armed");
     return { watching: true };
   },
 });
@@ -109,6 +114,10 @@ export const setTarget = mutation({
       )
       .first();
 
+    // Arming is create-or-reactivate; re-pricing an already-armed watch is an
+    // edit, not a new alert, so it must not bump the tally.
+    const armed = existing === null || !existing.active;
+
     if (existing !== null) {
       await ctx.db.patch(existing._id, {
         priceAtWatch: args.targetPrice,
@@ -122,6 +131,9 @@ export const setTarget = mutation({
         active: true,
       });
     }
+
+    if (armed) await bump(ctx, "alerts:armed");
+
     return { watching: true as const, target: args.targetPrice };
   },
 });
@@ -368,6 +380,9 @@ export const ack = mutation({
     // accepted (and validated) only for wire compatibility.
     if (watch !== null) {
       await ctx.db.patch(watch._id, { active: false });
+      // Only an armed watch can fire; acking a watch that is already off is a
+      // duplicate notification dismissal, not a second alert.
+      if (watch.active) await bump(ctx, "alerts:fired");
     }
     return null;
   },

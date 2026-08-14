@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
-import { enforceRateLimit, requireLength, sanitize } from "./lib";
+import { bump, enforceRateLimit, requireLength, sanitize, utcDay } from "./lib";
 
 const THROTTLE_MS = 60_000;
 
@@ -87,6 +87,7 @@ export const report = mutation({
         lastReportKey: reportKey,
         lastReportAt: now,
       });
+      await bump(ctx, "devices:total");
     } else {
       await ctx.db.patch(device._id, { lastReportKey: reportKey, lastReportAt: now });
     }
@@ -108,6 +109,7 @@ export const report = mutation({
         ean,
         urlPath,
       });
+      await bump(ctx, "products:total");
     } else {
       productDocId = existing._id;
       const patch: Record<string, string> = {};
@@ -164,7 +166,16 @@ export const report = mutation({
         lastSeenAt: now,
         reportCount: 1,
       });
+      await bump(ctx, "pricepoints:total");
     }
+
+    // Both branches above are a real sighting — an unchanged price bumps the
+    // existing row's reportCount, a changed one opens a new row — so the
+    // observation counters advance either way. Everything that returns before
+    // here (throttled repeat, rate limit, validation) is deliberately silent.
+    await bump(ctx, "obs:total");
+    await bump(ctx, `obs:store:${storeNum}`);
+    await bump(ctx, `obs:day:${utcDay(now)}`);
 
     return { ok: true, throttled: false };
   },

@@ -1,6 +1,12 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { enforceRateLimit, requireCleanContent, requireLength } from "./lib";
+import {
+  bump,
+  enforceRateLimit,
+  requireCleanContent,
+  requireLength,
+  utcDay,
+} from "./lib";
 
 const AUTO_HIDE_REPORT_THRESHOLD = 3;
 
@@ -120,7 +126,7 @@ export const add = mutation({
       }
     }
 
-    return await ctx.db.insert("comments", {
+    const commentId = await ctx.db.insert("comments", {
       productDocId: product._id,
       deviceId,
       displayName,
@@ -129,6 +135,11 @@ export const add = mutation({
       voteCount: 0,
       parentId: args.parentId,
     });
+
+    await bump(ctx, "comments:total");
+    await bump(ctx, `comments:day:${utcDay(Date.now())}`);
+
+    return commentId;
   },
 });
 
@@ -226,6 +237,13 @@ export const report = mutation({
       reportCount,
       ...(reportCount >= AUTO_HIDE_REPORT_THRESHOLD ? { hidden: true } : {}),
     });
+
+    await bump(ctx, "reports:total");
+    // Count the transition, not the state: a comment already hidden (or
+    // re-reported past the threshold) must not bump the tally again.
+    if (reportCount >= AUTO_HIDE_REPORT_THRESHOLD && comment.hidden !== true) {
+      await bump(ctx, "comments:hidden");
+    }
 
     return { ok: true, alreadyReported: false };
   },

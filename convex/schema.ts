@@ -75,4 +75,23 @@ export default defineSchema({
     lastReportKey: v.optional(v.string()),
     lastReportAt: v.optional(v.number()),
   }).index("by_deviceId", ["deviceId"]),
+
+  // Incremental metrics for the admin panel. Every number the dashboard shows
+  // is maintained on write, because counting on demand (e.g. all pricePoints)
+  // would blow the ~16k document read limit as history accumulates.
+  //
+  // Keys are namespaced and ordered so a prefix range read is possible:
+  //   obs:total · obs:store:<storeNum> · obs:day:<YYYY-MM-DD>
+  //   pricepoints:total · products:total · devices:total
+  //   comments:total · comments:day:<YYYY-MM-DD> · comments:hidden
+  //   reports:total · alerts:armed · alerts:fired
+  //
+  // These are plain documents, so a single key is a contention point under
+  // heavy concurrent writes. At Jackdaw's volume (one report per device per
+  // product per minute) that's far from an issue; if "obs:total" ever starts
+  // throwing OCC conflicts, move the hot keys to @convex-dev/sharded-counter.
+  counters: defineTable({
+    key: v.string(),
+    value: v.number(),
+  }).index("by_key", ["key"]),
 });

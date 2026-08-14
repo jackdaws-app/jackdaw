@@ -1,7 +1,9 @@
 import { ConvexError } from "convex/values";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
-import type { MutationCtx } from "./_generated/server";
+import { env } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 /** Strip C0/C1 control characters (incl. DEL) and trim. */
 export function sanitize(s: string): string {
@@ -34,6 +36,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   commentVote: { kind: "token bucket", rate: 30, period: MINUTE },
   commentReport: { kind: "token bucket", rate: 10, period: HOUR },
   priceReport: { kind: "token bucket", rate: 120, period: HOUR },
+  // Global (not per-device) bucket in front of the admin panel, so a stolen
+  // URL can't be used to grind at ADMIN_KEY.
+  adminAuth: { kind: "token bucket", rate: 20, period: MINUTE },
 });
 
 export type RateLimitName =
@@ -61,6 +66,226 @@ export async function enforceRateLimit(
       retryAfter,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Admin authentication (shared secret, for the jackdaws.app/admin.html panel)
+// ---------------------------------------------------------------------------
+
+// One fixed bucket key: the point is to cap admin attempts deployment-wide,
+// not per caller (a brute-forcer would just rotate their own key).
+const ADMIN_BUCKET_KEY = "admin";
+
+/**
+ * Length check, then a full XOR sweep of every char code — no early return, so
+ * the comparison doesn't leak the matching prefix length through timing.
+ */
+function secretsMatch(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * Gate an admin function on the shared secret. Fails closed: when ADMIN_KEY is
+ * unset on the deployment, every call is UNAUTHORIZED rather than open.
+ * Throws ConvexError { code: "UNAUTHORIZED" }.
+ */
+export function requireAdmin(key: string): void {
+  const expected = env.ADMIN_KEY;
+  if (expected === undefined || expected.length === 0) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: "admin access is not configured",
+    });
+  }
+  if (!secretsMatch(key, expected)) {
+    throw new ConvexError({
+      code: "UNAUTHORIZED",
+      message: "invalid admin key",
+    });
+  }
+}
+
+/**
+ * Consume one adminAuth token (mutations only — this writes). Call BEFORE
+ * requireAdmin so failed attempts are what drains the bucket.
+ */
+export async function enforceAdminRateLimit(ctx: MutationCtx): Promise<void> {
+  const { ok, retryAfter } = await rateLimiter.limit(ctx, "adminAuth", {
+    key: ADMIN_BUCKET_KEY,
+  });
+  if (!ok) {
+    throw new ConvexError({
+      code: "RATE_LIMITED",
+      message: "Too many admin requests — slow down",
+      retryAfter,
+    });
+  }
+}
+
+/**
+ * Read-only variant for admin queries. Convex queries cannot write, so this
+ * cannot consume a token — it only refuses to serve while the shared bucket is
+ * already drained by admin mutations. The real barrier on a query is the
+ * 256-bit key compared by {@link requireAdmin}; this is depth, not the wall.
+ */
+export async function checkAdminRateLimit(ctx: QueryCtx): Promise<void> {
+  const { ok, retryAfter } = await rateLimiter.check(ctx, "adminAuth", {
+    key: ADMIN_BUCKET_KEY,
+  });
+  if (!ok) {
+    throw new ConvexError({
+      code: "RATE_LIMITED",
+      message: "Too many admin requests — slow down",
+      retryAfter,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Metrics counters
+// ---------------------------------------------------------------------------
+
+/** UTC calendar day (YYYY-MM-DD) for a millisecond timestamp. */
+export function utcDay(ts: number): string {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+/** Add `delta` to the named counter, creating the row on first sighting. */
+export async function bump(
+  ctx: MutationCtx,
+  key: string,
+  delta = 1,
+): Promise<void> {
+  const row = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  if (row === null) {
+    await ctx.db.insert("counters", { key, value: delta });
+  } else {
+    await ctx.db.patch(row._id, { value: row.value + delta });
+  }
+}
+
+/** Overwrite the named counter (used by the idempotent backfill). */
+export async function setCounter(
+  ctx: MutationCtx,
+  key: string,
+  value: number,
+): Promise<void> {
+  const row = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  if (row === null) {
+    await ctx.db.insert("counters", { key, value });
+  } else if (row.value !== value) {
+    await ctx.db.patch(row._id, { value });
+  }
+}
+
+/**
+ * Create the counter at `value` if it doesn't exist yet; leave an existing row
+ * untouched. For event tallies the current data can't reconstruct, so a repeat
+ * backfill can't wipe what live traffic has since accumulated.
+ */
+export async function initCounter(
+  ctx: MutationCtx,
+  key: string,
+  value: number,
+): Promise<void> {
+  const row = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  if (row === null) {
+    await ctx.db.insert("counters", { key, value });
+  }
+}
+
+/** Read a counter, treating a missing row as 0. */
+export async function readCounter(ctx: QueryCtx, key: string): Promise<number> {
+  const row = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  return row === null ? 0 : row.value;
+}
+
+// ---------------------------------------------------------------------------
+// Moderation (shared by the internal moderation:* CLI functions and the
+// authenticated dashboard:* panel functions — one implementation, two doors)
+// ---------------------------------------------------------------------------
+
+/**
+ * Comments with at least one report, newest first, up to 100. The index range
+ * excludes never-reported comments (their reportCount is undefined, which
+ * sorts below 1), so this stays bounded as the table grows.
+ */
+export async function flaggedComments(ctx: QueryCtx) {
+  const rows = await ctx.db
+    .query("comments")
+    .withIndex("by_reportCount", (q) => q.gte("reportCount", 1))
+    .take(500);
+  rows.sort((a, b) => b._creationTime - a._creationTime);
+  return rows.slice(0, 100);
+}
+
+/**
+ * - "unhide": clear hidden + reportCount and delete the comment's reports.
+ * - "delete": remove the comment, its reports and votes, and re-parent its
+ *   direct children to the deleted comment's parent (or top level).
+ */
+export async function resolveCommentReport(
+  ctx: MutationCtx,
+  commentId: Id<"comments">,
+  action: "unhide" | "delete",
+): Promise<void> {
+  const comment = await ctx.db.get(commentId);
+  if (comment === null) {
+    throw new ConvexError({ code: "NOT_FOUND", message: "unknown comment" });
+  }
+
+  const reports = await ctx.db
+    .query("reports")
+    .withIndex("by_comment", (q) => q.eq("commentId", commentId))
+    .collect();
+  for (const r of reports) {
+    await ctx.db.delete(r._id);
+  }
+
+  if (action === "unhide") {
+    await ctx.db.patch(commentId, {
+      hidden: undefined,
+      reportCount: undefined,
+    });
+    return;
+  }
+
+  // action === "delete"
+  const votes = await ctx.db
+    .query("votes")
+    .withIndex("by_comment", (q) => q.eq("commentId", commentId))
+    .collect();
+  for (const voteRow of votes) {
+    await ctx.db.delete(voteRow._id);
+  }
+
+  // Re-parent direct children so threads don't orphan.
+  const children = await ctx.db
+    .query("comments")
+    .withIndex("by_parent", (q) => q.eq("parentId", commentId))
+    .collect();
+  for (const child of children) {
+    await ctx.db.patch(child._id, { parentId: comment.parentId });
+  }
+
+  await ctx.db.delete(commentId);
 }
 
 // ---------------------------------------------------------------------------
