@@ -63,7 +63,11 @@ export default defineSchema({
     priceAtWatch: v.number(),
     active: v.boolean(),
   })
-    .index("by_device", ["deviceId"])
+    // Watches are soft-deactivated (toggle/ack set active:false rather than
+    // deleting), so a device's row count grows without bound. Scoping the
+    // read window to active rows keeps a long tail of dead watches from
+    // pushing live ones out of check/dashboard's take(50).
+    .index("by_device_active", ["deviceId", "active"])
     .index("by_device_product", ["deviceId", "productDocId"]),
 
   devices: defineTable({

@@ -5,7 +5,7 @@ import { requireLength } from "./lib";
 // Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
 
-// Dashboard bounds. A device is capped at 50 watches, and Convex allows
+// Dashboard bounds. A device reads at most 50 active watches, and Convex allows
 // ~16k document reads per function — so the per-product history scan is
 // budgeted rather than a flat 500, or a full watch list would blow the
 // limit once history accumulates.
@@ -168,9 +168,14 @@ export const check = query({
     }),
   ),
   handler: async (ctx, args) => {
+    // Scoped to active rows by the index: deactivated watches are kept (not
+    // deleted), so filtering in JS after an unscoped take(50) would let a
+    // device with a long tail of dead watches lose live alerts off the end.
     const watches = await ctx.db
       .query("watches")
-      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .withIndex("by_device_active", (q) =>
+        q.eq("deviceId", args.deviceId).eq("active", true),
+      )
       .take(50);
 
     const drops: {
@@ -183,7 +188,6 @@ export const check = query({
     }[] = [];
 
     for (const watch of watches) {
-      if (!watch.active) continue;
       const latest = await ctx.db
         .query("pricePoints")
         .withIndex("by_product", (q) => q.eq("productDocId", watch.productDocId))
@@ -247,12 +251,15 @@ export const dashboard = query({
   },
   returns: v.array(dashboardRowValidator),
   handler: async (ctx, args) => {
-    const watches = await ctx.db
+    // Same as check(): the index scopes the window to active watches, so a
+    // pile of deactivated rows can't push live ones past the take(50).
+    const active = await ctx.db
       .query("watches")
-      .withIndex("by_device", (q) => q.eq("deviceId", args.deviceId))
+      .withIndex("by_device_active", (q) =>
+        q.eq("deviceId", args.deviceId).eq("active", true),
+      )
       .take(50);
 
-    const active = watches.filter((w) => w.active);
     if (active.length === 0) return [];
 
     const perProduct = Math.min(
