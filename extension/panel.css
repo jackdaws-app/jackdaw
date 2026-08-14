@@ -947,13 +947,15 @@
   filter: drop-shadow(0 4px 8px rgba(13, 22, 38, 0.3));
 }
 /* full flight: long banking approach from the upper left, leveling out to land */
+/* final approach flattens to near-horizontal — the bird levels out to land,
+   it doesn't nosedive into the twig */
 .jd-flight-full .jd-flight-bird {
-  offset-path: path("M -360 -280 Q -200 -160 -110 -60 Q -50 -8 0 0");
+  offset-path: path("M -360 -280 Q -200 -160 -110 -52 Q -55 -2 0 0");
   animation: jd-fly 2.3s cubic-bezier(0.3, 0.6, 0.35, 1) forwards;
 }
 /* mini swoop for every later visit: same language, a fraction of the time */
 .jd-flight-mini .jd-flight-bird {
-  offset-path: path("M -130 -80 Q -60 -10 0 0");
+  offset-path: path("M -130 -80 Q -62 -4 0 0");
   animation: jd-fly 1s cubic-bezier(0.3, 0.6, 0.35, 1) forwards;
 }
 @keyframes jd-fly {
@@ -1008,10 +1010,10 @@
 }
 .jd-branch {
   position: absolute;
-  width: 58px;
-  height: 18px;
-  left: -12px;
-  top: 1px;
+  width: 42px;
+  height: 13px;
+  left: -9px;
+  top: 2px;
   opacity: 0;
 }
 .jd-branch path { stroke-dasharray: 100; stroke-dashoffset: 100; }
@@ -1033,7 +1035,7 @@
   width: 30px;
   height: 36px;
   left: -14px;
-  top: -32px;
+  top: -28px; /* feet meet the twig line, no hover gap */
   opacity: 0;
 }
 /* seamless swap: the wrap keeps moving (settle back to rest) while the two
