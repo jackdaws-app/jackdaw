@@ -231,15 +231,22 @@
 
   // A stylized jackdaw in flight, facing its direction of travel:
   // black body, grey nape, pale eye, two independently flapping wings.
+  // v4: real corvid proportions — slim fusiform body, head carried forward,
+  // silvery hood, long notched tail, six-pose feathered wing cycle, with
+  // secondary motion (body bob+pitch, stabilized head, tail follow-through).
   const BIRD_SVG =
-    `<svg class="jd-flight-bird" viewBox="0 -4 66 48" fill="none" aria-hidden="true"><g class="jd-bob">` +
-    `<path class="jd-w2" d="M29 19 Q33 9 41 5 Q46 3 50 3 L46 7 L41 10 L36 13 Q32 16 29 19 Z" fill="#0d1626" opacity=".8"/>` + // far wing (feathered)
-    `<path d="M2 17.5 L16 16 L13 19.5 L16.5 19.5 L13.5 23 L17 23 L15 26 L3 25 Z" fill="#1a1d23"/>` + // notched fan tail
-    `<path d="M13 24 Q18 15.5 30 14 Q42 12.5 50 15.5 Q56 17.5 58.5 21 Q55.5 26.5 46 28 Q30 30.5 17 27 Q14 26 13 24 Z" fill="#1a1d23"/>` + // body+head
-    `<path d="M57.5 19.5 L63.5 22 L57 24 Q58 21.8 57.5 19.5 Z" fill="#3d434c"/>` + // short corvid beak
-    `<path d="M44 14.8 Q50 13.8 55 17 Q56.5 18.6 57 20.3 Q52 16.8 45.5 16.5 Z" fill="#8b95a3"/>` + // silver nape
-    `<circle cx="54.2" cy="19.6" r="1.5" fill="#e8edf4"/><circle cx="54.6" cy="19.6" r=".7" fill="#0d1626"/>` + // pale iris + pupil
-    `<path class="jd-w1" d="M27 20 Q33 9 43 4 Q49 1 55 1 L50 6 L44 10 L38 14 Q31 17 27 20 Z" fill="#16233a"/>` + // near wing (feathered)
+    `<svg class="jd-flight-bird" viewBox="0 -10 84 50" fill="none" aria-hidden="true"><g class="jd-bob">` +
+    `<path class="jd-w2" d="M42 14 Q44 6.5 49 1.8 Q52 -0.8 56 -2.3 L53.8 2 L51.5 5.6 L49 8.8 L46.4 11.4 L44.2 13 Q43 13.6 42 14 Z" fill="#0e1830" opacity=".8"/>` +
+    `<g class="jd-tail"><path d="M2 13.5 L18 13.8 L15.5 15.8 L18.6 15.9 L16 18 L18.8 18.2 L16.5 20.3 L18 21.8 L3 18.6 Z" fill="#171a20"/></g>` +
+    `<path d="M17 17.5 Q26 11.5 38 11 Q48 10.6 55 12.6 Q60 14 63.5 16.4 Q60 20.4 52 21.8 Q40 23.6 28 22 Q20 20.6 17 17.5 Z" fill="#1a1d23"/>` +
+    `<path d="M20 19 Q30 22.6 42 22.3 Q51 22 58 19.6 Q51 23.2 41 23.2 Q29 23 20 19 Z" fill="#0d1017" opacity=".5"/>` +
+    `<g class="jd-head">` +
+    `<path d="M56 12.2 Q59.5 9.4 63.8 10 Q67.8 10.8 69 14 Q69.4 16.6 67.2 18.3 Q63.4 20.2 59.6 18.4 Q57 16.4 56 12.2 Z" fill="#1a1d23"/>` +
+    `<path d="M56.2 12.4 Q59.8 9.6 63.9 10.1 Q66.3 10.7 67.8 12.3 Q64.9 11.7 62.2 12.4 Q59 13.4 57.5 15.9 Q56.6 17.6 56.5 19 Q55.8 15.6 56.2 12.4 Z" fill="#a4aebc"/>` +
+    `<path d="M68.8 12.9 L75.5 15.4 L68.5 17.2 Q69.2 15 68.8 12.9 Z" fill="#2f353d"/>` +
+    `<circle cx="64.6" cy="13.6" r="1" fill="#dfe6ee"/><circle cx="65" cy="13.7" r=".5" fill="#10141c"/>` +
+    `</g>` +
+    `<path class="jd-w1" d="M40 15 Q42.5 6 48.5 0.5 Q52 -2.5 56.5 -4.5 L54 0.5 L51.5 4.5 L48.5 8 L45.5 11 L42.8 13.2 Q41.2 14.3 40 15 Z" fill="#182338"/>` +
     `</g></svg>`;
 
   // The jackdaw flies in and becomes the banner. Full flight on the very

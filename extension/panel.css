@@ -941,8 +941,8 @@
   transition: opacity 0.25s ease, transform 0.25s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .jd-flight-bird {
-  width: 54px;
-  height: 37px;
+  width: 64px;
+  height: 38px;
   offset-rotate: auto;
   filter: drop-shadow(0 4px 8px rgba(13, 22, 38, 0.3));
 }
@@ -965,33 +965,51 @@
    → recovery. The body bobs against the wingbeat (bodies rise on the
    downstroke). Finite cycles, then wings lock into a glide for touchdown. */
 @keyframes jd-wing-front {
-  0%, 100% { d: path("M27 20 Q30 8 38 1 Q42 -2 47 -3 L44 3 L40 8 L36 12 Q31 16 27 20 Z"); }
-  30% { d: path("M27 20 Q37 13 48 11 Q55 10 61 11 L54 14 L47 17 L39 19 Q32 20 27 20 Z"); }
-  55% { d: path("M27 20 Q31 28 38 34 Q42 37 46 40 L43 33 L39 28 L35 24 Q30 21 27 20 Z"); }
-  78% { d: path("M27 20 Q31 11 38 6 Q42 3 46 2 L43 7 L39 11 L35 14 Q30 17 27 20 Z"); }
+  0%, 100% { d: path("M40 15 Q42.5 6 48.5 0.5 Q52 -2.5 56.5 -4.5 L54 0.5 L51.5 4.5 L48.5 8 L45.5 11 L42.8 13.2 Q41.2 14.3 40 15 Z"); }
+  16% { d: path("M40 15 Q46 6.5 54.5 2.5 Q60 0 66 -0.5 L61.5 3.8 L56.5 7.2 L51.5 10.2 L46.8 12.8 L43.3 14.3 Q41.5 14.8 40 15 Z"); }
+  34% { d: path("M40 15 Q49 10.5 60 9 Q67 8.2 73 9.2 L66.5 11.4 L60 13.2 L53.5 14.6 L48 15.6 L44 16 Q41.8 15.8 40 15 Z"); }
+  52% { d: path("M40 15 Q44 23.5 50.5 29 Q54.5 32.2 58.5 35.5 L55.5 29.5 L52 24.5 L48.3 20.6 L45 18 L42.5 16.4 Q41 15.7 40 15 Z"); }
+  66% { d: path("M40 15 Q43 20.8 47 24.2 Q50 26.7 53 28.2 L50.8 24 L48.3 20.6 L45.8 18.2 L43.6 16.6 L41.9 15.7 Q40.8 15.3 40 15 Z"); }
+  82% { d: path("M40 15 Q42.5 9.5 46.5 6.2 Q49 4.2 52 3 L50 6.8 L48 10 L45.8 12.5 L43.6 14.2 L41.7 14.8 Q40.8 14.9 40 15 Z"); }
 }
 @keyframes jd-wing-back {
-  0%, 100% { d: path("M29 19 Q31 9 37 3 Q40 0 44 -1 L41 4 L38 8 L34 12 Q31 15 29 19 Z"); }
-  30% { d: path("M29 19 Q37 14 45 12 Q51 11 55 12 L49 14 L43 16 L37 18 Q32 19 29 19 Z"); }
-  55% { d: path("M29 19 Q32 25 37 30 Q40 33 43 35 L40 29 L37 25 L33 22 Q30 20 29 19 Z"); }
-  78% { d: path("M29 19 Q32 12 37 8 Q40 5 43 4 L40 8 L37 11 L34 14 Q31 16 29 19 Z"); }
+  0%, 100% { d: path("M42 14 Q44 6.5 49 1.8 Q52 -0.8 56 -2.3 L53.8 2 L51.5 5.6 L49 8.8 L46.4 11.4 L44.2 13 Q43 13.6 42 14 Z"); }
+  16% { d: path("M42 14 Q47 7 54 3.8 Q59 1.8 63.5 1.5 L59.6 5 L55.4 8 L51 10.7 L47 12.9 L44.4 13.8 Q43.2 13.9 42 14 Z"); }
+  34% { d: path("M42 14 Q49.5 10.5 58.5 9.4 Q64.5 8.8 69 9.7 L63.5 11.5 L58 13 L52.6 14.2 L48 15 L44.8 15.2 Q43.2 14.8 42 14 Z"); }
+  52% { d: path("M42 14 Q45.4 21.5 51 26 Q54.4 28.8 57.5 31.3 L55 26 L52 21.7 L48.8 18.4 L46 16.2 L43.9 15 Q42.8 14.5 42 14 Z"); }
+  66% { d: path("M42 14 Q44.6 19 48 22 Q50.6 24.2 53.2 25.4 L51.2 21.7 L49 18.7 L46.8 16.6 L44.9 15.3 L43.5 14.7 Q42.7 14.3 42 14 Z"); }
+  82% { d: path("M42 14 Q44.2 9.2 47.6 6.4 Q49.8 4.7 52.4 3.7 L50.7 7 L49 9.9 L47 12.1 L45.2 13.4 L43.6 13.9 Q42.8 13.9 42 14 Z"); }
 }
+/* secondary motion: body bobs+pitches, head stays level, tail follows through */
 @keyframes jd-bob {
-  0%, 100% { transform: translateY(1.6px); }
-  42% { transform: translateY(-1.6px); }
+  0%, 100% { transform: translateY(1.6px) rotate(2deg); }
+  40% { transform: translateY(-1.6px) rotate(-1.7deg); }
 }
+@keyframes jd-head-stab {
+  0%, 100% { transform: translateY(-1px); }
+  40% { transform: translateY(1px); }
+}
+@keyframes jd-tail-follow {
+  0%, 100% { transform: rotate(-3.5deg); }
+  45% { transform: rotate(4.5deg); }
+}
+.jd-flight .jd-tail { transform-box: fill-box; transform-origin: 95% 50%; }
 .jd-flight-full .jd-w1 { animation: jd-wing-front 0.5s linear 4; }
 .jd-flight-full .jd-w2 { animation: jd-wing-back 0.5s linear 0.08s 4; }
 .jd-flight-full .jd-bob { animation: jd-bob 0.5s ease-in-out 4; }
+.jd-flight-full .jd-head { animation: jd-head-stab 0.5s ease-in-out 4; }
+.jd-flight-full .jd-tail { animation: jd-tail-follow 0.5s ease-in-out 4; }
 .jd-flight-mini .jd-w1 { animation: jd-wing-front 0.42s linear 2; }
 .jd-flight-mini .jd-w2 { animation: jd-wing-back 0.42s linear 0.07s 2; }
 .jd-flight-mini .jd-bob { animation: jd-bob 0.42s ease-in-out 2; }
+.jd-flight-mini .jd-head { animation: jd-head-stab 0.42s ease-in-out 2; }
+.jd-flight-mini .jd-tail { animation: jd-tail-follow 0.42s ease-in-out 2; }
 /* touchdown: wings flare up (real corvids brake with raised wings), a tiny
    settle, then the bird is absorbed by the growing banner */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
 .jd-flight .jd-w1, .jd-flight .jd-w2 { transition: d 0.18s ease-out; }
-.jd-flight.jd-land .jd-w1 { d: path("M27 20 Q30 8 38 1 Q42 -2 47 -3 L44 3 L40 8 L36 12 Q31 16 27 20 Z"); }
-.jd-flight.jd-land .jd-w2 { d: path("M29 19 Q31 9 37 3 Q40 0 44 -1 L41 4 L38 8 L34 12 Q31 15 29 19 Z"); }
+.jd-flight.jd-land .jd-w1 { d: path("M40 15 Q42.5 6 48.5 0.5 Q52 -2.5 56.5 -4.5 L54 0.5 L51.5 4.5 L48.5 8 L45.5 11 L42.8 13.2 Q41.2 14.3 40 15 Z"); }
+.jd-flight.jd-land .jd-w2 { d: path("M42 14 Q44 6.5 49 1.8 Q52 -0.8 56 -2.3 L53.8 2 L51.5 5.6 L49 8.8 L46.4 11.4 L44.2 13 Q43 13.6 42 14 Z"); }
 .jd-flight.jd-bird-out {
   opacity: 0;
   transform: scale(0.2);
