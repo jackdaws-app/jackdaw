@@ -8,7 +8,13 @@
 // SSO (see DEPLOY.md) for identity. noindex + robots Disallow'd. Single
 // operator tool, not a multi-user auth system.
 (() => {
-  const CONVEX_URL = "https://insightful-wren-655.convex.cloud"; // production
+  // set in config.js so the site and the extension are swapped together
+  const CONVEX_URL = window.JACKDAW_CONVEX_URL;
+  if (!CONVEX_URL) {
+    document.body.innerHTML =
+      '<p style="font:14px system-ui;padding:40px">config.js is missing: no Convex deployment configured.</p>';
+    return;
+  }
   const KEY_STORE = "jd_admin_key";
 
   const $ = (id) => document.getElementById(id);
