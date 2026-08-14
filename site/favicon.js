@@ -29,9 +29,17 @@
   canvas.width = canvas.height = SIZE;
   const ctx = canvas.getContext("2d");
 
+  // Chrome picks the "best" declared icon and prefers SVG, so a leftover
+  // static <link rel=icon> silently wins over the animated one. Take over
+  // completely: drop every existing icon link first.
+  document
+    .querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')
+    .forEach((l) => l.remove());
+
   const link = document.createElement("link");
   link.rel = "icon";
   link.type = "image/png";
+  link.sizes = "any";
   document.head.appendChild(link);
 
   // The price series the line draws — a fall to an all-time low.
