@@ -547,7 +547,18 @@
 
   function closeDrawer() {
     drawerEl.classList.remove("jd-open");
+    // The bird brings the banner back: hold the tab hidden while the
+    // drawer descends, then replay the mini swoop + construction.
     tabEl.classList.remove("jd-hidden");
+    tabEl.classList.remove("jd-tab-reveal");
+    tabEl.classList.add("jd-preflight");
+    setTimeout(() => {
+      flightEntrance(false).then(() => {
+        tabEl.classList.remove("jd-preflight");
+        void tabEl.offsetWidth; // retrigger the reveal choreography
+        tabEl.classList.add("jd-tab-reveal");
+      });
+    }, 300);
   }
 
   function toast(msg) {
