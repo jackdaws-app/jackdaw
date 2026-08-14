@@ -1008,16 +1008,52 @@
   background: var(--jd-navy, #16233a);
   box-shadow: -1px 2px 8px rgba(13, 22, 38, 0.3);
   opacity: 0;
-  transform: scale(0.25);
-  transition: opacity 0.15s ease, transform 0.18s cubic-bezier(0.23, 1, 0.32, 1);
   z-index: 2147483002;
   pointer-events: none;
 }
-.jd-dot.jd-dot-in { opacity: 1; transform: scale(1); }
-.jd-dot.jd-dot-in.jd-dot-out {
+/* impact ripple: one ring radiates from the landing */
+.jd-dot::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(52, 211, 153, 0.7);
   opacity: 0;
-  transform: scale(1.6);
-  transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* the hold: a soft green breath (the brand's live-dot language) */
+.jd-dot::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.35), transparent 70%);
+  opacity: 0;
+}
+.jd-dot.jd-dot-in { animation: jd-dot-arrive 0.34s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+.jd-dot.jd-dot-in::before { animation: jd-dot-ripple 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.08s; }
+.jd-dot.jd-dot-in::after { animation: jd-dot-breathe 0.9s ease-in-out 0.2s infinite alternate; }
+@keyframes jd-dot-arrive {
+  0% { opacity: 0; transform: scale(0.2); }
+  35% { opacity: 1; transform: scale(1.3, 0.75); } /* impact squash */
+  60% { transform: scale(0.85, 1.15); }             /* rebound stretch */
+  82% { transform: scale(1.06, 0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes jd-dot-ripple {
+  0% { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(3.4); }
+}
+@keyframes jd-dot-breathe {
+  from { opacity: 0.25; transform: scale(1); }
+  to { opacity: 0.7; transform: scale(1.35); }
+}
+/* the becoming: the dot stretches vertically into the pill's opening bar */
+.jd-dot.jd-dot-out { animation: jd-dot-become 0.3s ease-in forwards; }
+.jd-dot.jd-dot-out::before, .jd-dot.jd-dot-out::after { animation: none; opacity: 0; }
+@keyframes jd-dot-become {
+  0% { opacity: 1; transform: scale(1); }
+  55% { opacity: 0.8; transform: scale(0.85, 2.2); }
+  100% { opacity: 0; transform: scale(0.7, 3.4); }
 }
 .jd-flight .jd-w1, .jd-flight .jd-w2 { transition: d 0.18s ease-out; }
 .jd-flight.jd-land .jd-w1 { d: path("M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"); }

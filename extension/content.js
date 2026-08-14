@@ -271,9 +271,12 @@
           setTimeout(() => dot.classList.add("jd-dot-in"), 60);
           setTimeout(() => {
             resolve(); // banner grows out of the dot
-            requestAnimationFrame(() => dot.classList.add("jd-dot-out"));
+            requestAnimationFrame(() => {
+              dot.classList.remove("jd-dot-in");
+              dot.classList.add("jd-dot-out");
+            });
             setTimeout(() => { wrap.remove(); dot.remove(); }, 500);
-          }, 280);
+          }, 430);
         }, 300);
       };
       bird.addEventListener("animationend", (e) => {
