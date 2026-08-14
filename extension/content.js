@@ -253,6 +253,15 @@
     `<path d="M19.5 17 Q22.5 15.5 25.5 16.5 Q27.5 22 26.8 27.5 Q26.2 32.5 23.5 36 Q21.5 33 20.5 28 Q19.5 22.5 19.5 17 Z" fill="#0d1424"/>` +
     `</svg>`;
 
+  // A twig grows out from the image edge during the swoop — the bird
+  // needs somewhere to land. Drawn-on stroke, silhouette ink.
+  const BRANCH_SVG =
+    `<svg class="jd-branch" viewBox="0 0 64 20" fill="none" aria-hidden="true">` +
+    `<path d="M62 3.5 Q48 4.5 36 6.5 Q20 9.2 3 9.5" stroke="#16233a" stroke-width="2.6" stroke-linecap="round" pathLength="100"/>` +
+    `<path d="M40 6 Q35 3.5 32 0.5" stroke="#16233a" stroke-width="1.6" stroke-linecap="round" pathLength="100"/>` +
+    `<path d="M20 8.6 Q17 11.5 16 14.5" stroke="#16233a" stroke-width="1.4" stroke-linecap="round" pathLength="100"/>` +
+    `</svg>`;
+
   // The jackdaw flies in and becomes the banner. Full flight on the very
   // first visit; a quick swoop afterwards. Skipped under reduced motion.
   function flightEntrance(full) {
@@ -269,7 +278,12 @@
       const dot = el("span", "jd-dot");
       dot.style.left = wrap.style.left;
       dot.style.top = wrap.style.top;
-      uiRoot.append(wrap, dot);
+      const branch = el("div", "jd-branch-wrap");
+      branch.style.left = wrap.style.left;
+      branch.style.top = wrap.style.top;
+      branch.innerHTML = BRANCH_SVG;
+      uiRoot.append(branch, wrap, dot);
+      requestAnimationFrame(() => branch.classList.add("jd-branch-in"));
       const bird = wrap.querySelector(".jd-flight-bird");
       let done = false;
       const finish = () => {
@@ -284,12 +298,13 @@
             wrap.classList.add("jd-bird-out");
             setTimeout(() => dot.classList.add("jd-dot-in"), 60);
             setTimeout(() => {
-              resolve(); // banner grows out of the dot
+              resolve(); // banner grows out of the dot; the branch recedes
               requestAnimationFrame(() => {
                 dot.classList.remove("jd-dot-in");
                 dot.classList.add("jd-dot-out");
+                branch.classList.add("jd-branch-out");
               });
-              setTimeout(() => { wrap.remove(); dot.remove(); }, 500);
+              setTimeout(() => { wrap.remove(); dot.remove(); branch.remove(); }, 500);
             }, 430);
           }, 750);
         }, 280);

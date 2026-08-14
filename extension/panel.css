@@ -1000,6 +1000,34 @@
    settle, then the bird perches, flicks its tail, and collapses into a dot
    from which the banner grows */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
+/* the branch: draws itself out from the image edge during the swoop */
+.jd-branch-wrap {
+  position: absolute;
+  z-index: 2147483001;
+  pointer-events: none;
+}
+.jd-branch {
+  position: absolute;
+  width: 58px;
+  height: 18px;
+  left: -12px;
+  top: 1px;
+  opacity: 0;
+}
+.jd-branch path { stroke-dasharray: 100; stroke-dashoffset: 100; }
+.jd-branch-in .jd-branch { opacity: 1; transition: opacity 0.15s ease; }
+.jd-branch-in .jd-branch path { animation: jd-branch-grow 0.55s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+.jd-branch-in .jd-branch path:nth-child(2) { animation-delay: 0.3s; animation-duration: 0.3s; }
+.jd-branch-in .jd-branch path:nth-child(3) { animation-delay: 0.4s; animation-duration: 0.3s; }
+@keyframes jd-branch-grow {
+  to { stroke-dashoffset: 0; }
+}
+.jd-branch-out .jd-branch {
+  opacity: 0;
+  transform: translateX(8px);
+  transition: opacity 0.28s ease, transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 .jd-perch {
   position: absolute;
   width: 30px;
@@ -1008,13 +1036,16 @@
   top: -32px;
   opacity: 0;
 }
-.jd-flight.jd-perched .jd-flight-bird { opacity: 0; transition: opacity 0.12s ease; }
-.jd-flight.jd-perched .jd-perch { opacity: 1; animation: jd-perch-settle 0.3s cubic-bezier(0.23, 1, 0.32, 1); }
+/* seamless swap: the wrap keeps moving (settle back to rest) while the two
+   silhouettes crossfade over ~280ms — no hard cut */
+.jd-flight.jd-perched { transform: translateY(0) scale(1); }
+.jd-flight.jd-perched .jd-flight-bird { opacity: 0; transition: opacity 0.28s ease; }
+.jd-flight.jd-perched .jd-perch { opacity: 1; animation: jd-perch-settle 0.42s cubic-bezier(0.23, 1, 0.32, 1); }
 @keyframes jd-perch-settle {
-  0% { opacity: 0; transform: translateY(-4px); }
-  40% { opacity: 1; }
-  60% { transform: translateY(1.5px); } /* the little hop of a real landing */
-  100% { transform: translateY(0); }
+  0% { opacity: 0; transform: translateY(-7px) rotate(4deg); }
+  45% { opacity: 1; }
+  65% { transform: translateY(1.8px) rotate(-1deg); } /* the little hop of a real landing */
+  100% { transform: translateY(0) rotate(0); }
 }
 .jd-flight.jd-perched .jd-perch-tail {
   transform-box: fill-box;
