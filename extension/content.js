@@ -295,14 +295,16 @@
           // settles, flicks its tail, then collapses into the dot
           wrap.classList.add("jd-perched");
           setTimeout(() => {
+            // bird and branch leave together: bird collapses into the dot
+            // while the twig dissolves beneath it
             wrap.classList.add("jd-bird-out");
+            branch.classList.add("jd-branch-out");
             setTimeout(() => dot.classList.add("jd-dot-in"), 60);
             setTimeout(() => {
-              resolve(); // banner grows out of the dot; the branch recedes
+              resolve(); // banner grows out of the dot
               requestAnimationFrame(() => {
                 dot.classList.remove("jd-dot-in");
                 dot.classList.add("jd-dot-out");
-                branch.classList.add("jd-branch-out");
               });
               setTimeout(() => { wrap.remove(); dot.remove(); branch.remove(); }, 500);
             }, 430);

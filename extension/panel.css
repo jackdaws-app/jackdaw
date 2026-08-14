@@ -1024,10 +1024,12 @@
 @keyframes jd-branch-grow {
   to { stroke-dashoffset: 0; }
 }
+/* dissolve: the twig softens and drifts back as the bird becomes the dot */
 .jd-branch-out .jd-branch {
   opacity: 0;
-  transform: translateX(8px);
-  transition: opacity 0.28s ease, transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  transform: translateX(6px);
+  filter: blur(2.5px);
+  transition: opacity 0.24s ease, transform 0.28s cubic-bezier(0.23, 1, 0.32, 1), filter 0.24s ease;
 }
 
 .jd-perch {
