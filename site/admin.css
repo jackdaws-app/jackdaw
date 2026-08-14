@@ -180,6 +180,9 @@
 .health-value { font-size: 13px; font-variant-numeric: tabular-nums; }
 .health-value.good { color: var(--green-deep); }
 .health-value.warn { color: #b45309; }
+.health-value.bad { color: #b91c1c; font-weight: 700; }
+.signal-row { grid-template-columns: 190px 96px 1fr; }
+@media (max-width: 620px) { .signal-row { grid-template-columns: 1fr; gap: 2px; } }
 .health-sub { font-size: 11.5px; color: var(--muted); }
 
 .admin-fine { font-size: 11.5px; color: var(--muted); margin-top: 18px; max-width: 68em; line-height: 1.55; }

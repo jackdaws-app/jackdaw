@@ -42,7 +42,10 @@ const SCAN_LIMIT = 1000;
  *    ground truth left in the data (arming is a transition; acking clears the
  *    flag; a click writes nothing but the counter). They are seeded only when
  *    missing — armed from the watches row count, which is the lower bound, and
- *    the other two at 0 — and never overwritten afterwards.
+ *    the other two at 0 — and never overwritten afterwards. The evt:* client
+ *    health counters are the same kind of thing and are not touched at all:
+ *    nothing derives them, they aren't in the list below, and the only stale
+ *    key sweep is scoped to comments:day:, so a re-run cannot zero them.
  *
  * Note that obs:day is an approximation (see below), so a re-run re-derives
  * the daily observation series rather than preserving what live traffic

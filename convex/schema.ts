@@ -89,6 +89,13 @@ export default defineSchema({
   //   pricepoints:total · products:total · devices:total
   //   comments:total · comments:day:<YYYY-MM-DD> · comments:hidden
   //   reports:total · alerts:armed · alerts:fired
+  //   evt:<name> · evt:<name>:day:<YYYY-MM-DD>
+  //
+  // The evt: namespace is client health telemetry. <name> is one of the six
+  // fixed names in lib.ts's EVENT_NAMES and can only ever be one of those —
+  // metrics:events validates against a closed union, so no caller can mint a
+  // key here. Nothing in the namespace is derivable from the tables (an event
+  // is a moment, not a row), so admin:backfillCounters leaves it alone.
   //
   // These are plain documents, so a single key is a contention point under
   // heavy concurrent writes. At Jackdaw's volume (one report per device per

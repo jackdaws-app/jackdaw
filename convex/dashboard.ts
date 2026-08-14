@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  EVENT_NAMES,
   checkAdminRateLimit,
   enforceAdminRateLimit,
   flaggedComments,
@@ -43,6 +44,12 @@ const HEALTH_POINTS_PER_PRODUCT = 50;
 const CHART_WORTHY_MIN_POINTS = 5;
 const STALE_AFTER_MS = 30 * DAY_MS;
 
+// Client error window. Six names × seven days is 42 point reads, cheap enough
+// to sit alongside the health sample — and point reads specifically, not a
+// prefix range: a range over "evt:" would also sweep every day key ever
+// written, which grows without bound while this window does not.
+const ERROR_DAYS = 7;
+
 export const stats = query({
   args: { adminKey: v.string() },
   returns: v.object({
@@ -79,6 +86,18 @@ export const stats = query({
         comments: v.number(),
         clicked: v.number(),
         rateLimited: v.number(),
+      }),
+    ),
+    // Client health (metrics:events). Always all six names, zero-filled, so the
+    // panel renders a stable table and can divide the failure names by
+    // panel_ok for an error rate. `name` is one of the six literals in
+    // EVENT_NAMES — v.string() here only because the panel treats it as a
+    // label; the write path is what keeps the set closed.
+    errors: v.array(
+      v.object({
+        name: v.string(),
+        total: v.number(),
+        last7: v.number(),
       }),
     ),
   }),
@@ -206,6 +225,30 @@ export const stats = query({
       }),
     );
 
+    // Every name every time, missing keys as 0 — a name that has never been
+    // reported is a row of zeroes, not an absent row, so the panel's table
+    // doesn't reshuffle the first time a new failure mode appears.
+    const errorDays = Array.from({ length: ERROR_DAYS }, (_unused, i) =>
+      utcDay(todayUtc - i * DAY_MS),
+    );
+    const errors = await Promise.all(
+      EVENT_NAMES.map(async (name) => {
+        const [total, ...days] = await Promise.all([
+          readCounter(ctx, `evt:${name}`),
+          ...errorDays.map((date) => readCounter(ctx, `evt:${name}:day:${date}`)),
+        ]);
+        return {
+          name: name as string,
+          total,
+          last7: days.reduce((sum, n) => sum + n, 0),
+        };
+      }),
+    );
+    // Recent trouble first, lifetime volume as the tiebreak. Sort is stable, so
+    // an all-zero deployment comes back in EVENT_NAMES order rather than an
+    // arbitrary one.
+    errors.sort((a, b) => b.last7 - a.last7 || b.total - a.total);
+
     return {
       totals: {
         observations,
@@ -225,6 +268,7 @@ export const stats = query({
       watchedValueTruncated,
       health: { chartWorthy, thin, stale, sampleSize: sample.length },
       daily,
+      errors,
     };
   },
 });

@@ -200,6 +200,53 @@
     );
   }
 
+  // Client-reported failures. The point of this card is early warning: if
+  // Micro Center changes their markup, no_datalayer spikes and every panel is
+  // silently broken. Rates are shown against panel_ok, never raw counts alone.
+  const SIGNALS = {
+    no_datalayer: ["Product data not found", "their markup may have changed"],
+    report_failed: ["Price report failed", "backend unreachable or rejecting"],
+    history_failed: ["History load failed", "chart could not be shown"],
+    comments_failed: ["Comments load failed", "discussion could not be shown"],
+    panel_error: ["Panel crashed", "uncaught error while rendering"],
+  };
+
+  function renderSignals(errors) {
+    const card = $("signalsCard");
+    const wrap = $("signals");
+    const note = $("signalsNote");
+    if (!errors || !errors.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    wrap.textContent = "";
+
+    const by = Object.fromEntries(errors.map((e) => [e.name, e]));
+    const ok = (by.panel_ok && by.panel_ok.last7) || 0;
+    const bad = Object.keys(SIGNALS).reduce((a, k) => a + ((by[k] && by[k].last7) || 0), 0);
+    const rate = ok + bad > 0 ? (bad / (ok + bad)) * 100 : 0;
+
+    note.textContent = ok
+      ? `${rate.toFixed(1)}% of ${fmt(ok + bad)} panel loads failed this week`
+      : "no panel loads recorded this week";
+
+    for (const [name, [label, meaning]] of Object.entries(SIGNALS)) {
+      const e = by[name] || { last7: 0, total: 0 };
+      const row = el("div", "health-row signal-row");
+      const tone = e.last7 === 0 ? "good" : e.last7 > Math.max(3, ok * 0.02) ? "bad" : "warn";
+      row.append(
+        el("div", "health-label", label),
+        el("div", "health-value " + tone, `${fmt(e.last7)} · 7d`),
+        el("div", "health-sub", `${fmt(e.total)} all time — ${meaning}`),
+      );
+      wrap.append(row);
+    }
+    if (bad === 0 && ok > 0) {
+      wrap.append(el("div", "admin-note", "Nothing failing. This card is the canary for a Micro Center redesign."));
+    }
+  }
+
   function renderStores(stores) {
     const wrap = $("stores");
     wrap.textContent = "";
@@ -355,6 +402,7 @@
       renderKpis(stats);
       renderStores(stats.stores);
       renderCategories(stats.categories);
+      renderSignals(stats.errors);
       renderHealth(stats.health);
       renderTrend(stats.daily);
       renderFlagged(flagged);
