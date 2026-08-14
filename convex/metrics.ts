@@ -96,10 +96,17 @@ function clampCount(raw: number): number {
  *    there is no identifier to key a per-device bucket on, so the limit is one
  *    global bucket and anyone can call this. Treat a spike as "worth looking
  *    at", never as a proven count.
- * 2. That bucket caps the whole deployment at 120 batches/hour. Past that,
- *    real reports are dropped rather than queued — so during an outage, when
- *    every panel is failing at once, this reads LOW. A flat line is not
- *    evidence of health.
+ * 2. That bucket caps the whole deployment at 3,000 batches/hour. A client
+ *    flushes once per hourly alarm, so that is roughly the supported user
+ *    count — and past it reports are dropped rather than queued, so a
+ *    breakage large enough to saturate the bucket reads LOW at exactly the
+ *    moment it should spike. A flat line is not evidence of health.
+ *
+ * With the fold clamp below, one accepted batch can move the counters by at
+ * most 500 per name (3,000 across all six) — the same ceiling an honest client
+ * observes for itself. A deliberate poisoner still has the rate limit as their
+ * only real bound, which is the price of an anonymous endpoint; the counters
+ * are advisory, and a spike is a prompt to go look, never a measurement.
  *
  * Over budget returns { ok: false, rateLimited: true } instead of throwing: a
  * mutation that throws rolls back its own writes (see lib.ts's tryRateLimit),
@@ -126,10 +133,21 @@ export const events = mutation({
     if (!ok) return { ok: false, rateLimited: true };
 
     // Fold duplicates first so the write count is bounded by the number of
-    // names (6 keys × 2 rows), not by the batch length.
+    // names (6 keys × 2 rows), not by the batch length — then clamp the fold
+    // itself, not just the individual entries.
+    //
+    // MAX_COUNT is a per-name ceiling for the whole batch, and clamping only
+    // per entry lets a caller route around it by repeating a name: twelve
+    // entries of 500 would land 6,000 on one counter. No honest client can do
+    // that — the extension buffers in an object keyed by name, so one entry
+    // per name is the most it can produce — which makes anything above 500 for
+    // a single name in a single batch a bug or an attempt to inflate the
+    // number. Clamped rather than rejected, so a malformed batch still reports
+    // the events it got right.
     const totals = new Map<EventName, number>();
     for (const event of args.events) {
-      totals.set(event.name, (totals.get(event.name) ?? 0) + clampCount(event.count));
+      const folded = (totals.get(event.name) ?? 0) + clampCount(event.count);
+      totals.set(event.name, Math.min(MAX_COUNT, folded));
     }
 
     const day = utcDay(Date.now());

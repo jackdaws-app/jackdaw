@@ -46,10 +46,15 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   alertClick: { kind: "token bucket", rate: 60, period: HOUR },
   // Client error telemetry (metrics:events) has the same shape and the same
   // trade-off: no identifier in the payload, so no per-device key exists and
-  // the bucket has to be global. 120 batches/hour is therefore a deployment-
-  // wide ceiling on how fast the evt:* counters can move — read the note on
-  // metrics:events before drawing conclusions from a flat error line.
-  clientEvents: { kind: "token bucket", rate: 120, period: HOUR },
+  // the bucket has to be global.
+  //
+  // Sized against real traffic rather than a round number: a client flushes on
+  // its hourly alarm, so steady state is about one request per user per hour
+  // and this is the supported user count before the ceiling binds. Too low is
+  // the dangerous direction — overflow is dropped, not queued, and the moment
+  // every panel breaks at once is the moment every client has something to
+  // flush. Raise this before the user base reaches it, not after.
+  clientEvents: { kind: "token bucket", rate: 3000, period: HOUR },
 });
 
 export type RateLimitName =

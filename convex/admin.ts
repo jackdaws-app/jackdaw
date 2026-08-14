@@ -196,3 +196,46 @@ export const backfillCounters = internalMutation({
     };
   },
 });
+
+// The evt: namespace holds only counter keys minted by metrics:events, whose
+// names come from a closed union of lowercase identifiers and whose day
+// suffixes are digits and hyphens. Every one of those characters sorts below
+// "~", so this is a bounded range over that namespace and nothing else.
+const EVENT_PREFIX = "evt:";
+const EVENT_PREFIX_END = "evt:~";
+
+/**
+ * Delete every evt:* counter row. Run with
+ * `npx convex run admin:clearEventCounters`.
+ *
+ * DEV UTILITY — there is no reason to run this against production. Client
+ * health events are the one metric with no ground truth anywhere else (an
+ * event is a moment, not a row), so anything deleted here is gone, and
+ * `backfillCounters` cannot rebuild it.
+ *
+ * What it is for: a deployment that has been used for testing carries
+ * synthetic values, and a fabricated `panel_error` on the health card is worse
+ * than an empty one — the card exists to be believed, and one that cries wolf
+ * teaches the operator to ignore the real spike. Clearing it puts the panel
+ * back to honest zeroes.
+ *
+ * Bounded like every other scan here: a year of daily buckets across six names
+ * is ~2,200 rows, more than SCAN_LIMIT, so `truncated` reports whether rows
+ * remain. Run again while it is true.
+ */
+export const clearEventCounters = internalMutation({
+  args: {},
+  returns: v.object({ deleted: v.number(), truncated: v.boolean() }),
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("counters")
+      .withIndex("by_key", (q) =>
+        q.gte("key", EVENT_PREFIX).lt("key", EVENT_PREFIX_END),
+      )
+      .take(SCAN_LIMIT);
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+    return { deleted: rows.length, truncated: rows.length >= SCAN_LIMIT };
+  },
+});
