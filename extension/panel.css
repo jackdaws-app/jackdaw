@@ -1035,7 +1035,10 @@
   width: 30px;
   height: 36px;
   left: -14px;
-  top: -28px; /* feet meet the twig line, no hover gap */
+  /* the twig droops leftward: its line sits at +7.4px under the feet's
+     x-position, feet-bottom renders at height*45.7/50 + top — so -25.5
+     puts the toes on the bark */
+  top: -25.5px;
   opacity: 0;
 }
 /* seamless swap: the wrap keeps moving (settle back to rest) while the two
