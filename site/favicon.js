@@ -112,23 +112,24 @@
     }
   }
 
-  // ── Timeline (ms) ──
+  // ── Timeline (ms), looping continuously ──
   const T = {
-    birdHold: 0,      // bird visible
-    collapse: 260,    // bird → dot
-    settle: 420,      // dot impact
-    stretch: 620,     // dot → line start
-    draw: 1500,       // line draws across
-    hold: 2050,       // chart holds
-    fold: 2400,       // line → dot
-    bloom: 2760,      // dot → bird
-    end: 3000,
+    birdHold: 900,    // bird visible at the top of each cycle
+    collapse: 1160,   // bird -> dot
+    settle: 1320,     // dot impact
+    stretch: 1520,    // dot -> line start
+    draw: 2400,       // line draws across
+    hold: 3000,       // chart holds
+    fold: 3350,       // line -> dot
+    bloom: 3700,      // dot -> bird
+    end: 4200,        // brief rest, then the cycle repeats
   };
-  const IDLE = 6000; // rest on the bird between cycles
 
   function frame(t) {
     tile();
-    if (t < T.collapse) {
+    if (t < T.birdHold) {
+      drawBird(1, 1);
+    } else if (t < T.collapse) {
       drawBird(1, 1);
     } else if (t < T.settle) {
       const k = easeOut((t - T.collapse) / (T.settle - T.collapse));
@@ -157,33 +158,48 @@
     link.href = canvas.toDataURL("image/png");
   }
 
-  let start = null;
+  // The cycle runs on wall-clock time, so it stays coherent no matter which
+  // clock is driving it. While the tab is visible we use rAF (smooth, capped
+  // at ~12fps — plenty for a 16px icon). While it's hidden, browsers freeze
+  // rAF and throttle timers to about 1/second, so we fall back to an interval:
+  // the animation keeps going in a background tab, just at a coarser step.
+  const started = Date.now();
+  const at = () => (Date.now() - started) % T.end;
+
   let raf = 0;
-  function loop(now) {
-    if (start === null) start = now;
-    const t = now - start;
-    if (t >= T.end) {
-      frame(T.end);
-      start = null;
-      raf = 0;
-      setTimeout(() => { if (!document.hidden) raf = requestAnimationFrame(loop); }, IDLE);
-      return;
-    }
-    frame(t);
-    raf = requestAnimationFrame(loop);
+  let timer = 0;
+  let lastPaint = 0;
+
+  function paint() {
+    frame(at());
   }
 
-  // Paint the resting state immediately, then start the cycle.
-  frame(T.end);
-  setTimeout(() => { raf = requestAnimationFrame(loop); }, 1400);
+  function rafLoop(now) {
+    if (now - lastPaint > 80) {
+      lastPaint = now;
+      paint();
+    }
+    raf = requestAnimationFrame(rafLoop);
+  }
+
+  function useRaf() {
+    clearInterval(timer);
+    timer = 0;
+    if (!raf) raf = requestAnimationFrame(rafLoop);
+  }
+
+  function useTimer() {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    if (!timer) timer = setInterval(paint, 400); // browsers clamp this to ~1s when hidden
+  }
+
+  paint();
+  if (document.hidden) useTimer();
+  else useRaf();
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      cancelAnimationFrame(raf);
-      raf = 0;
-    } else if (!raf) {
-      start = null;
-      raf = requestAnimationFrame(loop);
-    }
+    if (document.hidden) useTimer();
+    else useRaf();
   });
 })();

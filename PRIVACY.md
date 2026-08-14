@@ -1,13 +1,13 @@
 # Privacy Policy
 
-*Last updated: August 13, 2026 — draft; review before store submission.*
+*Last updated: August 13, 2026. Draft; review before store submission.*
 
 This Privacy Policy describes how the Jackdaw browser extension ("Jackdaw," "we," "our") collects, uses, and shares information. Jackdaw does not require an account and is designed to collect the minimum information necessary to operate.
 
 ## 1. Information We Collect
 
 - **Device identifier.** A randomly generated identifier (UUID) created by your browser when the extension is installed. It is not derived from and cannot be linked to your name, email address, or any account.
-- **Price observations.** When you visit a Micro Center product page, the extension reads product information already displayed on that page — product ID, SKU, price, stock status, and your selected store number — and submits it to the shared community database.
+- **Price observations.** When you visit a Micro Center product page, the extension reads product information already displayed on that page (product ID, SKU, price, stock status, and your selected store number) and submits it to the shared community database.
 - **User content.** Comments, votes, reports, price-alert targets, and the display name you choose. Display names are self-selected and not verified.
 
 ## 2. Information We Do Not Collect
