@@ -39,7 +39,7 @@ button:focus-visible { box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45); }
   background: #fff;
 }
 body.dark .pop-header { background: #131e30; }
-.pop-brand { display: flex; align-items: center; gap: 7px; }
+.pop-brand { position: relative; display: flex; align-items: center; gap: 7px; }
 /* The live dot has a pulse, not a ping: lub-dub, then rest. When something
    is at target it beats sooner and brighter — motion as state. */
 .pop-live {
@@ -77,8 +77,47 @@ body.dark .pop-header { background: #131e30; }
 }
 .pop-live.alive::after { animation-duration: 2.6s; border-color: rgba(52, 211, 153, 0.8); }
 
-/* The wordmark's glint: a jackdaw chases shiny things, so light travels
-   the letters one at a time, each lifting as it passes. Rare — every 13s. */
+/* Every 18s the dot takes flight: it crouches, becomes the bird, flies a
+   lap over the wordmark (letters ducking as it passes), lands back on its
+   mark and becomes the dot again. The banner's language — one thing
+   turning into another, each stage with its own motion. */
+/* NOTE: offset-path coordinates are relative to the containing block's
+   top-left (.pop-brand), not this element's top/left. The path starts and
+   ends on the dot's center and loops over the wordmark. */
+.pop-flit {
+  position: absolute;
+  width: 16px;
+  height: 20px;
+  color: var(--jd-navy);
+  opacity: 0;
+  offset-path: path("M3.5 8 C 16 4, 44 2, 66 6 C 54 12, 22 13, 3.5 8");
+  offset-rotate: auto;
+  animation: pop-flit-fly 18s linear infinite 6s;
+}
+body.dark .pop-flit { color: #cdd6e4; }
+.pop-flit-wings {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pop-flit-beat 0.22s ease-in-out infinite alternate;
+}
+@keyframes pop-flit-beat {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0.6); }
+}
+@keyframes pop-flit-fly {
+  0%, 1.9% { opacity: 0; offset-distance: 0%; }
+  2.6% { opacity: 1; }
+  8.2% { opacity: 1; }
+  9%, 100% { opacity: 0; offset-distance: 100%; }
+}
+.pop-live { animation: pop-heart 5s var(--ease-in-out) infinite, pop-dot-launch 18s linear infinite 6s; }
+@keyframes pop-dot-launch {
+  0%, 100% { opacity: 1; }
+  1.1% { opacity: 1; }
+  2%, 8.4% { opacity: 0; }        /* away, being the bird */
+  9.2% { opacity: 1; }            /* home again */
+}
+
 .pop-wordmark {
   display: inline-flex;
   font-size: 11px;
@@ -88,22 +127,16 @@ body.dark .pop-header { background: #131e30; }
   color: var(--jd-navy);
 }
 body.dark .pop-wordmark { color: #cdd6e4; }
+/* letters duck as the bird passes overhead — secondary motion, not shimmer */
 .pop-wordmark i {
   font-style: normal;
   display: inline-block;
-  animation: pop-glint 13s var(--ease-in-out) infinite;
-  animation-delay: calc(4s + var(--i) * 0.06s);
+  animation: pop-letter-duck 18s var(--ease-in-out) infinite;
+  animation-delay: calc(6s + var(--i) * 0.075s);
 }
-@keyframes pop-glint {
-  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
-  1.1% { color: #16a34a; transform: translateY(-1.6px); }
-  2.2% { color: inherit; transform: translateY(0); }
-}
-body.dark .pop-wordmark i { animation-name: pop-glint-dark; }
-@keyframes pop-glint-dark {
-  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
-  1.1% { color: #4ade80; transform: translateY(-1.6px); }
-  2.2% { color: inherit; transform: translateY(0); }
+@keyframes pop-letter-duck {
+  0%, 3.4%, 8%, 100% { transform: translateY(0); }
+  5.2% { transform: translateY(1.6px); }
 }
 .pop-icon {
   width: 24px;
@@ -291,6 +324,8 @@ body.dark .pop-link:hover { color: #4ade80; }
 
 @media (prefers-reduced-motion: reduce) {
   .pop-live, .pop-live::after, .pop-wordmark i, .pop-icon svg, .pop-empty-bird, .pop-sk-row, .pop-link-arrow { animation: none; }
+  .pop-live { opacity: 1; }
+  .pop-flit, .pop-flit-wings { animation: none; display: none; }
   .pop-link:hover .pop-link-arrow, .pop-link:active .pop-link-arrow { transform: none; }
   .pop-card { animation: pop-fade 0.2s ease backwards; }
   .pop-spark .spark-draw { animation: none; }

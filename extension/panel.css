@@ -221,9 +221,37 @@
   flex-shrink: 0;
   z-index: 4;
 }
-.jd-brand { display: flex; align-items: center; gap: 7px; }
-/* Idle spell: a glint travels the letters one at a time — the jackdaw's
-   eye for shiny things, told in motion. Every 13s, ~400ms to pass. */
+.jd-brand { position: relative; display: flex; align-items: center; gap: 7px; }
+/* Idle spell, in the banner's language: every 18s the live dot becomes the
+   bird, flies a lap over the wordmark (letters ducking beneath it), lands
+   back on its mark and becomes the dot again. offset-path coordinates are
+   relative to .jd-brand's top-left, not the element's own box. */
+.jd-flit {
+  position: absolute;
+  width: 16px;
+  height: 20px;
+  color: var(--jd-navy);
+  opacity: 0;
+  offset-path: path("M3.5 8 C 16 4, 44 2, 66 6 C 54 12, 22 13, 3.5 8");
+  offset-rotate: auto;
+  animation: jd-flit-fly 18s linear infinite 8s;
+}
+#jackdaw-drawer.jd-dark .jd-flit { color: #cdd6e4; }
+.jd-flit-wings {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: jd-flit-beat 0.22s ease-in-out infinite alternate;
+}
+@keyframes jd-flit-beat {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0.6); }
+}
+@keyframes jd-flit-fly {
+  0%, 1.9% { opacity: 0; offset-distance: 0%; }
+  2.6% { opacity: 1; }
+  8.2% { opacity: 1; }
+  9%, 100% { opacity: 0; offset-distance: 100%; }
+}
 .jd-wordmark {
   display: inline-flex;
   font-size: 11px;
@@ -232,16 +260,16 @@
   letter-spacing: 0.16em;
   color: var(--jd-navy);
 }
+/* letters duck as the bird passes overhead */
 .jd-wordmark i {
   font-style: normal;
   display: inline-block;
-  animation: jd-glint 13s var(--ease-in-out) infinite;
-  animation-delay: calc(4s + var(--i) * 0.06s);
+  animation: jd-letter-duck 18s var(--ease-in-out) infinite;
+  animation-delay: calc(8s + var(--i) * 0.075s);
 }
-@keyframes jd-glint {
-  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
-  1.1% { color: #16a34a; transform: translateY(-1.6px); }
-  2.2% { color: inherit; transform: translateY(0); }
+@keyframes jd-letter-duck {
+  0%, 3.4%, 8%, 100% { transform: translateY(0); }
+  5.2% { transform: translateY(1.6px); }
 }
 /* lub-dub, then rest — a pulse rather than a notification ping */
 .jd-live {
@@ -250,7 +278,7 @@
   height: 7px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #6ee7a0, var(--jd-green));
-  animation: jd-live-beat 5s var(--ease-in-out) infinite;
+  animation: jd-live-beat 5s var(--ease-in-out) infinite, jd-dot-launch 18s linear infinite 8s;
 }
 .jd-live::after {
   content: "";
@@ -260,6 +288,11 @@
   border: 1px solid rgba(22, 163, 74, 0.55);
   opacity: 0;
   animation: jd-live-echo 5s var(--ease-out) infinite;
+}
+@keyframes jd-dot-launch {
+  0%, 1.1%, 100% { opacity: 1; }
+  2%, 8.4% { opacity: 0; }
+  9.2% { opacity: 1; }
 }
 @keyframes jd-live-beat {
   0%, 100% { transform: scale(1); }
@@ -893,12 +926,7 @@
 #jackdaw-drawer.jd-dark .mk-stat-value { color: #e6eaf2; }
 #jackdaw-drawer.jd-dark .mk-section-title { color: #cdd6e4; }
 #jackdaw-drawer.jd-dark .mk-comment-body { color: #c4cddb; }
-#jackdaw-drawer.jd-dark .jd-wordmark i { animation-name: jd-glint-dark; }
-@keyframes jd-glint-dark {
-  0%, 3.2%, 100% { color: inherit; transform: translateY(0); }
-  1.1% { color: #4ade80; transform: translateY(-1.6px); }
-  2.2% { color: inherit; transform: translateY(0); }
-}
+
 #jackdaw-drawer.jd-dark .jd-popover-dollar { color: #e6eaf2; }
 #jackdaw-drawer.jd-dark .jd-tabbar { background: #131e30; border-bottom-color: #1e293e; }
 #jackdaw-drawer.jd-dark .jd-tab-btn { color: #7c8598; }
@@ -1294,7 +1322,8 @@
   .jd-skeleton > * { animation: none; }
   .mk-input-nudge { animation: none; }
   .jd-wordmark i { animation: none; }
-  .jd-live, .jd-live::after { animation: none; }
+  .jd-live, .jd-live::after { animation: none; opacity: 1; }
+  .jd-flit, .jd-flit-wings { animation: none; display: none; }
   .jd-popover { animation: jd-fade 0.15s ease; }
   .jd-ib-expand svg, .jd-ib-share svg, .jd-ib-theme svg, .jd-ib-min svg, .jd-watch.jd-watching svg { animation: none; }
   .jd-coach, .jd-tour, .jd-tour-pop { animation: jd-fade 0.2s ease; }
