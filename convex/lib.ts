@@ -44,6 +44,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // global bucket is the only option, which also makes it a ceiling on the
   // metric itself: at most 1,440 clicks/day can ever be recorded.
   alertClick: { kind: "token bucket", rate: 60, period: HOUR },
+  // Client error telemetry (metrics:events) has the same shape and the same
+  // trade-off: no identifier in the payload, so no per-device key exists and
+  // the bucket has to be global. 120 batches/hour is therefore a deployment-
+  // wide ceiling on how fast the evt:* counters can move — read the note on
+  // metrics:events before drawing conclusions from a flat error line.
+  clientEvents: { kind: "token bucket", rate: 120, period: HOUR },
 });
 
 export type RateLimitName =
@@ -194,6 +200,34 @@ export async function checkAdminRateLimit(ctx: QueryCtx): Promise<void> {
 export function utcDay(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
 }
+
+/**
+ * Every client-side event the extension may report, as a closed list. This is
+ * the single definition: `metrics:events` builds its argument validator from
+ * it (so a caller can never invent a counter key) and `dashboard:stats`
+ * zero-fills every name from it (so the panel's table has stable rows even
+ * before anything has been reported).
+ *
+ * Each name is a *state*, never a message. No free-form strings, no device id,
+ * no product, no store, nothing that could narrow an aggregate back to a
+ * person — the counters answer exactly one question, "is the panel working out
+ * there", which is the question a silent breakage (Micro Center reshaping
+ * dataLayer, a mutation starting to fail) currently makes unanswerable until
+ * someone leaves a bad review.
+ *
+ * `panel_ok` is the denominator: an error count means nothing without the
+ * number of loads that went fine.
+ */
+export const EVENT_NAMES = [
+  "panel_ok",
+  "no_datalayer",
+  "report_failed",
+  "history_failed",
+  "comments_failed",
+  "panel_error",
+] as const;
+
+export type EventName = (typeof EVENT_NAMES)[number];
 
 /**
  * Normalize a Micro Center category into a counter key segment: trimmed,

@@ -6,6 +6,7 @@
   let history = null;
   let comments = [];
   let historyLoaded = false;
+  let historyFailed = false;
   let tabEl = null;
   let drawerEl = null;
   let paneEl = null; // single full-width pane; content switches by tab
@@ -49,6 +50,15 @@
       }
     });
 
+  // page-world gave up finding a ProductPage dataLayer entry. On a real
+  // product URL that means their markup changed — worth knowing about.
+  window.addEventListener("jackdaw:nodata", () => {
+    if (tabEl) return;
+    if (/\/product\/\d+/.test(location.pathname)) {
+      send({ type: "event", name: "no_datalayer" });
+    }
+  });
+
   window.addEventListener("jackdaw:product", async (ev) => {
     window.dispatchEvent(new CustomEvent("jackdaw:ack"));
     if (tabEl) return;
@@ -58,24 +68,38 @@
       return;
     }
     if (!product) return;
-    await ensureRoot();
-    await chrome.storage.local.get(["jdTheme", "jdChartH"]).then((v) => {
-      if (v.jdTheme === "dark") theme = "dark";
-      if (v.jdChartH) chartHeight = v.jdChartH;
-    });
-    buildTab();
-    // The bird flies in, becomes the banner, and only then does the
-    // coach mark speak — one thing at a time.
-    chrome.storage.local.get("jdFlightDone").then(async ({ jdFlightDone }) => {
-      await flightEntrance(!jdFlightDone);
-      if (!jdFlightDone) chrome.storage.local.set({ jdFlightDone: true });
-      tabEl.classList.remove("jd-preflight");
-      tabEl.classList.add("jd-tab-reveal");
-      maybeCoachMark();
-    });
-    // Report what this browser already sees, then load community data.
-    send({ type: "report", data: product });
-    await refreshAll();
+    try {
+      await ensureRoot();
+      await chrome.storage.local.get(["jdTheme", "jdChartH"]).then((v) => {
+        if (v.jdTheme === "dark") theme = "dark";
+        if (v.jdChartH) chartHeight = v.jdChartH;
+      });
+      buildTab();
+      // The bird flies in, becomes the banner, and only then does the
+      // coach mark speak — one thing at a time.
+      chrome.storage.local.get("jdFlightDone").then(async ({ jdFlightDone }) => {
+        try {
+          await flightEntrance(!jdFlightDone);
+          if (!jdFlightDone) chrome.storage.local.set({ jdFlightDone: true });
+          tabEl.classList.remove("jd-preflight");
+          tabEl.classList.add("jd-tab-reveal");
+          maybeCoachMark();
+        } catch {
+          // never let the arrival choreography strand the tab invisible
+          if (tabEl) {
+            tabEl.classList.remove("jd-preflight");
+            tabEl.classList.add("jd-tab-reveal");
+          }
+          send({ type: "event", name: "panel_error" });
+        }
+      });
+      // Report what this browser already sees, then load community data.
+      send({ type: "report", data: product });
+      await refreshAll();
+      send({ type: "event", name: "panel_ok" });
+    } catch (e) {
+      send({ type: "event", name: "panel_error" });
+    }
   });
 
   // ---------- Onboarding ----------
@@ -185,6 +209,9 @@
       send({ type: "history", productId: product.productId }),
       send({ type: "comments:list", productId: product.productId }),
     ]);
+    // A failed request and a product with no history are different things and
+    // must not look the same: one offers a retry, the other invites a first visit.
+    historyFailed = !!(h && h.error);
     history = h && !h.error ? h.result : null;
     comments = c && !c.error && Array.isArray(c.result) ? c.result : [];
     historyLoaded = true;
@@ -744,6 +771,21 @@
       const first = history.points.reduce((m, p) => Math.min(m, p.firstSeenAt), Infinity);
       note.textContent = `Community-tracked since ${fmtDate(first)} · ${sightings} sighting${sightings === 1 ? "" : "s"} · store #${product.storeNum}`;
       leftCol.append(note);
+    } else if (historyFailed) {
+      const failed = el("div", "mk-empty mk-failed");
+      failed.append(
+        el("div", "mk-empty-title", "Couldn't load price history"),
+        el("div", null, "The connection didn't go through. Your visit was still recorded."),
+      );
+      const retry = el("button", "mk-post mk-retry", "Try again");
+      retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        retry.textContent = "Loading…";
+        await refreshAll();
+        renderActive();
+      });
+      failed.append(retry);
+      leftCol.append(failed);
     } else {
       const empty = el("div", "mk-empty");
       empty.append(

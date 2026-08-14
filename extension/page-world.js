@@ -54,7 +54,14 @@
   window.addEventListener("jackdaw:ack", () => { acked = true; }, { once: true });
   let tries = 0;
   const attempt = () => {
-    if (acked || ++tries > 40) return;
+    if (acked) return;
+    if (++tries > 40) {
+      // 20s without a usable ProductPage entry: either this isn't a product
+      // page or Micro Center changed the dataLayer shape. The isolated world
+      // decides which and reports it — this is the canary for a site redesign.
+      window.dispatchEvent(new CustomEvent("jackdaw:nodata"));
+      return;
+    }
     const data = extract();
     if (data) {
       window.dispatchEvent(new CustomEvent("jackdaw:product", { detail: JSON.stringify(data) }));

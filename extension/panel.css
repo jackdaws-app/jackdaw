@@ -701,6 +701,13 @@
   padding: 14px;
 }
 .mk-empty-title { font-weight: 700; margin-bottom: 4px; color: var(--jd-green-deep); }
+/* a failed load is not an empty product — different colour, different offer */
+.mk-empty.mk-failed { background: #fdf8f0; border-color: rgba(217, 119, 6, 0.32); }
+.mk-failed .mk-empty-title { color: #92400e; }
+.mk-retry { margin-top: 10px; align-self: flex-start; }
+.mk-empty.mk-failed { display: flex; flex-direction: column; align-items: flex-start; }
+#jackdaw-drawer.jd-dark .mk-empty.mk-failed { background: rgba(217, 119, 6, 0.1); border-color: rgba(251, 191, 36, 0.3); }
+#jackdaw-drawer.jd-dark .mk-failed .mk-empty-title { color: #fbbf24; }
 
 /* ---------- Discussion ---------- */
 .mk-comments { min-width: 0; }
