@@ -20,6 +20,10 @@
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
+  /* the bird's flight path reaches outside the stage — clip it rather than
+     letting it create a horizontal scrollbar. `clip` (not `hidden`) keeps
+     position:sticky working on the nav. */
+  overflow-x: clip;
   background: var(--paper);
   color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -53,6 +57,27 @@ a { color: inherit; }
   letter-spacing: 0.18em;
   color: var(--muted);
   margin-bottom: 10px;
+}
+
+/* ── Accessibility ── */
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  background: var(--ink);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-decoration: none;
+  transition: top 0.2s var(--ease-out);
+}
+.skip:focus { top: 12px; }
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
 /* ── Buttons ── */
@@ -133,7 +158,18 @@ a { color: inherit; }
 }
 @media (max-width: 940px) {
   .hero { grid-template-columns: 1fr; }
+  .stage { min-height: 340px; }
 }
+@media (max-width: 560px) {
+  .panel-stats { gap: 6px; }
+  .stat { padding: 7px 8px; }
+  .stat b { font-size: 14px; }
+  .panel-chart { height: 150px; }
+  .hero-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
+/* grid items default to min-width:auto and refuse to shrink below their
+   content — without this the hero children overflow their tracks on phones */
+.hero > *, .feature > *, .steps > * { min-width: 0; }
 .hero-copy { max-width: 560px; }
 .h-display .line { display: block; overflow: hidden; }
 .h-display .line > span { display: block; }
@@ -150,6 +186,7 @@ a { color: inherit; }
 .stage {
   position: relative;
   min-height: 420px;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
