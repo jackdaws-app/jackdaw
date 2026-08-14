@@ -208,7 +208,15 @@
       d += ` L${X(p.firstSeenAt).toFixed(1)} ${Y(p.price).toFixed(1)} L${X(p.lastSeenAt).toFixed(1)} ${Y(p.price).toFixed(1)}`;
     }
     const path = tabEl.querySelector(".jd-spark path");
-    if (path) path.setAttribute("d", d);
+    if (!path || path.getAttribute("d") === d) return;
+    path.setAttribute("d", d);
+    // The glyph is now this product's real trend — draw it on so the
+    // shape visibly grows into place (skip under reduced motion).
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      path.style.animation = "none";
+      void path.getBoundingClientRect();
+      path.style.animation = "jd-spark-draw 1.1s cubic-bezier(0.23, 1, 0.32, 1)";
+    }
   }
 
   // ---------- Tab on the product image (left edge) ----------
@@ -249,13 +257,13 @@
           // banner growth and bird absorption start on the same frame
           resolve();
           requestAnimationFrame(() => wrap.classList.add("jd-bird-out"));
-          setTimeout(() => wrap.remove(), 320);
-        }, 150);
+          setTimeout(() => wrap.remove(), 550);
+        }, 300);
       };
       bird.addEventListener("animationend", (e) => {
         if (e.animationName === "jd-fly") finish();
       });
-      setTimeout(finish, full ? 1600 : 900); // safety net
+      setTimeout(finish, full ? 3200 : 1800); // safety net
     });
   }
 
