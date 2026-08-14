@@ -215,7 +215,9 @@
     if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       path.style.animation = "none";
       void path.getBoundingClientRect();
-      path.style.animation = "jd-spark-draw 1.1s cubic-bezier(0.23, 1, 0.32, 1)";
+      path.style.animation = "jd-spark-reveal 1.1s cubic-bezier(0.23, 1, 0.32, 1)";
+      // hand control back to the stylesheet (hover redraw) afterwards
+      setTimeout(() => { path.style.animation = ""; }, 1300);
     }
   }
 
