@@ -997,8 +997,35 @@
 .jd-flight-mini .jd-w1 { animation: jd-wing-front 0.42s ease-in-out 2; }
 .jd-flight-mini .jd-w2 { animation: jd-wing-back 0.42s ease-in-out 2; }
 /* touchdown: wings flare up (real corvids brake with raised wings), a tiny
-   settle, then the bird collapses into a dot and the banner grows from it */
+   settle, then the bird perches, flicks its tail, and collapses into a dot
+   from which the banner grows */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
+.jd-perch {
+  position: absolute;
+  width: 30px;
+  height: 36px;
+  left: -14px;
+  top: -32px;
+  opacity: 0;
+}
+.jd-flight.jd-perched .jd-flight-bird { opacity: 0; transition: opacity 0.12s ease; }
+.jd-flight.jd-perched .jd-perch { opacity: 1; animation: jd-perch-settle 0.3s cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes jd-perch-settle {
+  0% { opacity: 0; transform: translateY(-4px); }
+  40% { opacity: 1; }
+  60% { transform: translateY(1.5px); } /* the little hop of a real landing */
+  100% { transform: translateY(0); }
+}
+.jd-flight.jd-perched .jd-perch-tail {
+  transform-box: fill-box;
+  transform-origin: 85% 15%;
+  animation: jd-perch-flick 0.5s ease-in-out 0.35s;
+}
+@keyframes jd-perch-flick {
+  0%, 100% { transform: rotate(0); }
+  35% { transform: rotate(-9deg); }
+  70% { transform: rotate(2deg); }
+}
 .jd-dot {
   position: absolute;
   width: 12px;

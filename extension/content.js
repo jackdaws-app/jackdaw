@@ -242,6 +242,17 @@
     `<path d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z" fill="#16233a"/>` +
     `</svg>`;
 
+  // Perched pose for the landing beat: side view, folded wing, tail flick.
+  const PERCH_SVG =
+    `<svg class="jd-perch" viewBox="0 0 42 50" fill="none" aria-hidden="true">` +
+    `<g class="jd-perch-tail"><path d="M13.5 30.5 L4 41 L6.5 41 L4.5 44.5 L7.5 44 L6.5 47 L15.5 36.5 Q14 33.5 13.5 30.5 Z" fill="#16233a"/></g>` +
+    `<path d="M21.5 4.5 Q27 2.2 30.8 5.8 Q33.6 8.6 32.4 12.4 Q31.4 15.4 28.4 17 Q30 21.5 29.4 26.5 Q28.6 32.5 25 36.8 Q22 40.2 17.8 41.2 Q14.6 41.8 12.4 40.4 Q15.2 37.2 16 32.4 Q16.8 27.6 16.2 22 Q15.6 15.8 17.8 10.8 Q19.3 7.2 21.5 4.5 Z" fill="#16233a"/>` +
+    `<path d="M31.8 8 L38.5 9.8 L31.4 11.8 Q32 9.9 31.8 8 Z" fill="#16233a"/>` +
+    `<path d="M17.5 41 L16.8 45.5 L18.4 45.5 L18.8 41.4 Z" fill="#16233a"/>` +
+    `<path d="M21.5 41 L21.4 45.7 L23 45.6 L22.9 41.2 Z" fill="#16233a"/>` +
+    `<path d="M19.5 17 Q22.5 15.5 25.5 16.5 Q27.5 22 26.8 27.5 Q26.2 32.5 23.5 36 Q21.5 33 20.5 28 Q19.5 22.5 19.5 17 Z" fill="#0d1424"/>` +
+    `</svg>`;
+
   // The jackdaw flies in and becomes the banner. Full flight on the very
   // first visit; a quick swoop afterwards. Skipped under reduced motion.
   function flightEntrance(full) {
@@ -251,7 +262,7 @@
       const wrap = el("div", "jd-flight " + (full ? "jd-flight-full" : "jd-flight-mini"));
       wrap.style.left = r.left + r.width / 2 + window.scrollX + "px";
       wrap.style.top = r.top + r.height / 2 + window.scrollY + "px";
-      wrap.innerHTML = BIRD_SVG;
+      wrap.innerHTML = BIRD_SVG + PERCH_SVG;
       // The shared intermediate: bird collapses into this dot, and the
       // banner grows out of it. Sibling of the wrap so the bird's exit
       // transform doesn't drag it along.
@@ -266,18 +277,22 @@
         done = true;
         wrap.classList.add("jd-land");
         setTimeout(() => {
-          // bird -> dot -> banner: one object changing form
-          wrap.classList.add("jd-bird-out");
-          setTimeout(() => dot.classList.add("jd-dot-in"), 60);
+          // touchdown: the flying pose swaps to a perched bird that
+          // settles, flicks its tail, then collapses into the dot
+          wrap.classList.add("jd-perched");
           setTimeout(() => {
-            resolve(); // banner grows out of the dot
-            requestAnimationFrame(() => {
-              dot.classList.remove("jd-dot-in");
-              dot.classList.add("jd-dot-out");
-            });
-            setTimeout(() => { wrap.remove(); dot.remove(); }, 500);
-          }, 430);
-        }, 300);
+            wrap.classList.add("jd-bird-out");
+            setTimeout(() => dot.classList.add("jd-dot-in"), 60);
+            setTimeout(() => {
+              resolve(); // banner grows out of the dot
+              requestAnimationFrame(() => {
+                dot.classList.remove("jd-dot-in");
+                dot.classList.add("jd-dot-out");
+              });
+              setTimeout(() => { wrap.remove(); dot.remove(); }, 500);
+            }, 430);
+          }, 750);
+        }, 280);
       };
       bird.addEventListener("animationend", (e) => {
         if (e.animationName === "jd-fly") finish();
