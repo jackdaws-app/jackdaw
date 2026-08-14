@@ -12,7 +12,8 @@ async function getDeviceId() {
 
 const REQUEST_TIMEOUT_MS = 12_000;
 
-async function convexCall(kind, path, args, attempt = 0) {
+async function convexCall(kind, path, args, opts = {}) {
+  const { retry = true, attempt = 0 } = opts;
   let res;
   try {
     res = await fetch(`${CONVEX_URL}/api/${kind}`, {
@@ -24,17 +25,17 @@ async function convexCall(kind, path, args, attempt = 0) {
     });
   } catch (e) {
     // one retry with backoff for transport failures (offline, timeout, DNS)
-    if (attempt === 0) {
+    if (retry && attempt === 0) {
       await new Promise((r) => setTimeout(r, 900));
-      return convexCall(kind, path, args, 1);
+      return convexCall(kind, path, args, { retry, attempt: 1 });
     }
     const err = new Error("network");
     err.code = "NETWORK";
     throw err;
   }
-  if (res.status >= 500 && attempt === 0) {
+  if (res.status >= 500 && retry && attempt === 0) {
     await new Promise((r) => setTimeout(r, 900));
-    return convexCall(kind, path, args, 1);
+    return convexCall(kind, path, args, { retry, attempt: 1 });
   }
   let json;
   try {
@@ -52,6 +53,11 @@ async function convexCall(kind, path, args, attempt = 0) {
 
 const convexQuery = (path, args) => convexCall("query", path, args);
 const convexMutation = (path, args) => convexCall("mutation", path, args);
+// Actions are NOT retried. auth:verifyCode spends a single-use code, so if its
+// response is lost in transit a replay would answer BAD_CODE for a code that
+// actually worked — telling someone their correct code is wrong. One attempt,
+// and a lost response means "request another code", which is at least true.
+const convexAction = (path, args) => convexCall("action", path, args, { retry: false });
 
 // ---------- Telemetry ----------
 // Anonymous counters only: an event name from a fixed list, nothing else.
@@ -94,6 +100,54 @@ async function flushEvents() {
   }
 }
 
+// ---------- Optional accounts ----------
+// Anonymous stays complete: nothing here is required by any feature. An
+// account exists so alerts survive clearing browser data, and signing in
+// adopts the watches this device already has rather than starting over.
+//
+// The session token is a bearer credential — whoever holds it is the account —
+// so it lives only in the service worker's storage and is NEVER returned to a
+// caller. Content scripts run inside a page Micro Center controls; they get to
+// know *whether* someone is signed in, and their address, and nothing else.
+
+const SESSION_KEY = "jdSession";
+
+async function getSession() {
+  const stored = await chrome.storage.local.get(SESSION_KEY);
+  const session = stored[SESSION_KEY];
+  return session && session.token ? session : null;
+}
+
+/**
+ * Who's signed in, verified against the backend rather than trusted from
+ * storage — a session can be revoked, expire, or belong to a deleted account,
+ * and a popup that shows a stale address is worse than one that shows none.
+ *
+ * A network failure returns the cached address instead of signing the user
+ * out: being offline is not a credential problem, and dropping someone's
+ * account state every time their wifi drops would be its own bug.
+ */
+async function authState() {
+  const session = await getSession();
+  if (session === null) return { signedIn: false };
+  try {
+    const me = await convexQuery("auth:me", { sessionToken: session.token });
+    if (me === null) {
+      await chrome.storage.local.remove(SESSION_KEY);
+      return { signedIn: false };
+    }
+    // Sliding expiry lives in a mutation because queries can't write. Cheap:
+    // the backend only writes once a day per session.
+    convexMutation("auth:touch", { sessionToken: session.token }).catch(() => {});
+    if (me.email !== session.email) {
+      await chrome.storage.local.set({ [SESSION_KEY]: { ...session, email: me.email } });
+    }
+    return { signedIn: true, email: me.email };
+  } catch {
+    return { signedIn: true, email: session.email, stale: true };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     // client-side signal, no backend round trip of its own
@@ -103,6 +157,43 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
     const deviceId = await getDeviceId();
     switch (msg.type) {
+      case "auth:state":
+        return authState();
+      case "auth:request":
+        // Always answers ok, for any syntactically valid address — the backend
+        // deliberately can't tell you whether an account exists.
+        return convexMutation("auth:requestCode", { email: msg.email });
+      case "auth:verify": {
+        const res = await convexAction("auth:verifyCode", {
+          email: msg.email,
+          code: msg.code,
+          deviceId,
+        });
+        await chrome.storage.local.set({
+          [SESSION_KEY]: { token: res.sessionToken, email: res.email },
+        });
+        // The token stays here. The caller learns what it needs to say.
+        return { email: res.email, adoptedWatches: res.adoptedWatches };
+      }
+      case "auth:signOut": {
+        const session = await getSession();
+        // Local state clears either way: a caller that asked to sign out is
+        // signed out, even if the backend never heard about it.
+        await chrome.storage.local.remove(SESSION_KEY);
+        if (session) {
+          await convexMutation("auth:signOut", { sessionToken: session.token }).catch(() => {});
+        }
+        return { ok: true };
+      }
+      case "auth:delete": {
+        const session = await getSession();
+        if (!session) return { ok: true };
+        // Not swallowed, unlike sign-out: a client that believes it deleted an
+        // account that still exists is worse off than one told it failed.
+        await convexMutation("auth:deleteAccount", { sessionToken: session.token });
+        await chrome.storage.local.remove(SESSION_KEY);
+        return { ok: true };
+      }
       case "report":
         return convexMutation("observations:report", { deviceId, ...msg.data });
       case "history":

@@ -322,8 +322,189 @@ body.dark .pop-footer { background: #131e30; }
 .pop-link:active .pop-link-arrow { transform: translateX(6px); }
 body.dark .pop-link:hover { color: #4ade80; }
 
+/* ---------- Account ---------- */
+/* The footer pill states what the watchlist *is*, not what an account is:
+   "this browser only" is the loss someone is exposed to, and it sits next to
+   the count of what they'd lose. Signing in changes the fact, so it changes
+   the sentence. */
+.pop-foot-left { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.pop-acct {
+  border: 0;
+  background: transparent;
+  padding: 1px 0;
+  font-size: 11px;
+  color: var(--jd-muted);
+  cursor: pointer;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px dashed rgba(120, 130, 145, 0.5);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.pop-acct::before { content: "· "; border: 0; color: var(--jd-muted); }
+.pop-acct:hover { color: var(--jd-ink); border-bottom-color: currentColor; }
+.pop-acct.synced { color: var(--jd-green-deep); border-bottom-style: solid; border-bottom-color: rgba(22, 163, 74, 0.35); }
+body.dark .pop-acct.synced { color: #4ade80; }
+.pop-count:empty + .pop-acct::before { content: ""; }
+
+/* ---------- Account sheet ---------- */
+.pop-sheet { position: fixed; inset: 0; z-index: 20; }
+.pop-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 38, 0.36);
+  opacity: 0;
+  animation: pop-scrim-in 0.2s ease forwards;
+}
+@keyframes pop-scrim-in { to { opacity: 1; } }
+.pop-sheet-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--jd-paper);
+  border-top: 1px solid var(--jd-hairline);
+  border-radius: 14px 14px 0 0;
+  padding: 8px 16px 16px;
+  box-shadow: 0 -10px 30px rgba(15, 23, 38, 0.16);
+  transform: translateY(100%);
+  animation: pop-sheet-in 0.3s var(--ease-out) forwards;
+}
+body.dark .pop-sheet-card { background: #131e30; }
+@keyframes pop-sheet-in { to { transform: translateY(0); } }
+.pop-sheet.closing .pop-sheet-card { animation: pop-sheet-out 0.22s var(--ease-in-out) forwards; }
+.pop-sheet.closing .pop-scrim { animation: pop-scrim-out 0.22s ease forwards; }
+@keyframes pop-sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes pop-scrim-out { from { opacity: 1; } to { opacity: 0; } }
+.pop-sheet-grip {
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(120, 130, 145, 0.35);
+  margin: 0 auto 12px;
+}
+
+.pop-sheet-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+.pop-sheet-body { font-size: 11.5px; color: var(--jd-muted); margin-bottom: 12px; line-height: 1.5; }
+
+.pop-field {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: var(--jd-ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+body.dark .pop-field { background: #0f1726; }
+.pop-field:focus { outline: none; border-color: var(--jd-green); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16); }
+.pop-field.code {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding-left: 11px;
+  text-indent: 0.34em; /* letter-spacing pads the right; put the run back on centre */
+}
+
+/* Step two grows out of step one: the address field collapses to the caption
+   that names it, and the code field opens in the space it gave up. One
+   element becoming another, rather than two panes swapping. */
+.pop-step { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.28s var(--ease-out), opacity 0.2s ease; }
+.pop-step > div { overflow: hidden; min-height: 0; }
+.pop-step.shut { grid-template-rows: 0fr; opacity: 0; }
+.pop-sent {
+  font-size: 11.5px;
+  color: var(--jd-muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pop-sent b { color: var(--jd-ink); font-weight: 600; }
+.pop-sent svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--jd-green); }
+
+.pop-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.pop-btn {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--jd-navy);
+  color: #fff;
+  transition: transform 0.12s var(--ease-out), background-color 0.15s ease, opacity 0.15s ease;
+}
+body.dark .pop-btn { background: var(--jd-green-deep); }
+.pop-btn:hover { background: #24334f; }
+body.dark .pop-btn:hover { background: var(--jd-green); }
+.pop-btn:active { transform: scale(0.96); }
+.pop-btn[disabled] { opacity: 0.55; cursor: default; transform: none; }
+/* The dark fill sits on `body.dark .pop-btn`, which out-specifies a bare
+   `.pop-btn.ghost` — so every outline variant must restate its background for
+   dark mode, hover included, or it comes back filled green. */
+.pop-btn.ghost { background: transparent; color: var(--jd-muted); border-color: var(--jd-hairline); }
+.pop-btn.ghost:hover { background: rgba(120, 130, 145, 0.1); color: var(--jd-ink); }
+body.dark .pop-btn.ghost { background: transparent; }
+body.dark .pop-btn.ghost:hover { background: rgba(203, 213, 225, 0.08); }
+.pop-btn.danger { background: transparent; color: #b91c1c; border-color: rgba(185, 28, 28, 0.35); }
+.pop-btn.danger:hover { background: rgba(185, 28, 28, 0.08); }
+body.dark .pop-btn.danger { background: transparent; color: #f87171; border-color: rgba(248, 113, 113, 0.35); }
+body.dark .pop-btn.danger:hover { background: rgba(248, 113, 113, 0.12); }
+.pop-spacer { flex: 1; }
+
+.pop-err {
+  font-size: 11.5px;
+  color: #b91c1c;
+  margin-top: 9px;
+  animation: pop-shake 0.3s var(--ease-out);
+}
+body.dark .pop-err { color: #f87171; }
+@keyframes pop-shake {
+  0%, 100% { transform: translateX(0); }
+  28% { transform: translateX(-4px); }
+  64% { transform: translateX(3px); }
+}
+
+/* The account line in the signed-in sheet, and the confirmation that replaces
+   the form once a session opens. */
+.pop-acct-email {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  margin-bottom: 2px;
+}
+.pop-done { text-align: center; padding: 6px 0 2px; }
+.pop-done-mark {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--jd-green);
+  color: var(--jd-green-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pop-done-in 0.34s var(--ease-out) backwards;
+}
+body.dark .pop-done-mark { color: #4ade80; }
+.pop-done-mark svg { width: 15px; height: 15px; }
+.pop-done-mark svg path { stroke-dasharray: 24; animation: pop-tick 0.4s var(--ease-out) 0.16s backwards; }
+@keyframes pop-done-in { from { transform: scale(0.7); opacity: 0; } }
+@keyframes pop-tick { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   .pop-live, .pop-live::after, .pop-wordmark i, .pop-icon svg, .pop-empty-bird, .pop-sk-row, .pop-link-arrow { animation: none; }
+  .pop-sheet-card, .pop-scrim, .pop-sheet.closing .pop-sheet-card, .pop-sheet.closing .pop-scrim { animation: none; transform: none; opacity: 1; }
+  .pop-step { transition: none; }
+  .pop-err, .pop-done-mark, .pop-done-mark svg path { animation: none; }
+  .pop-btn:active { transform: none; }
   .pop-live { opacity: 1; }
   .pop-flit, .pop-flit-wings { animation: none; display: none; }
   .pop-link:hover .pop-link-arrow, .pop-link:active .pop-link-arrow { transform: none; }

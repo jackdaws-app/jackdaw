@@ -140,10 +140,295 @@
     bodyEl.append(wrap);
   }
 
-  send({ type: "watch:dashboard" }).then((res) => {
-    if (res.error) return renderError();
-    const rows = Array.isArray(res.result) ? res.result : [];
-    if (!rows.length) return renderEmpty();
-    renderList(rows);
+  function loadList() {
+    return send({ type: "watch:dashboard" }).then((res) => {
+      if (res.error) return renderError();
+      const rows = Array.isArray(res.result) ? res.result : [];
+      if (!rows.length) return renderEmpty();
+      renderList(rows);
+    });
+  }
+
+  // ---------- Account ----------
+  // Optional throughout. The footer pill describes the watchlist's durability
+  // rather than advertising a feature — "this browser only" is the actual
+  // exposure, sitting next to the count of what it applies to.
+
+  const acctBtn = document.getElementById("acct");
+  const sheetEl = document.getElementById("sheet");
+  const sheetBody = document.getElementById("sheetBody");
+  const scrimEl = document.getElementById("scrim");
+
+  const CHECK = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.4 8.5l3 3 6.2-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+  // Backend error codes are contracts; these are the sentences a person reads.
+  const ERRORS = {
+    INVALID_ARGUMENT: "That doesn't look like an email address.",
+    BAD_CODE: "That code isn't right. Check the email, or request a new one.",
+    CODE_LOCKED: "Too many wrong guesses. Request a new code.",
+    RATE_LIMITED: "Too many attempts just now. Try again in a little while.",
+    NETWORK: "Couldn't reach Jackdaw. Check your connection.",
+  };
+  const errorText = (res) =>
+    ERRORS[res.code] || res.error || "Something went wrong. Try again.";
+
+  let auth = { signedIn: false };
+
+  function paintAcct() {
+    acctBtn.hidden = false;
+    acctBtn.classList.toggle("synced", auth.signedIn);
+    acctBtn.textContent = auth.signedIn ? "synced" : "this browser only";
+    acctBtn.title = auth.signedIn
+      ? `Signed in as ${auth.email}`
+      : "Your alerts live only in this browser";
+  }
+
+  function refreshAuth() {
+    return send({ type: "auth:state" }).then((res) => {
+      auth = res.result && !res.error ? res.result : { signedIn: false };
+      paintAcct();
+    });
+  }
+
+  // ---------- Sheet ----------
+
+  function openSheet(render) {
+    sheetEl.hidden = false;
+    sheetEl.classList.remove("closing");
+    render();
+  }
+
+  function closeSheet() {
+    sheetEl.classList.add("closing");
+    const done = () => {
+      sheetEl.hidden = true;
+      sheetBody.textContent = "";
+      acctBtn.focus();
+    };
+    // The class drives an exit animation; under reduced motion there isn't
+    // one to wait for, so don't hang on an animationend that never fires.
+    const card = sheetEl.querySelector(".pop-sheet-card");
+    const anim = getComputedStyle(card).animationName;
+    if (anim === "none") done();
+    else card.addEventListener("animationend", done, { once: true });
+  }
+
+  scrimEl.addEventListener("click", closeSheet);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !sheetEl.hidden) closeSheet();
   });
+
+  /** Title + body copy, shared by every sheet state. */
+  function sheetHead(title, body) {
+    const frag = document.createDocumentFragment();
+    const h = el("div", "pop-sheet-title", title);
+    h.id = "sheetTitle";
+    frag.append(h, el("div", "pop-sheet-body", body));
+    return frag;
+  }
+
+  function showError(message) {
+    const old = sheetBody.querySelector(".pop-err");
+    if (old) old.remove();
+    // Re-inserting is what replays the shake; patching the text of a node
+    // whose animation already finished would change the words silently.
+    sheetBody.append(el("div", "pop-err", message));
+  }
+
+  /** Signed out: ask for an address, then transform that step into the code step. */
+  function renderSignIn() {
+    sheetBody.textContent = "";
+    sheetBody.append(
+      sheetHead(
+        "Keep your alerts",
+        "Clearing your browser data takes your watchlist with it. An account keeps it, and brings it to your other browsers. No password — we email you a 6-digit code.",
+      ),
+    );
+
+    const emailStep = el("div", "pop-step");
+    const emailWrap = el("div");
+    const emailInput = el("input", "pop-field");
+    emailInput.type = "email";
+    emailInput.placeholder = "you@example.com";
+    emailInput.autocomplete = "email";
+    emailInput.spellcheck = false;
+    emailInput.setAttribute("aria-label", "Email address");
+    emailWrap.append(emailInput);
+    emailStep.append(emailWrap);
+
+    const sentLine = el("div", "pop-step shut");
+    const sentWrap = el("div");
+    const sent = el("div", "pop-sent");
+    sent.innerHTML = CHECK;
+    sentWrap.append(sent);
+    sentLine.append(sentWrap);
+
+    const codeStep = el("div", "pop-step shut");
+    const codeWrap = el("div");
+    const codeInput = el("input", "pop-field code");
+    codeInput.type = "text";
+    codeInput.inputMode = "numeric";
+    // Chrome offers the code straight from the mail app with this.
+    codeInput.autocomplete = "one-time-code";
+    codeInput.maxLength = 7;
+    codeInput.placeholder = "······";
+    codeInput.setAttribute("aria-label", "Six-digit code");
+    codeWrap.append(codeInput);
+    codeStep.append(codeWrap);
+
+    const actions = el("div", "pop-actions");
+    const primary = el("button", "pop-btn", "Send code");
+    const cancel = el("button", "pop-btn ghost", "Not now");
+    actions.append(primary, el("span", "pop-spacer"), cancel);
+
+    sheetBody.append(emailStep, sentLine, codeStep, actions);
+    emailInput.focus();
+    cancel.addEventListener("click", closeSheet);
+
+    let step = "email";
+    let address = "";
+
+    async function submit() {
+      if (primary.disabled) return;
+      const old = sheetBody.querySelector(".pop-err");
+      if (old) old.remove();
+
+      if (step === "email") {
+        address = emailInput.value.trim();
+        if (!address) return emailInput.focus();
+        primary.disabled = true;
+        primary.textContent = "Sending…";
+        const res = await send({ type: "auth:request", email: address });
+        primary.disabled = false;
+        if (res.error) {
+          primary.textContent = "Send code";
+          return showError(errorText(res));
+        }
+        // Step one becomes step two: the address field collapses into the line
+        // that names it, and the code field opens into the space it gave up.
+        step = "code";
+        sent.append(document.createTextNode("Code sent to "), el("b", null, address));
+        emailStep.classList.add("shut");
+        primary.textContent = "Sign in";
+        requestAnimationFrame(() => {
+          sentLine.classList.remove("shut");
+          codeStep.classList.remove("shut");
+          codeInput.focus();
+        });
+        return;
+      }
+
+      const code = codeInput.value.trim();
+      if (!code) return codeInput.focus();
+      primary.disabled = true;
+      primary.textContent = "Checking…";
+      const res = await send({ type: "auth:verify", email: address, code });
+      primary.disabled = false;
+      primary.textContent = "Sign in";
+      if (res.error) {
+        codeInput.select();
+        return showError(errorText(res));
+      }
+      renderSignedInDone(res.result);
+    }
+
+    primary.addEventListener("click", submit);
+    for (const input of [emailInput, codeInput]) {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") submit();
+      });
+    }
+  }
+
+  /** The moment it works. States what actually moved, not "success". */
+  function renderSignedInDone(result) {
+    auth = { signedIn: true, email: result.email };
+    paintAcct();
+    loadList();
+
+    sheetBody.textContent = "";
+    const wrap = el("div", "pop-done");
+    const mark = el("div", "pop-done-mark");
+    mark.innerHTML = CHECK;
+    const n = result.adoptedWatches;
+    wrap.append(
+      mark,
+      el("div", "pop-sheet-title", "You're in"),
+      el(
+        "div",
+        "pop-sheet-body",
+        n > 0
+          ? `${n} ${n === 1 ? "alert" : "alerts"} moved to ${result.email}. They'll follow you to your other browsers.`
+          : `Signed in as ${result.email}. Alerts you set from now on are kept with your account.`,
+      ),
+    );
+    sheetBody.append(wrap);
+    setTimeout(() => {
+      if (!sheetEl.hidden) closeSheet();
+    }, 2600);
+  }
+
+  /** Signed in: who you are, and the two ways out. */
+  function renderAccount() {
+    sheetBody.textContent = "";
+    sheetBody.append(
+      sheetHead(
+        "Your account",
+        auth.stale
+          ? "Couldn't reach Jackdaw just now, so this may be out of date."
+          : "Your watchlist is kept with your account and follows you to any browser you sign in to.",
+      ),
+    );
+    sheetBody.append(el("div", "pop-acct-email", auth.email || ""));
+
+    const actions = el("div", "pop-actions");
+    const out = el("button", "pop-btn ghost", "Sign out");
+    const del = el("button", "pop-btn danger", "Delete account");
+    actions.append(out, el("span", "pop-spacer"), del);
+    sheetBody.append(actions);
+
+    out.addEventListener("click", async () => {
+      out.disabled = true;
+      await send({ type: "auth:signOut" });
+      auth = { signedIn: false };
+      paintAcct();
+      loadList();
+      closeSheet();
+    });
+
+    // Two-step in place rather than a dialog: a popup that opens a confirm()
+    // can lose focus and close, taking the answer with it.
+    let armed = false;
+    del.addEventListener("click", async () => {
+      if (!armed) {
+        armed = true;
+        del.textContent = "Really delete?";
+        sheetBody.append(
+          el(
+            "div",
+            "pop-sheet-body",
+            "Your email address and sessions are removed. Your alerts stay on this browser, unlinked — you keep them.",
+          ),
+        );
+        return;
+      }
+      del.disabled = true;
+      const res = await send({ type: "auth:delete" });
+      if (res.error) {
+        del.disabled = false;
+        return showError(errorText(res));
+      }
+      auth = { signedIn: false };
+      paintAcct();
+      loadList();
+      closeSheet();
+    });
+  }
+
+  acctBtn.addEventListener("click", () => {
+    openSheet(auth.signedIn ? renderAccount : renderSignIn);
+  });
+
+  loadList();
+  refreshAuth();
 })();

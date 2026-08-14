@@ -39,12 +39,26 @@
       </div>
     </main>
     <footer class="pop-footer">
-      <span id="count" class="pop-count"></span>
+      <span class="pop-foot-left">
+        <span id="count" class="pop-count"></span>
+        <button id="acct" class="pop-acct" hidden></button>
+      </span>
       <a class="pop-link" href="https://www.microcenter.com" target="_blank" rel="noopener"
         ><span class="pop-link-text">Micro Center</span
         ><span class="pop-link-arrow" aria-hidden="true">→</span></a
       >
     </footer>
+
+    <!-- Account sheet. Rises from the footer pill that opened it, and the two
+         sign-in steps transform into one another rather than swapping. -->
+    <div class="pop-sheet" id="sheet" hidden>
+      <div class="pop-scrim" id="scrim"></div>
+      <div class="pop-sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+        <div class="pop-sheet-grip" aria-hidden="true"></div>
+        <div id="sheetBody"></div>
+      </div>
+    </div>
+
     <script src="popup.js"></script>
   </body>
 </html>
