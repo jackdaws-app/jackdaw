@@ -210,8 +210,12 @@
     const path = tabEl.querySelector(".jd-spark path");
     if (!path || path.getAttribute("d") === d) return;
     path.setAttribute("d", d);
-    // The glyph is now this product's real trend — draw it on so the
-    // shape visibly grows into place (skip under reduced motion).
+    // If the bird hasn't landed yet, stop here: the reveal choreography
+    // will draw the (now data-true) shape itself. Restarting the draw
+    // while hidden would burn the animation invisibly and leave a static
+    // line at reveal time.
+    if (!tabEl.classList.contains("jd-tab-reveal")) return;
+    // Tab already visible: draw the new shape on in place.
     if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       path.style.animation = "none";
       void path.getBoundingClientRect();
