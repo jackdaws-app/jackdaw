@@ -264,10 +264,17 @@
     tabEl.id = "jackdaw-tab";
     tabEl.classList.add("jd-preflight"); // hidden until the bird lands
     tabEl.setAttribute("aria-label", "Price history");
+    // Layered for the arrival choreography: the pill surface, the glyph,
+    // and each letter are separate objects with their own entrances.
+    const letters = "Price history"
+      .split("")
+      .map((ch, i) => `<i class="jd-l" style="--i:${i}">${ch === " " ? "&nbsp;" : ch}</i>`)
+      .join("");
     tabEl.innerHTML =
+      `<span class="jd-tab-bg" aria-hidden="true"></span>` +
       `<svg class="jd-spark" viewBox="0 0 22 18" fill="none" aria-hidden="true">` +
       `<path d="${SPARK_PATH}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/></svg>` +
-      `<span class="jd-tab-text">Price history</span>`;
+      `<span class="jd-tab-text">${letters}</span>`;
     tabEl.addEventListener("click", openDrawer);
 
     // The carousel clips overflow, so the tab lives in <body> and is

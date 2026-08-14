@@ -36,19 +36,30 @@
   align-items: center;
   gap: 8px;
   transform: translate(-100%, -50%); /* hangs outward from the anchor point */
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-right: 0;
-  background: var(--jd-navy);
+  border: 0;
+  background: transparent;
   color: #fff;
   padding: 12px 6px 12px 7px;
   border-radius: 9px 0 0 9px;
-  box-shadow: -2px 4px 16px rgba(13, 22, 38, 0.22);
   cursor: pointer;
   animation: jd-tab-in 0.3s var(--ease-out);
-  transition: transform 0.15s var(--ease-out), box-shadow 0.15s ease, opacity 0.2s ease;
+  transition: transform 0.15s var(--ease-out), opacity 0.2s ease;
 }
+/* The pill surface is its own layer so it can stretch open independently */
+.jd-tab-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 0;
+  border-radius: 9px 0 0 9px;
+  background: var(--jd-navy);
+  box-shadow: -2px 4px 16px rgba(13, 22, 38, 0.22);
+}
+#jackdaw-tab > svg, #jackdaw-tab > .jd-tab-text { position: relative; z-index: 1; }
+.jd-l { font-style: normal; display: inline-block; }
 /* the green thread: a quiet accent along the outer spine */
-#jackdaw-tab::before {
+.jd-tab-bg::before {
   content: "";
   position: absolute;
   left: 0;
@@ -79,7 +90,7 @@
   animation: jd-spark-draw 0.8s var(--ease-out) 0.35s backwards;
 }
 /* idle spell: the green spine glimmers every so often */
-#jackdaw-tab::before {
+.jd-tab-bg::before {
   background-size: 100% 300%;
   animation: jd-spine-drift 9s var(--ease-in-out) infinite alternate;
 }
@@ -98,8 +109,8 @@
 @media (hover: hover) and (pointer: fine) {
   #jackdaw-tab:hover {
     transform: translate(calc(-100% - 3px), -50%);
-    box-shadow: -3px 6px 20px rgba(13, 22, 38, 0.3);
   }
+  #jackdaw-tab:hover .jd-tab-bg { box-shadow: -3px 6px 20px rgba(13, 22, 38, 0.3); }
   #jackdaw-tab:hover .jd-spark path {
     animation: jd-spark-draw 0.6s var(--ease-out);
   }
@@ -890,16 +901,30 @@
 
 /* ---------- The arrival: a jackdaw flies in and becomes the banner ---------- */
 #jackdaw-tab.jd-preflight { opacity: 0; pointer-events: none; }
-/* The banner grows outward from the exact point the bird lands on —
-   starting bird-sized with a small organic overshoot — while the bird
-   shrinks into it. One event, two halves. */
-#jackdaw-tab.jd-tab-reveal { animation: jd-tab-grow 0.55s var(--ease-out); }
-@keyframes jd-tab-grow {
-  0% { opacity: 0; transform: translate(-100%, -50%) scale(0.18); }
-  10% { opacity: 1; }
-  40% { transform: translate(-100%, -50%) scale(0.48); }
-  78% { transform: translate(-100%, -50%) scale(1.05); }
-  100% { opacity: 1; transform: translate(-100%, -50%) scale(1); }
+/* The arrival choreography, layer by layer (container-transform pattern):
+   1. the pill surface stretches open from the landing point (scaleY),
+   2. the sparkline draws itself,
+   3. the letters cascade into place one at a time. */
+#jackdaw-tab.jd-tab-reveal .jd-tab-bg {
+  animation: jd-pill-open 0.45s var(--ease-out) both, jd-breathe 7s var(--ease-in-out) 0.45s infinite alternate;
+  transform-origin: 50% 50%;
+}
+@keyframes jd-pill-open {
+  0% { opacity: 0; transform: scaleY(0.12) scaleX(0.55); }
+  18% { opacity: 1; }
+  45% { transform: scaleY(0.55) scaleX(1.02); }
+  80% { transform: scaleY(1.04) scaleX(1); }
+  100% { opacity: 1; transform: scaleY(1) scaleX(1); }
+}
+#jackdaw-tab.jd-tab-reveal .jd-spark path {
+  animation: jd-spark-draw 0.55s var(--ease-out) 0.38s backwards;
+}
+#jackdaw-tab.jd-tab-reveal .jd-l {
+  animation: jd-letter-fall 0.26s var(--ease-out) calc(0.42s + var(--i) * 0.022s) backwards;
+}
+@keyframes jd-letter-fall {
+  from { opacity: 0; transform: translateY(-7px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .jd-flight {
   position: absolute;
@@ -1113,6 +1138,9 @@
   .jd-tour-hole { transition: none; }
   .jd-flight { display: none; }
   #jackdaw-tab.jd-tab-reveal { animation: jd-fade 0.2s ease; }
+  #jackdaw-tab.jd-tab-reveal .jd-tab-bg,
+  #jackdaw-tab.jd-tab-reveal .jd-l,
+  #jackdaw-tab.jd-tab-reveal .jd-spark path { animation: none; }
   #jackdaw-tab:active { transform: translate(-100%, -50%); }
   .jd-icon-btn:active, .jd-watch:active, .mk-vote-btn:active, .mk-post:active { transform: none; }
   @keyframes jd-fade { from { opacity: 0; } to { opacity: 1; } }
