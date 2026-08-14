@@ -173,7 +173,8 @@ export const resolve = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    // Rate limit first, so a wrong key still costs a token.
+    // Rate limit before the key check by intent, though the throw below rolls
+    // the token back — see enforceAdminRateLimit's note.
     await enforceAdminRateLimit(ctx);
     requireAdmin(args.adminKey);
 

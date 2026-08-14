@@ -42,6 +42,11 @@ const SCAN_LIMIT = 1000;
  *    in the data (arming is a transition; acking clears the flag). They are
  *    seeded only when missing — armed from the watches row count, which is the
  *    lower bound, and fired at 0 — and never overwritten afterwards.
+ *
+ * Note that obs:day is an approximation (see below), so a re-run re-derives
+ * the daily observation series rather than preserving what live traffic
+ * measured. comments:day is exact and gets fully reconciled, stale keys
+ * included.
  */
 export const backfillCounters = internalMutation({
   args: {},
@@ -132,6 +137,31 @@ export const backfillCounters = internalMutation({
       await setCounter(ctx, key, value);
     }
 
+    // A day whose comments were all moderated away keeps a stale count,
+    // because the loop above only writes keys it derived. comments:day is
+    // exact (every row carries its _creationTime), so any key in the
+    // namespace that the scan didn't produce is genuinely zero now.
+    //
+    // Deliberately not done for obs:day: that series is approximate, so a key
+    // missing from the derived map can still be a correct live measurement
+    // (sightings that only incremented points first seen on an earlier day),
+    // and zeroing it would destroy real data.
+    const COMMENT_DAY_PREFIX = "comments:day:";
+    const staleDays = await ctx.db
+      .query("counters")
+      .withIndex("by_key", (q) =>
+        q.gte("key", COMMENT_DAY_PREFIX).lt("key", `${COMMENT_DAY_PREFIX}~`),
+      )
+      .take(500);
+    let zeroed = 0;
+    for (const row of staleDays) {
+      const day = row.key.slice(COMMENT_DAY_PREFIX.length);
+      if (!commentsByDay.has(day) && row.value !== 0) {
+        await setCounter(ctx, row.key, 0);
+        zeroed++;
+      }
+    }
+
     // Event tallies: seed once, never clobber (see the note above).
     await initCounter(ctx, "alerts:armed", watches.length);
     await initCounter(ctx, "alerts:fired", 0);
@@ -143,7 +173,7 @@ export const backfillCounters = internalMutation({
       comments: comments.length,
       reports: reports.length,
       watches: watches.length,
-      countersWritten: derived.length + 2,
+      countersWritten: derived.length + 2 + zeroed,
     };
   },
 });

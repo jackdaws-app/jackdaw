@@ -36,8 +36,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   commentVote: { kind: "token bucket", rate: 30, period: MINUTE },
   commentReport: { kind: "token bucket", rate: 10, period: HOUR },
   priceReport: { kind: "token bucket", rate: 120, period: HOUR },
-  // Global (not per-device) bucket in front of the admin panel, so a stolen
-  // URL can't be used to grind at ADMIN_KEY.
+  // Global (not per-device) ceiling on admin traffic. Read the note above
+  // enforceAdminRateLimit before treating this as anti-guessing protection.
   adminAuth: { kind: "token bucket", rate: 20, period: MINUTE },
 });
 
@@ -111,8 +111,21 @@ export function requireAdmin(key: string): void {
 }
 
 /**
- * Consume one adminAuth token (mutations only — this writes). Call BEFORE
- * requireAdmin so failed attempts are what drains the bucket.
+ * Consume one adminAuth token (mutations only — this writes).
+ *
+ * WHAT THIS DOES NOT DO: throttle key guessing. It is called before
+ * requireAdmin so a wrong key would drain the bucket, but a Convex mutation
+ * that throws rolls back its whole transaction — including this component's
+ * write — so a rejected attempt costs the attacker nothing. Verified against
+ * the dev deployment: 26 consecutive wrong-key calls all returned
+ * UNAUTHORIZED and none were ever rate limited, while successful mutations do
+ * consume tokens normally.
+ *
+ * Recording a failed attempt is impossible from inside a query or mutation for
+ * that reason; it would take a non-transactional action wrapping the whole
+ * admin surface. What actually keeps the panel shut is the 256-bit ADMIN_KEY
+ * compared by requireAdmin — this bucket is a ceiling on sustained *authorized*
+ * traffic (a runaway polling panel), not a lock.
  */
 export async function enforceAdminRateLimit(ctx: MutationCtx): Promise<void> {
   const { ok, retryAfter } = await rateLimiter.limit(ctx, "adminAuth", {
@@ -128,10 +141,10 @@ export async function enforceAdminRateLimit(ctx: MutationCtx): Promise<void> {
 }
 
 /**
- * Read-only variant for admin queries. Convex queries cannot write, so this
- * cannot consume a token — it only refuses to serve while the shared bucket is
- * already drained by admin mutations. The real barrier on a query is the
- * 256-bit key compared by {@link requireAdmin}; this is depth, not the wall.
+ * Read-only variant for admin queries. Queries cannot write at all, so this
+ * never consumes a token — it only refuses to serve while admin mutations have
+ * already drained the shared bucket. Same caveat as
+ * {@link enforceAdminRateLimit}: the key is the lock, this is a ceiling.
  */
 export async function checkAdminRateLimit(ctx: QueryCtx): Promise<void> {
   const { ok, retryAfter } = await rateLimiter.check(ctx, "adminAuth", {
@@ -155,7 +168,12 @@ export function utcDay(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
 }
 
-/** Add `delta` to the named counter, creating the row on first sighting. */
+/**
+ * Add `delta` to the named counter, creating the row on first sighting.
+ * Negative deltas are allowed (moderation removes rows the state counters
+ * track) and the result is floored at 0 — a count below zero is never a true
+ * reading, only a sign the counter started behind the data.
+ */
 export async function bump(
   ctx: MutationCtx,
   key: string,
@@ -166,9 +184,9 @@ export async function bump(
     .withIndex("by_key", (q) => q.eq("key", key))
     .unique();
   if (row === null) {
-    await ctx.db.insert("counters", { key, value: delta });
+    await ctx.db.insert("counters", { key, value: Math.max(0, delta) });
   } else {
-    await ctx.db.patch(row._id, { value: row.value + delta });
+    await ctx.db.patch(row._id, { value: Math.max(0, row.value + delta) });
   }
 }
 
@@ -240,6 +258,12 @@ export async function flaggedComments(ctx: QueryCtx) {
  * - "unhide": clear hidden + reportCount and delete the comment's reports.
  * - "delete": remove the comment, its reports and votes, and re-parent its
  *   direct children to the deleted comment's parent (or top level).
+ *
+ * Moderation is the only path that deletes these rows, so it is also the only
+ * path that has to walk the counters back down. Keeping them in step here is
+ * what makes `admin:backfillCounters` a no-op on a healthy deployment instead
+ * of a correction: comments:total, comments:hidden and reports:total always
+ * equal what a fresh count of the tables would produce.
  */
 export async function resolveCommentReport(
   ctx: MutationCtx,
@@ -258,6 +282,10 @@ export async function resolveCommentReport(
   for (const r of reports) {
     await ctx.db.delete(r._id);
   }
+  if (reports.length > 0) await bump(ctx, "reports:total", -reports.length);
+  // Both actions clear the hidden state, so a hidden comment leaves the
+  // hidden tally exactly once either way.
+  if (comment.hidden === true) await bump(ctx, "comments:hidden", -1);
 
   if (action === "unhide") {
     await ctx.db.patch(commentId, {
@@ -286,6 +314,8 @@ export async function resolveCommentReport(
   }
 
   await ctx.db.delete(commentId);
+  await bump(ctx, "comments:total", -1);
+  await bump(ctx, `comments:day:${utcDay(comment._creationTime)}`, -1);
 }
 
 // ---------------------------------------------------------------------------
