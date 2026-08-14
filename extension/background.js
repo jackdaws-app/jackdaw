@@ -119,6 +119,21 @@ async function getSession() {
 }
 
 /**
+ * The scope argument every watch call carries: `{sessionToken}` when signed in,
+ * `{}` when not. Spread into the args rather than passed as null, because the
+ * backend's validator is `v.optional(v.string())` and an absent token is the
+ * anonymous path — the normal state of this product, not a degraded one.
+ *
+ * A stale or revoked token needs no special handling here: the backend resolves
+ * it to null and answers with this browser's own watches, which is the same
+ * thing that happens when there was never a token at all.
+ */
+async function scopeArg() {
+  const session = await getSession();
+  return session === null ? {} : { sessionToken: session.token };
+}
+
+/**
  * Who's signed in, verified against the backend rather than trusted from
  * storage — a session can be revoked, expire, or belong to a deleted account,
  * and a popup that shows a stale address is worse than one that shows none.
@@ -211,14 +226,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return convexMutation("comments:vote", { commentId: msg.commentId, deviceId, value: msg.value });
       case "comments:report":
         return convexMutation("comments:report", { commentId: msg.commentId, deviceId });
+      // The watch calls are the ones an account changes the answer to: signed
+      // in, the scope is the person's whole watchlist rather than this browser's.
       case "watch:toggle":
-        return convexMutation("watches:toggle", { deviceId, productId: msg.productId });
+        return convexMutation("watches:toggle", {
+          deviceId,
+          productId: msg.productId,
+          ...(await scopeArg()),
+        });
       case "watch:setTarget":
-        return convexMutation("watches:setTarget", { deviceId, productId: msg.productId, targetPrice: msg.targetPrice });
+        return convexMutation("watches:setTarget", {
+          deviceId,
+          productId: msg.productId,
+          targetPrice: msg.targetPrice,
+          ...(await scopeArg()),
+        });
       case "watch:dashboard":
-        return convexQuery("watches:dashboard", { deviceId });
+        return convexQuery("watches:dashboard", { deviceId, ...(await scopeArg()) });
       case "watch:status":
-        return convexQuery("watches:status", { deviceId, productId: msg.productId });
+        return convexQuery("watches:status", {
+          deviceId,
+          productId: msg.productId,
+          ...(await scopeArg()),
+        });
       default:
         throw new Error("Unknown message type: " + msg.type);
     }
@@ -250,7 +280,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   await flushEvents(); // hourly, and only when something is buffered
   try {
     const deviceId = await getDeviceId();
-    const drops = await convexQuery("watches:check", { deviceId });
+    // Read once and reuse for the acks: a sign-out landing mid-loop would
+    // otherwise disarm the account's rows for some drops and this browser's for
+    // the rest, from one pass over one list.
+    const scope = await scopeArg();
+    const drops = await convexQuery("watches:check", { deviceId, ...scope });
     for (const d of drops) {
       chrome.notifications.create(d.urlPath, {
         type: "basic",
@@ -259,7 +293,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         message: `${d.name}\nYour target: $${d.priceAtWatch.toFixed(2)} · store #${d.storeNum}`,
         priority: 1,
       });
-      await convexMutation("watches:ack", { deviceId, productId: d.productId, newPrice: d.currentPrice });
+      await convexMutation("watches:ack", {
+        deviceId,
+        productId: d.productId,
+        newPrice: d.currentPrice,
+        ...scope,
+      });
     }
   } catch {
     // network hiccups are fine; next hourly tick retries

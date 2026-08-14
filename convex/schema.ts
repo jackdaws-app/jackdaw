@@ -63,10 +63,14 @@ export default defineSchema({
     priceAtWatch: v.number(),
     active: v.boolean(),
     // Set when the device signs in (auth:verifyCode adopts the device's
-    // existing watches). Optional forever: anonymous use is the default and
-    // must keep working untouched, so every read path still keys off deviceId
-    // and this field is additive — a second handle on the same row, never a
-    // replacement for the first.
+    // existing watches) and on anything written while signed in, so a row is
+    // account-linked from birth rather than at the next sign-in. Optional
+    // forever: anonymous use is the default and keeps working untouched, and a
+    // call with no session still reads and writes by deviceId alone. When a
+    // session does resolve this field is the scope watches.ts reads by — a
+    // second, wider handle on the same row, never a replacement for the first,
+    // which is why auth:deleteAccount can clear it back off and leave the
+    // device owning its watches exactly as before.
     accountId: v.optional(v.id("accounts")),
   })
     // Watches are soft-deactivated (toggle/ack set active:false rather than
@@ -79,10 +83,15 @@ export default defineSchema({
     // value. Targets change, so that figure is a bounded live sum rather than
     // a counter.
     .index("by_active", ["active"])
-    // Account-scoped reads: the sign-out/delete unlink sweep today, and
-    // cross-device watch sync once the client learns about accounts. Same
-    // active-first shape as by_device_active, for the same reason.
-    .index("by_account_active", ["accountId", "active"]),
+    // Account-scoped reads: the delete-account unlink sweep, and the watchlist
+    // a signed-in caller sees on every browser. Same active-first shape as
+    // by_device_active, for the same reason.
+    .index("by_account_active", ["accountId", "active"])
+    // The account's row for one product, for the same reason by_device_product
+    // exists one owner up: a signed-in write has to find the alert the person
+    // already set on another browser, rather than minting a second row for a
+    // product they are already watching.
+    .index("by_account_product", ["accountId", "productDocId"]),
 
   devices: defineTable({
     deviceId: v.string(),
