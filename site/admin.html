@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin · Jackdaw</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body class="admin-body">
+    <nav class="nav">
+      <a class="nav-brand" href="index.html">
+        <span class="nav-dot"></span>
+        <span class="nav-word"
+          ><i style="--i: 0">J</i><i style="--i: 1">a</i><i style="--i: 2">c</i><i style="--i: 3">k</i
+          ><i style="--i: 4">d</i><i style="--i: 5">a</i><i style="--i: 6">w</i></span
+        >
+      </a>
+      <div class="nav-links"><span class="admin-tag">Admin</span></div>
+      <button class="btn btn-ghost" id="signOut" hidden>Sign out</button>
+    </nav>
+
+    <!-- Gate -->
+    <section class="gate" id="gate">
+      <h1 class="h-section">Admin access</h1>
+      <p class="gate-sub">Enter the admin key. It is kept for this browser session only.</p>
+      <form class="gate-form" id="gateForm">
+        <input
+          class="gate-input"
+          id="keyInput"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Admin key"
+          aria-label="Admin key"
+        />
+        <button class="btn btn-primary" type="submit"><span>Unlock</span><span class="btn-arrow">→</span></button>
+      </form>
+      <p class="gate-error" id="gateError" hidden></p>
+    </section>
+
+    <!-- Panel -->
+    <main class="panel-wrap" id="panelWrap" hidden>
+      <header class="admin-head">
+        <div>
+          <p class="eyebrow">Reach &amp; impact</p>
+          <h1 class="h-section">The numbers behind the flock</h1>
+        </div>
+        <button class="btn btn-ghost" id="refresh"><span>Refresh</span><span class="btn-arrow">↻</span></button>
+      </header>
+
+      <div class="kpis" id="kpis"></div>
+
+      <section class="admin-card">
+        <div class="admin-card-head">
+          <h2>Observations, last 30 days</h2>
+          <span class="admin-note" id="trendNote"></span>
+        </div>
+        <canvas id="trend" class="admin-chart"></canvas>
+      </section>
+
+      <div class="admin-cols">
+        <section class="admin-card">
+          <div class="admin-card-head"><h2>By store</h2><span class="admin-note">Foot-traffic signal</span></div>
+          <div id="stores" class="stores"></div>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card-head">
+            <h2>Moderation queue</h2>
+            <span class="admin-note" id="modNote"></span>
+          </div>
+          <div id="flagged" class="flagged"></div>
+        </section>
+      </div>
+
+      <p class="admin-fine">
+        Counters are maintained incrementally on write, so these totals stay accurate without scanning the
+        database. No personal data is shown or stored here.
+      </p>
+    </main>
+
+    <script src="admin.js"></script>
+  </body>
+</html>
