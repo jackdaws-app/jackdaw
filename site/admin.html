@@ -66,8 +66,23 @@
 
       <div class="admin-cols">
         <section class="admin-card">
-          <div class="admin-card-head"><h2>By store</h2><span class="admin-note">Foot-traffic signal</span></div>
+          <div class="admin-card-head"><h2>By store</h2><span class="admin-note">Regional reach</span></div>
           <div id="stores" class="stores"></div>
+        </section>
+
+        <section class="admin-card">
+          <div class="admin-card-head"><h2>By category</h2><span class="admin-note">What shoppers watch</span></div>
+          <div id="categories" class="stores"></div>
+        </section>
+      </div>
+
+      <div class="admin-cols">
+        <section class="admin-card">
+          <div class="admin-card-head">
+            <h2>Data health</h2>
+            <span class="admin-note" id="healthNote"></span>
+          </div>
+          <div id="health"></div>
         </section>
 
         <section class="admin-card">
@@ -80,8 +95,11 @@
       </div>
 
       <p class="admin-fine">
-        Counters are maintained incrementally on write, so these totals stay accurate without scanning the
-        database. No personal data is shown or stored here.
+        Counters are maintained incrementally on write, so totals stay accurate without scanning the database.
+        No personal data is shown or stored here. Caveats worth remembering before quoting these numbers:
+        "shoppers sent" counts alert clicks recorded by an anonymous, unauthenticated endpoint, so it is
+        rate-capped and represents a floor, not a proven audit; watched value is a live sum of active alert
+        targets; data health is a bounded sample; and the rate-limit figure covers price reports only.
       </p>
     </main>
 

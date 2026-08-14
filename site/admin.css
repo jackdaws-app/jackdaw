@@ -172,7 +172,17 @@
 .flag-btn.danger:hover { color: #b91c1c; border-color: rgba(185, 28, 28, 0.4); background: #fef2f2; }
 .flag-empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
 
-.admin-fine { font-size: 11.5px; color: var(--muted); margin-top: 18px; max-width: 60em; }
+.cat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+.store-row { grid-template-columns: 116px 1fr 58px; }
+
+.health-row { display: grid; grid-template-columns: 104px 96px 1fr; align-items: baseline; gap: 10px; padding: 6px 0; }
+.health-label { font-size: 12.5px; font-weight: 600; }
+.health-value { font-size: 13px; font-variant-numeric: tabular-nums; }
+.health-value.good { color: var(--green-deep); }
+.health-value.warn { color: #b45309; }
+.health-sub { font-size: 11.5px; color: var(--muted); }
+
+.admin-fine { font-size: 11.5px; color: var(--muted); margin-top: 18px; max-width: 68em; line-height: 1.55; }
 
 .toast {
   position: fixed;

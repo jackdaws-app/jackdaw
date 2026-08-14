@@ -1,9 +1,12 @@
 // Jackdaw admin panel.
-// Security posture: the admin key is a bearer secret held in sessionStorage
-// (cleared when the tab closes, never in localStorage, never in the URL), sent
-// over HTTPS to Convex, and validated server-side against an env var with a
-// rate limiter behind it. This page is noindex + disallowed in robots.txt.
-// It is an internal tool for a single operator, not a multi-user auth system.
+// Security posture: the admin key is a 256-bit bearer secret held in
+// sessionStorage (cleared when the tab closes, never in localStorage, never in
+// a URL), sent over HTTPS and compared server-side without early return.
+// NOTE: failed attempts are NOT rate limited — a Convex mutation that throws
+// rolls back its own transaction (including the limiter's write), and queries
+// cannot write at all. The key's entropy is the lock; put the page behind edge
+// SSO (see DEPLOY.md) for identity. noindex + robots Disallow'd. Single
+// operator tool, not a multi-user auth system.
 (() => {
   const CONVEX_URL = "https://insightful-wren-655.convex.cloud"; // production
   const KEY_STORE = "jd_admin_key";
@@ -102,24 +105,93 @@
   $("refresh").addEventListener("click", () => load());
 
   // ── Rendering ──
-  function renderKpis(t) {
+  const money = (n) =>
+    "$" + Math.round(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  function renderKpis(stats) {
+    const t = stats.totals;
     const wrap = $("kpis");
     wrap.textContent = "";
     const cards = [
-      ["Sightings", t.observations, "price observations logged", true],
-      ["Products", t.products, "tracked at least once"],
-      ["Price points", t.pricePoints, "distinct price changes"],
-      ["Contributors", t.devices, "browsers feeding the flock"],
-      ["Alerts armed", t.alertsArmed, "targets people are waiting on"],
-      ["Alerts fired", t.alertsFired, "price drops delivered"],
-      ["Comments", t.comments, `${fmt(t.commentsHidden || 0)} hidden`],
-      ["Reports", t.reports, "community flags raised"],
+      // The two the partnership conversation actually turns on, first.
+      ["Shoppers sent", t.alertsClicked, "alert clicks to a product page", true],
+      [
+        "Watched value",
+        money(stats.watchedValue),
+        stats.watchedValueTruncated ? "inventory awaited (floor)" : "inventory awaited",
+        true,
+      ],
+      ["Sightings", fmt(t.observations), "price observations logged"],
+      ["Products", fmt(t.products), "tracked at least once"],
+      ["Contributors", fmt(t.devices), "browsers feeding the flock"],
+      ["Alerts armed", fmt(t.alertsArmed), `${fmt(t.alertsFired)} fired`],
+      ["Comments", fmt(t.comments), `${fmt(t.commentsHidden || 0)} hidden`],
+      ["Reports", fmt(t.reports), "community flags raised"],
     ];
     for (const [label, value, sub, accent] of cards) {
       const card = el("div", "kpi" + (accent ? " kpi-accent" : ""));
-      card.append(el("div", "kpi-label", label), el("div", "kpi-value", fmt(value)), el("div", "kpi-sub", sub));
+      card.append(
+        el("div", "kpi-label", label),
+        el("div", "kpi-value", typeof value === "number" ? fmt(value) : value),
+        el("div", "kpi-sub", sub),
+      );
       wrap.append(card);
     }
+  }
+
+  function renderCategories(cats) {
+    const wrap = $("categories");
+    wrap.textContent = "";
+    if (!cats || !cats.length) {
+      wrap.append(el("div", "flag-empty", "No category data yet."));
+      return;
+    }
+    const max = Math.max.apply(null, cats.map((c) => c.observations));
+    for (const c of cats) {
+      const row = el("div", "store-row");
+      const name = el("div", "store-num cat-name", c.category);
+      name.title = c.category;
+      row.append(name);
+      const bar = el("div", "store-bar");
+      const fill = el("i");
+      bar.append(fill);
+      row.append(bar, el("div", "store-count", fmt(c.observations)));
+      wrap.append(row);
+      requestAnimationFrame(() => {
+        fill.style.width = ((c.observations / max) * 100).toFixed(1) + "%";
+      });
+    }
+  }
+
+  function renderHealth(h) {
+    const wrap = $("health");
+    const note = $("healthNote");
+    wrap.textContent = "";
+    if (!h || !h.sampleSize) {
+      note.textContent = "";
+      wrap.append(el("div", "flag-empty", "No products sampled yet."));
+      return;
+    }
+    note.textContent = `based on ${fmt(h.sampleSize)} products`;
+    const pct = (n) => ((n / h.sampleSize) * 100).toFixed(0) + "%";
+    const rows = [
+      ["Chart-worthy", h.chartWorthy, "5+ price points", "good"],
+      ["Thin", h.thin, "under 5 points", "warn"],
+      // stale overlaps the two above; it is not a slice of the same pie
+      ["Stale", h.stale, "no sighting in 30 days", "warn"],
+    ];
+    for (const [label, value, sub, tone] of rows) {
+      const row = el("div", "health-row");
+      row.append(
+        el("div", "health-label", label),
+        el("div", "health-value " + tone, `${fmt(value)} · ${pct(value)}`),
+        el("div", "health-sub", sub),
+      );
+      wrap.append(row);
+    }
+    wrap.append(
+      el("div", "admin-note", "Chart-worthy and thin split the sample; stale overlaps both."),
+    );
   }
 
   function renderStores(stores) {
@@ -161,7 +233,11 @@
       return;
     }
     const total = daily.reduce((a, d) => a + d.observations, 0);
-    note.textContent = `${fmt(total)} in the last ${daily.length} days`;
+    const clicks = daily.reduce((a, d) => a + (d.clicked || 0), 0);
+    const limited = daily.reduce((a, d) => a + (d.rateLimited || 0), 0);
+    note.textContent =
+      `${fmt(total)} sightings · ${fmt(clicks)} clicks in ${daily.length} days` +
+      (limited ? ` · ${fmt(limited)} price reports rate-limited` : "");
 
     const padL = 6, padR = 42, padT = 12, padB = 24;
     const max = Math.max(1, ...daily.map((d) => d.observations));
@@ -270,8 +346,10 @@
         query("dashboard:flagged", { adminKey }),
       ]);
       showPanel();
-      renderKpis(stats.totals);
+      renderKpis(stats);
       renderStores(stats.stores);
+      renderCategories(stats.categories);
+      renderHealth(stats.health);
       renderTrend(stats.daily);
       renderFlagged(flagged);
       return true;
