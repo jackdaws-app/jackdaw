@@ -231,23 +231,16 @@
 
   // A stylized jackdaw in flight, facing its direction of travel:
   // black body, grey nape, pale eye, two independently flapping wings.
-  // v5: drawn against real flight references — the wings ARE the silhouette
-  // (broad V blades with fingered primaries), small sleek body pod, wide fan
-  // tail, silvery hood. Secondary motion: bob+pitch, level head, tail lag.
+  // v6: pure overhead silhouette (the user's chosen reference style) —
+  // bird seen from above, broad fingered wings beating with foreshortening,
+  // notched fan tail, slim body with pointed head. One ink, zero fuss.
   const BIRD_SVG =
-    `<svg class="jd-flight-bird" viewBox="0 0 96 64" fill="none" aria-hidden="true"><g class="jd-bob">` +
-    `<path class="jd-w2" d="M47 37 Q47.8 26 52.3 17 Q55 10.5 60.5 5.5 L61.3 13.5 L58.2 20 L54.8 26.5 L51.2 32 Q48.8 34.7 47 37 Z" fill="#0e1830" opacity=".82"/>` +
-    `<g class="jd-tail"><path d="M30 41.8 L13 34.8 Q10 36.8 8.5 39.4 L12 40.2 Q9.2 41.8 8 44.4 L11.7 44.7 Q9.4 46.8 8.9 49.5 L13.4 48.7 Q12 51 11.6 53.4 L28 46.6 Q29.6 44.3 30 41.8 Z" fill="#171a20"/></g>` +
-    `<path d="M29 40.8 Q35 37 43.5 36.6 Q52 36.2 57.5 38.8 Q60.8 40.6 62.8 42.8 Q58.5 45.6 51 46.2 Q41 46.9 33 44.8 Q30.5 43.2 29 40.8 Z" fill="#1a1d23"/>` +
-    `<path d="M32 43.8 Q41 46.2 50 45.7 Q56.5 45.2 60.8 43.3 Q55.5 46.6 47 46.9 Q38 47 32 43.8 Z" fill="#0d1017" opacity=".5"/>` +
-    `<g class="jd-head">` +
-    `<path d="M57 36.2 Q60 34 63.5 34.6 Q66.8 35.4 67.8 38.2 Q68.1 40.4 66.3 41.9 Q63.2 43.4 60.2 42 Q58 40.3 57 36.2 Z" fill="#1a1d23"/>` +
-    `<path d="M57.2 36.4 Q60.2 34.2 63.6 34.7 Q65.6 35.2 66.8 36.6 Q64.4 36.1 62.2 36.7 Q59.6 37.6 58.4 39.8 Q57.6 41.3 57.5 42.6 Q56.9 39.4 57.2 36.4 Z" fill="#a4aebc"/>` +
-    `<path d="M67.7 37.3 L73.8 39.5 L67.4 41.2 Q68 39.3 67.7 37.3 Z" fill="#2f353d"/>` +
-    `<circle cx="64.2" cy="37.6" r=".9" fill="#dfe6ee"/><circle cx="64.55" cy="37.7" r=".45" fill="#10141c"/>` +
-    `</g>` +
-    `<path class="jd-w1" d="M50 39 Q51 27 56 17 Q59 10 65 4 L66 13 L62.5 20 L58.5 27 L54.5 33 Q52 36 50 39 Z" fill="#182338"/>` +
-    `</g></svg>`;
+    `<svg class="jd-flight-bird" viewBox="8 2 76 96" fill="none" aria-hidden="true">` +
+    `<path class="jd-w1" d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z" fill="#16233a"/>` +
+    `<path class="jd-w2" d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z" fill="#16233a"/>` +
+    `<path d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z" fill="#16233a"/>` +
+    `<path d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z" fill="#16233a"/>` +
+    `</svg>`;
 
   // The jackdaw flies in and becomes the banner. Full flight on the very
   // first visit; a quick swoop afterwards. Skipped under reduced motion.

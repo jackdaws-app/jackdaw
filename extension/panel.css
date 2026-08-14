@@ -941,8 +941,8 @@
   transition: opacity 0.25s ease, transform 0.25s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .jd-flight-bird {
-  width: 68px;
-  height: 45px;
+  width: 48px;
+  height: 60px;
   offset-rotate: auto;
   filter: drop-shadow(0 4px 8px rgba(13, 22, 38, 0.3));
 }
@@ -964,19 +964,20 @@
    equivalent of a sprite sheet): raised → swept forward → downstroke bottom
    → recovery. The body bobs against the wingbeat (bodies rise on the
    downstroke). Finite cycles, then wings lock into a glide for touchdown. */
+/* Overhead-view wingbeat: wings foreshorten toward the body and sweep back,
+   then reach out again — how flapping reads from above. ease-in-out, since
+   the beat reverses direction at both extremes. */
 @keyframes jd-wing-front {
-  0%, 100% { d: path("M50 39 Q51 27 56 17 Q59 10 65 4 L66 13 L62.5 20 L58.5 27 L54.5 33 Q52 36 50 39 Z"); }
-  20% { d: path("M50 39 Q58 34 68 30 Q76 27 84 26 L77 31 L69.5 34.5 L62 37.5 L55.5 39.5 Q52.5 40 50 39 Z"); }
-  42% { d: path("M50 39 Q53 48 59 55 Q63 59.5 68 63 L64.5 55.5 L60.5 49.5 L56.5 44.5 L52.8 41.2 Q51 40 50 39 Z"); }
-  58% { d: path("M50 39 Q52 45 56 49.5 Q58.5 52 62 54 L59.5 48.5 L57 44.5 L54.3 41.6 L52 39.9 Q51 39.4 50 39 Z"); }
-  80% { d: path("M50 39 Q51.5 31.5 55 25.5 Q57.5 21 61.5 17.5 L61.5 24.5 L58.5 29.8 L55.8 34.2 L52.8 37.2 Q51.2 38.3 50 39 Z"); }
+  0%, 100% { d: path("M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"); }
+  30% { d: path("M55 46.2 Q50.5 41 47 36.5 Q44 32 39.5 27.5 L38.2 31.5 L35.2 29 L34.9 33.5 L32.2 32 L32.6 36.5 L30.2 35.7 Q33 39.5 36.5 43.5 Q38.8 46 40 47.8 Z"); }
+  52% { d: path("M55 46.2 Q50 42.5 46.5 39 Q43.5 35.5 39 31.5 L37.8 35 L34.8 33 L34.6 37 L31.8 35.8 L32.2 39.8 L29.8 38.8 Q32.8 42 36.3 45 Q38.6 46.8 40 47.8 Z"); }
+  74% { d: path("M55 46.2 Q50.5 41 47 36.5 Q44 32 39.5 27.5 L38.2 31.5 L35.2 29 L34.9 33.5 L32.2 32 L32.6 36.5 L30.2 35.7 Q33 39.5 36.5 43.5 Q38.8 46 40 47.8 Z"); }
 }
 @keyframes jd-wing-back {
-  0%, 100% { d: path("M47 37 Q47.8 26 52.3 17 Q55 10.5 60.5 5.5 L61.3 13.5 L58.2 20 L54.8 26.5 L51.2 32 Q48.8 34.7 47 37 Z"); }
-  20% { d: path("M47 37 Q54 32.5 63 29.2 Q70.5 26.8 78 26 L71.5 30.5 L64.5 33.6 L57.8 36 L52 37.7 Q49.2 38 47 37 Z"); }
-  42% { d: path("M47 37 Q49.6 45 55 51.3 Q58.6 55.5 63.2 58.7 L60 51.9 L56.5 46.4 L52.9 41.9 L49.6 38.9 Q48.1 38 47 37 Z"); }
-  58% { d: path("M47 37 Q48.8 42.4 52.3 46.4 Q54.6 48.8 57.8 50.5 L55.6 45.5 L53.3 41.8 L50.9 39.2 L48.9 37.8 Q47.9 37.4 47 37 Z"); }
-  80% { d: path("M47 37 Q48.3 30.2 51.4 24.9 Q53.6 20.8 57.2 17.7 L57.2 24 L54.6 28.9 L52.3 32.9 L49.6 35.5 Q48.2 36.4 47 37 Z"); }
+  0%, 100% { d: path("M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"); }
+  30% { d: path("M55 53.8 Q50.5 59 47 63.5 Q44 68 39.5 72.5 L38.2 68.5 L35.2 71 L34.9 66.5 L32.2 68 L32.6 63.5 L30.2 64.3 Q33 60.5 36.5 56.5 Q38.8 54 40 52.2 Z"); }
+  52% { d: path("M55 53.8 Q50 57.5 46.5 61 Q43.5 64.5 39 68.5 L37.8 65 L34.8 67 L34.6 63 L31.8 64.2 L32.2 60.2 L29.8 61.2 Q32.8 58 36.3 55 Q38.6 53.2 40 52.2 Z"); }
+  74% { d: path("M55 53.8 Q50.5 59 47 63.5 Q44 68 39.5 72.5 L38.2 68.5 L35.2 71 L34.9 66.5 L32.2 68 L32.6 63.5 L30.2 64.3 Q33 60.5 36.5 56.5 Q38.8 54 40 52.2 Z"); }
 }
 /* secondary motion: body bobs+pitches, head stays level, tail follows through */
 @keyframes jd-bob {
@@ -991,23 +992,16 @@
   0%, 100% { transform: rotate(-4deg); }
   48% { transform: rotate(5deg); }
 }
-.jd-flight .jd-tail { transform-box: fill-box; transform-origin: 92% 45%; }
-.jd-flight-full .jd-w1 { animation: jd-wing-front 0.5s linear 4; }
-.jd-flight-full .jd-w2 { animation: jd-wing-back 0.5s linear 0.08s 4; }
-.jd-flight-full .jd-bob { animation: jd-bob 0.5s ease-in-out 4; }
-.jd-flight-full .jd-head { animation: jd-head-stab 0.5s ease-in-out 4; }
-.jd-flight-full .jd-tail { animation: jd-tail-follow 0.5s ease-in-out 4; }
-.jd-flight-mini .jd-w1 { animation: jd-wing-front 0.42s linear 2; }
-.jd-flight-mini .jd-w2 { animation: jd-wing-back 0.42s linear 0.07s 2; }
-.jd-flight-mini .jd-bob { animation: jd-bob 0.42s ease-in-out 2; }
-.jd-flight-mini .jd-head { animation: jd-head-stab 0.42s ease-in-out 2; }
-.jd-flight-mini .jd-tail { animation: jd-tail-follow 0.42s ease-in-out 2; }
+.jd-flight-full .jd-w1 { animation: jd-wing-front 0.5s ease-in-out 4; }
+.jd-flight-full .jd-w2 { animation: jd-wing-back 0.5s ease-in-out 4; }
+.jd-flight-mini .jd-w1 { animation: jd-wing-front 0.42s ease-in-out 2; }
+.jd-flight-mini .jd-w2 { animation: jd-wing-back 0.42s ease-in-out 2; }
 /* touchdown: wings flare up (real corvids brake with raised wings), a tiny
    settle, then the bird is absorbed by the growing banner */
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
 .jd-flight .jd-w1, .jd-flight .jd-w2 { transition: d 0.18s ease-out; }
-.jd-flight.jd-land .jd-w1 { d: path("M50 39 Q51 27 56 17 Q59 10 65 4 L66 13 L62.5 20 L58.5 27 L54.5 33 Q52 36 50 39 Z"); }
-.jd-flight.jd-land .jd-w2 { d: path("M47 37 Q47.8 26 52.3 17 Q55 10.5 60.5 5.5 L61.3 13.5 L58.2 20 L54.8 26.5 L51.2 32 Q48.8 34.7 47 37 Z"); }
+.jd-flight.jd-land .jd-w1 { d: path("M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"); }
+.jd-flight.jd-land .jd-w2 { d: path("M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"); }
 .jd-flight.jd-bird-out {
   opacity: 0;
   transform: scale(0.2);
