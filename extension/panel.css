@@ -893,11 +893,12 @@
 /* The banner grows outward from the exact point the bird lands on —
    starting bird-sized with a small organic overshoot — while the bird
    shrinks into it. One event, two halves. */
-#jackdaw-tab.jd-tab-reveal { animation: jd-tab-grow 0.42s var(--ease-out); }
+#jackdaw-tab.jd-tab-reveal { animation: jd-tab-grow 0.55s var(--ease-out); }
 @keyframes jd-tab-grow {
-  0% { opacity: 0; transform: translate(-100%, -50%) scale(0.22); }
-  30% { opacity: 1; }
-  72% { transform: translate(-100%, -50%) scale(1.045); }
+  0% { opacity: 0; transform: translate(-100%, -50%) scale(0.18); }
+  10% { opacity: 1; }
+  40% { transform: translate(-100%, -50%) scale(0.48); }
+  78% { transform: translate(-100%, -50%) scale(1.05); }
   100% { opacity: 1; transform: translate(-100%, -50%) scale(1); }
 }
 .jd-flight {
@@ -956,8 +957,8 @@
 .jd-flight.jd-land { transform: translateY(1.5px) scale(0.96); }
 .jd-flight.jd-bird-out {
   opacity: 0;
-  transform: scale(0.24);
-  transition: opacity 0.2s ease, transform 0.24s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transform: scale(0.2);
+  transition: opacity 0.09s ease-in, transform 0.12s ease-in;
 }
 
 /* ---------- Onboarding: coach mark + spotlight tour ---------- */
