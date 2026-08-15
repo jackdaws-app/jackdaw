@@ -35,6 +35,16 @@
       });
     });
 
+  // ---------- Store names ----------
+  // The same number→name map the service worker keeps for notifications,
+  // harvested from Micro Center's own store picker. A watch can outlive every
+  // tab that taught us the name, so an unknown number still has to read as
+  // something — "store #045" is honest, just less useful.
+
+  const STORE_NAMES_KEY = "jdStoreNames";
+  let storeNames = {};
+  const storeLabel = (n) => storeNames[n] || `store #${n}`;
+
   // ---------- Theme ----------
 
   chrome.storage.local.get("jdTheme").then(({ jdTheme }) => setTheme(jdTheme === "dark"));
@@ -87,6 +97,27 @@
     countEl.textContent = "";
   }
 
+  // The price line under the number. A watch with its price trigger switched
+  // off has no target to measure against, so it names the state instead of
+  // inventing a distance from a target that isn't live.
+  function subFor(r) {
+    if (!r.alertPrice) return "Price alert off";
+    if (r.met) return `Target ${fmt(r.target)} · ${r.inStock ? "in stock" : "out of stock"}`;
+    return `${fmt(Math.max(r.currentPrice - r.target, 0))} above your ${fmt(r.target)} target`;
+  }
+
+  // What else the row is waiting for. Without it a store-only watch reads as
+  // an alert with nothing behind it. "Also" only when a price target is live
+  // — otherwise these triggers are the whole alert, not an addition to one.
+  function triggerLine(r) {
+    const marks = [];
+    if (r.alertOpenBox) marks.push("open box");
+    if (r.alertRestock) marks.push("back in stock");
+    if (!marks.length) return null;
+    const at = r.watchStore ? ` at ${storeLabel(r.watchStore)}` : "";
+    return `${r.alertPrice ? "Also watching" : "Watching"}: ${marks.join(", ")}${at}`;
+  }
+
   function renderList(rows) {
     bodyEl.textContent = "";
     for (const r of rows) {
@@ -96,16 +127,13 @@
       const row = el("div", "pop-row");
       const left = el("div");
       left.append(el("div", "pop-price", r.currentPrice > 0 ? fmt(r.currentPrice) : "—"));
-      const sub = r.met
-        ? `Target ${fmt(r.target)} · ${r.inStock ? "in stock" : "out of stock"}`
-        : `${fmt(Math.max(r.currentPrice - r.target, 0))} above your ${fmt(r.target)} target`;
-      left.append(el("div", "pop-sub", sub));
+      left.append(el("div", "pop-sub", subFor(r)));
       row.append(left, sparkline(r.trend));
       card.append(row);
 
       if (r.met) {
         card.append(el("span", "pop-badge", "Target met"));
-      } else if (r.currentPrice > 0) {
+      } else if (r.alertPrice && r.currentPrice > 0) {
         const meter = el("div", "pop-meter");
         const fill = el("div", "pop-meter-fill");
         meter.append(fill);
@@ -116,6 +144,11 @@
         requestAnimationFrame(() => { fill.style.width = (progress * 100).toFixed(1) + "%"; });
       }
 
+      // Last, under a hairline: the price copy and the bar that measures it are
+      // one unit, and putting the triggers between them split the pair.
+      const triggers = triggerLine(r);
+      if (triggers) card.append(el("div", "pop-triggers", triggers));
+
       card.addEventListener("click", () => {
         chrome.tabs.create({ url: "https://www.microcenter.com" + r.urlPath });
         window.close();
@@ -123,8 +156,11 @@
       bodyEl.append(card);
     }
     const met = rows.filter((r) => r.met).length;
+    // Denominator is price-armed rows only: a store-only alert can never be
+    // "at target", so counting it there would make the ratio unreachable.
+    const priced = rows.filter((r) => r.alertPrice).length;
     countEl.textContent = met
-      ? `${met} of ${rows.length} at target`
+      ? `${met} of ${priced} at target`
       : `${rows.length} watched`;
     // the live dot quickens when a target is met
     document.querySelector(".pop-live").classList.toggle("alive", met > 0);
@@ -141,7 +177,13 @@
   }
 
   function loadList() {
-    return send({ type: "watch:dashboard" }).then((res) => {
+    // Names resolve before the first paint, not after it — a row that renders
+    // "store #045" and then swaps to "Westmont" is a visible correction.
+    return Promise.all([
+      send({ type: "watch:dashboard" }),
+      chrome.storage.local.get(STORE_NAMES_KEY),
+    ]).then(([res, stored]) => {
+      storeNames = stored[STORE_NAMES_KEY] || {};
       if (res.error) return renderError();
       const rows = Array.isArray(res.result) ? res.result : [];
       if (!rows.length) return renderEmpty();

@@ -219,6 +219,17 @@ body.dark .pop-card.met .pop-price { color: #4ade80; }
   to { stroke-dashoffset: 0; }
 }
 
+/* what else the row is waiting for — set below a hairline so it reads as the
+   watch's settings rather than more price copy. Both colours are themed
+   tokens, so this needs no dark-mode mirror. */
+.pop-triggers {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid var(--jd-hairline);
+  font-size: 10px;
+  color: var(--jd-muted);
+}
+
 /* distance meter: how close the price is to the target */
 .pop-meter { height: 4px; border-radius: 3px; background: rgba(120, 130, 145, 0.18); overflow: hidden; margin-top: 8px; }
 .pop-meter-fill {

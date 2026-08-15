@@ -39,6 +39,10 @@
     return uiRoot;
   }
   let watchTarget = null; // active alert target price, or null
+  // Which triggers the armed watch fires on. `price` is the target above;
+  // `openBox`/`restock` are scoped to `store`, which is the store the alert was
+  // armed against and needn't be the one being browsed right now.
+  let triggers = { price: true, openBox: false, restock: false, store: null };
   let commentSort = "top"; // "top" | "new"
   const collapsedThreads = new Set(); // comment _ids collapsed reddit-style
 
@@ -99,6 +103,7 @@
       });
       // Report what this browser already sees, then load community data.
       send({ type: "report", data: product });
+      learnStoreNames();
       await refreshAll();
       send({ type: "event", name: "panel_ok" });
     } catch (e) {
@@ -403,6 +408,11 @@
     expand: `<svg viewBox="0 0 16 16" fill="none"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     shrink: `<svg viewBox="0 0 16 16" fill="none"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5 14 2M6.5 9.5 2 14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     bell: `<svg viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 0 0-4 4v2.4L2.8 11h10.4L12 8.4V6a4 4 0 0 0-4-4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.5 13a1.6 1.6 0 0 0 3 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+    // An opened carton — flaps folded back, which is the whole point.
+    openbox: `<svg viewBox="0 0 16 16" fill="none"><path d="M2.6 6.4v6.1a.9.9 0 0 0 .9.9h9a.9.9 0 0 0 .9-.9V6.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.6 6.4 4.8 4.3M13.4 6.4 11.2 4.3M6.4 6.4h3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.8 4.3 6.6 2.6M11.2 4.3 9.4 2.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+    // A shelf refilling: an arrow returning onto a line.
+    restock: `<svg viewBox="0 0 16 16" fill="none"><path d="M2.8 13.2h10.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8 10.4V3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M5.3 5.9 8 3.2l2.7 2.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    price: `<svg viewBox="0 0 16 16" fill="none"><path d="M8 2.4v11.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.6 5.2a2.4 2.4 0 0 0-2.4-1.3H7.4a1.9 1.9 0 0 0 0 3.8h1.2a1.9 1.9 0 0 1 0 3.8H7.6a2.4 2.4 0 0 1-2.4-1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   };
 
   function iconBtn(svg, title) {
@@ -499,15 +509,86 @@
     });
 
     send({ type: "watch:status", productId: product.productId }).then((res) => {
-      if (!res.error) setWatching(res.result.watching, res.result.target);
+      if (!res.error) setWatching(res.result.watching, res.result.target, res.result);
     });
   }
 
-  function setWatching(v, target) {
+  function setWatching(v, target, state) {
     watchTarget = v ? target : null;
+    triggers = v
+      ? {
+          price: state ? state.alertPrice !== false : true,
+          openBox: !!(state && state.alertOpenBox),
+          restock: !!(state && state.alertRestock),
+          // Default the store to the one being browsed, so a watch armed
+          // before this feature existed offers today's store rather than none.
+          store: (state && state.storeNum) || physicalStore(),
+        }
+      : { price: true, openBox: false, restock: false, store: physicalStore() };
     watchBtn.classList.toggle("jd-watching", v);
-    watchBtn.querySelector("span").textContent = v && target != null ? `Alert at ${fmtPrice(target)}` : "Set alert";
-    if (tabButtons) updateTabChrome(); // async status arrives after first paint
+    watchBtn.querySelector("span").textContent =
+      v && target != null && triggers.price ? `Alert at ${fmtPrice(target)}` : v ? "Alert set" : "Set alert";
+    // The status round-trip can land after the alerts pane has already been
+    // painted — open the drawer straight onto Alerts and every control there
+    // (the target, the meter, the switches) would describe a watch that isn't
+    // the one on the server. renderAlerts returns immediately off that tab.
+    if (tabButtons) updateTabChrome();
+    if (paneEl) renderAlerts();
+  }
+
+  // ---------- The store ----------
+  //
+  // Store selection is a full page navigation on Micro Center (the picker is a
+  // plain ?storeID=NNN link), so the dataLayer — and therefore product.storeNum
+  // — is always correct for the store on screen. Nothing needs to watch for a
+  // change; the page reloads and this script runs again.
+
+  // Numbers that name no shelf: "029" is Micro Center's "Shippable Items"
+  // pseudo-store and the default for anyone who has never picked a location,
+  // "000" is page-world.js's fallback for "the dataLayer didn't say".
+  const NON_PHYSICAL_STORES = new Set(["029", "000"]);
+  const physicalStore = () =>
+    product && !NON_PHYSICAL_STORES.has(product.storeNum) ? product.storeNum : null;
+
+  /** The current store's display name, read live from the page's own picker. */
+  function currentStoreName() {
+    const n = document.querySelector("#My-Store .storeName");
+    const name = n && n.textContent.trim();
+    return name ? name.slice(0, 40) : null;
+  }
+
+  /**
+   * Every store the page's own picker names, as number → name. The picker is
+   * the whole chain, not just the selected store, which is what lets an alert
+   * armed at one location be named while browsing another.
+   */
+  let storeNames = null;
+  function harvestStoreNames() {
+    if (storeNames) return storeNames;
+    const names = {};
+    for (const node of document.querySelectorAll(".storeName")) {
+      const row = node.closest("a[href*='storeid' i]") ||
+        node.closest("li, div, tr")?.querySelector("a[href*='storeid' i]");
+      const m = row && /[?&]storeid=(\d{1,10})/i.exec(row.getAttribute("href") || "");
+      if (m) names[m[1]] = node.textContent.trim();
+    }
+    const here = currentStoreName();
+    if (here && product) names[product.storeNum] = here;
+    storeNames = names;
+    return names;
+  }
+
+  /** A store's name if this page knows it, else null — never a guess. */
+  const storeNameFor = (num) => harvestStoreNames()[num] || null;
+
+  /**
+   * Hand the service worker the same map, so an alert firing hours later with
+   * no tab open can name the store instead of printing a number. Display only,
+   * and it never leaves the browser.
+   */
+  function learnStoreNames() {
+    const names = harvestStoreNames();
+    if (Object.keys(names).length) send({ type: "stores:learn", names });
   }
 
   // ---------- Tabs ----------
@@ -556,7 +637,10 @@
     if (activeTab !== "alerts" || !paneEl) return;
     paneEl.textContent = "";
     const card = el("div", "jd-alert-card");
-    card.append(el("div", "jd-popover-label", watchTarget != null ? "Alert armed" : "Notify me at or below"));
+    card.append(el("div", "jd-popover-label",
+      watchTarget == null ? "Notify me at or below"
+      : triggers.price ? "Alert armed"
+      : "Price target (off)"));
 
     const inputRow = el("div", "jd-popover-input");
     const dollar = el("span", "jd-popover-dollar", "$");
@@ -573,7 +657,11 @@
       const stats = computeStats(history.points);
       card.append(el("div", "jd-popover-hint",
         `Current ${fmtPrice(product.price)} · typical ${fmtPrice(window.__jackdawChart.typicalPrice(history.points))} · all-time low ${fmtPrice(stats.lowest)}`));
-      if (watchTarget != null) {
+      // The meter measures a distance that only matters while the price
+      // trigger is live. With it switched off the target is a saved number,
+      // not a countdown — drawing the bar anyway would promise a price alert
+      // that cannot fire.
+      if (watchTarget != null && triggers.price) {
         const meter = el("div", "jd-meter");
         const span = Math.max(stats.highest - watchTarget, 0.01);
         const pos = Math.min(Math.max((product.price - watchTarget) / span, 0), 1);
@@ -583,6 +671,9 @@
         const gap = product.price - watchTarget;
         card.append(meter, el("div", "jd-meter-label",
           gap <= 0 ? "Target met — alert fires on the next check" : `${fmtPrice(gap)} above your target`));
+      } else if (watchTarget != null) {
+        card.append(el("div", "jd-meter-label",
+          "Target saved, but the price trigger is off — switch it on below."));
       }
     }
 
@@ -593,9 +684,8 @@
         const res = await send({ type: "watch:toggle", productId: product.productId });
         if (res.error) toast("Couldn't remove the alert — try again");
         else {
-          setWatching(false, null);
+          setWatching(false, null); // re-renders this pane
           toast("Alert removed");
-          renderAlerts();
         }
       });
       row.append(remove);
@@ -613,19 +703,141 @@
       save.disabled = false;
       if (res.error) toast("Couldn't set the alert — try again");
       else {
-        setWatching(true, res.result.target);
+        // Typing a target turns the price trigger back on (armOne does the same
+        // server-side); any store triggers already set are left alone.
+        setWatching(true, res.result.target, {
+          alertPrice: true,
+          alertOpenBox: triggers.openBox,
+          alertRestock: triggers.restock,
+          storeNum: triggers.store,
+        });
         toast(res.result.target >= product.price
           ? `Current price already qualifies — you'll be notified within the hour`
           : `Alert set for ${fmtPrice(res.result.target)} or less`);
-        renderAlerts();
       }
     });
     row.append(save);
     card.append(row);
     paneEl.append(card);
 
+    renderStoreTriggers();
+
     paneEl.append(el("div", "mk-note",
-      "One alert per product. Prices are checked hourly; when a shopper sees your target price or lower, you get a Chrome notification. Alerts fire once — re-arm any time."));
+      "One alert per product, checked hourly against what other shoppers have seen. Alerts fire once — re-arm any time."));
+  }
+
+  // ---------- Store triggers ----------
+  //
+  // Everything below reports SIGHTINGS, not inventory. Jackdaw learns a store's
+  // stock only when somebody with the extension loads that store's page, so the
+  // copy here never says "available" — it says what was seen and when, and the
+  // notification repeats the age. An open-box unit is one physical item; the
+  // difference between "there is one" and "somebody saw one" is a wasted drive.
+
+  /** A labelled switch row. Returns the row; `input` is the checkbox inside. */
+  function switchRow(icon, label, hint, checked, disabled, onChange) {
+    const rowEl = el("label", "jd-switch-row" + (disabled ? " jd-switch-off" : ""));
+    const ic = el("span", "jd-switch-icon");
+    ic.innerHTML = icon;
+    const text = el("span", "jd-switch-text");
+    text.append(el("span", "jd-switch-label", label), el("span", "jd-switch-hint", hint));
+    const input = el("input", "jd-switch-input");
+    input.type = "checkbox";
+    input.checked = checked;
+    input.disabled = disabled;
+    const track = el("span", "jd-switch-track");
+    track.append(el("span", "jd-switch-thumb"));
+    input.addEventListener("change", () => onChange(input.checked, input));
+    rowEl.append(ic, text, input, track);
+    return rowEl;
+  }
+
+  function renderStoreTriggers() {
+    const card = el("div", "jd-alert-card jd-store-card");
+    const storeName = currentStoreName();
+    const here = physicalStore();
+    // The alert's store, which may not be the one being browsed — someone can
+    // arm at Westmont and later open the same product while set to Shippable.
+    const armedAt = triggers.store;
+    const targetStore = armedAt || here;
+
+    card.append(el("div", "jd-popover-label",
+      targetStore && targetStore !== here && storeName
+        ? "At your alert's store"
+        : "At this store"));
+
+    // No physical store to scope to. Micro Center defaults everyone to
+    // "Shippable Items" (029), which has no shelves — so there is nothing
+    // truthful to offer until a location is picked, and saying why beats
+    // showing two switches that could never fire.
+    if (!targetStore) {
+      card.append(el("div", "jd-store-empty",
+        `You're browsing ${storeName || "Shippable Items"}, which has no shelves. ` +
+        "Pick a Micro Center location with the store selector at the top of this page, " +
+        "then come back — open-box and back-in-stock alerts are per store."));
+      paneEl.append(card);
+      return;
+    }
+
+    // The picker on this page names every store, so an alert armed elsewhere
+    // still reads as a place. The number is the fallback, never the guess.
+    const label =
+      (targetStore === here ? storeName : null) ||
+      storeNameFor(targetStore) ||
+      `store #${targetStore}`;
+    card.append(el("div", "jd-store-name", label));
+
+    const armed = watchTarget != null;
+    const disabled = !armed;
+
+    const commit = async (next, input) => {
+      const res = await send({
+        type: "watch:setTriggers",
+        productId: product.productId,
+        storeNum: targetStore,
+        price: next.price,
+        openBox: next.openBox,
+        restock: next.restock,
+      });
+      if (res.error || !res.result.ok) {
+        // Put the switch back where the person left it: a control that stays
+        // flipped after a failed save is a lie about the alert's state.
+        if (input) input.checked = !input.checked;
+        const reason = res.result && res.result.reason;
+        toast(
+          reason === "NOT_WATCHING" ? "Set an alert first, then choose what it watches for"
+          : reason === "NOT_A_STORE" ? "That store has no shelves — pick a Micro Center location"
+          : reason === "NO_TRIGGERS" ? "An alert needs at least one thing to watch for"
+          : "Couldn't save that — try again",
+        );
+        return false;
+      }
+      triggers = { ...triggers, ...next, store: targetStore };
+      renderAlerts();
+      return true;
+    };
+
+    card.append(
+      switchRow(ICONS.openbox, "Open box appears",
+        "One unit, one store. We'll tell you what was seen and when — it may already be gone.",
+        triggers.openBox, disabled,
+        (on, input) => commit({ ...triggers, openBox: on }, input)),
+      switchRow(ICONS.restock, "Back in stock",
+        "Fires on the change from out-of-stock to in-stock. Stock isn't held for you.",
+        triggers.restock, disabled,
+        (on, input) => commit({ ...triggers, restock: on }, input)),
+      switchRow(ICONS.price, "Price target",
+        armed && watchTarget != null
+          ? `Any store, at or below ${fmtPrice(watchTarget)}.`
+          : "Any store, at or below your target.",
+        triggers.price, disabled,
+        (on, input) => commit({ ...triggers, price: on }, input)),
+    );
+
+    if (disabled) {
+      card.append(el("div", "jd-store-empty", "Set an alert above to choose what it watches for."));
+    }
+    paneEl.append(card);
   }
 
   function openDrawer() {

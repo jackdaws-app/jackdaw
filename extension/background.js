@@ -100,6 +100,45 @@ async function flushEvents() {
   }
 }
 
+// ---------- Store names ----------
+// A number → name map for notification copy, learned from Micro Center's own
+// store picker. Capped so a malformed page can't grow it without bound; names
+// are truncated for the same reason. Nothing here is ever sent anywhere.
+
+const STORE_NAMES_KEY = "jdStoreNames";
+const MAX_STORE_NAMES = 60;
+
+async function learnStoreNames(names) {
+  if (!names || typeof names !== "object") return { ok: false };
+  const { [STORE_NAMES_KEY]: known = {} } = await chrome.storage.local.get(STORE_NAMES_KEY);
+  let changed = false;
+  for (const [num, name] of Object.entries(names)) {
+    if (!/^\d{1,10}$/.test(num) || typeof name !== "string") continue;
+    const clean = name.trim().slice(0, 40);
+    if (!clean || known[num] === clean) continue;
+    if (!(num in known) && Object.keys(known).length >= MAX_STORE_NAMES) continue;
+    known[num] = clean;
+    changed = true;
+  }
+  if (changed) await chrome.storage.local.set({ [STORE_NAMES_KEY]: known });
+  return { ok: true, known: Object.keys(known).length };
+}
+
+/** "Westmont" if we've seen it, else "store #045" — never a bare number. */
+async function storeLabel(storeNum) {
+  const { [STORE_NAMES_KEY]: known = {} } = await chrome.storage.local.get(STORE_NAMES_KEY);
+  return known[storeNum] || `store #${storeNum}`;
+}
+
+/** "20h ago" / "3 days ago" — how old the sighting behind an alert is. */
+function ageLabel(observedAt) {
+  const mins = Math.max(0, Math.round((Date.now() - observedAt) / 60000));
+  if (mins < 90) return `${Math.max(1, mins)} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
 // ---------- Optional accounts ----------
 // Anonymous stays complete: nothing here is required by any feature. An
 // account exists so alerts survive clearing browser data, and signing in
@@ -277,6 +316,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           targetPrice: msg.targetPrice,
           ...(await scopeArg()),
         });
+      case "watch:setTriggers":
+        return convexMutation("watches:setTriggers", {
+          deviceId,
+          productId: msg.productId,
+          storeNum: msg.storeNum,
+          price: msg.price,
+          openBox: msg.openBox,
+          restock: msg.restock,
+          ...(await scopeArg()),
+        });
+      // Store numbers are all the backend knows; the names live on Micro
+      // Center's own page. content.js harvests the picker whenever somebody
+      // loads a product page and parks the map here, so a notification fired
+      // hours later from a service worker with no tab open can still say
+      // "Westmont" instead of "store #045". Display only — nothing is sent.
+      case "stores:learn":
+        return learnStoreNames(msg.names);
       case "watch:dashboard":
         return convexQuery("watches:dashboard", { deviceId, ...(await scopeArg()) });
       case "watch:status":
@@ -299,7 +355,46 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true; // async response
 });
 
-// ---------- Price-drop alerts ----------
+// ---------- Alerts ----------
+
+/**
+ * What a firing watch says, per reason.
+ *
+ * Every one of these describes SOMETHING A SHOPPER SAW, at a time, and says so.
+ * That is not hedging for its own sake — an open-box unit is a single physical
+ * item and nothing can tell us it sold except another person walking past it,
+ * so a notification that reads like a live inventory feed is a promise the data
+ * cannot keep and a wasted trip for whoever believes it. The age is in every
+ * message for the same reason.
+ *
+ * Two phrases are deliberate and should not be softened away: "may already be
+ * gone" on open box, and "stock isn't held" on restock. Micro Center sells
+ * reservations as their own feature ("Reserve Now"); an alert of ours that
+ * reads like one is both untrue and the kind of thing that makes a retail
+ * partnership conversation start badly.
+ */
+async function notificationFor(d) {
+  const where = await storeLabel(d.storeNum);
+  const seen = ageLabel(d.observedAt);
+  const price = `$${d.currentPrice.toFixed(2)}`;
+
+  if (d.reason === "openBox" && d.openBoxPrice !== undefined) {
+    return {
+      title: `Open box at ${where}: $${d.openBoxPrice.toFixed(2)}`,
+      message: `${d.name}\nNew ${price} · one unit seen ${seen} — it may already be gone`,
+    };
+  }
+  if (d.reason === "restock") {
+    return {
+      title: `Back in stock at ${where}`,
+      message: `${d.name}\n${price} · seen ${seen} — stock isn't held`,
+    };
+  }
+  return {
+    title: `Price drop: ${price}`,
+    message: `${d.name}\nYour target $${d.priceAtWatch.toFixed(2)} · seen at ${where} ${seen}`,
+  };
+}
 
 const ALARM = "jackdaw-watch-check";
 
@@ -322,11 +417,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const scope = await scopeArg();
     const drops = await convexQuery("watches:check", { deviceId, ...scope });
     for (const d of drops) {
+      const { title, message } = await notificationFor(d);
       chrome.notifications.create(d.urlPath, {
         type: "basic",
         iconUrl: "icons/icon128.png",
-        title: `Price drop: $${d.currentPrice.toFixed(2)}`,
-        message: `${d.name}\nYour target: $${d.priceAtWatch.toFixed(2)} · store #${d.storeNum}`,
+        title,
+        message,
         priority: 1,
       });
       await convexMutation("watches:ack", {

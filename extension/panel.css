@@ -342,6 +342,113 @@
   margin-bottom: 10px;
 }
 
+/* ---------- Store triggers ---------- */
+.jd-store-card { padding-bottom: 6px; }
+.jd-store-name {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--jd-ink);
+  letter-spacing: -0.01em;
+  margin: -4px 0 10px;
+}
+.jd-store-empty {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--jd-muted);
+  padding-bottom: 8px;
+}
+
+.jd-switch-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  cursor: pointer;
+  border-top: 1px solid var(--jd-hairline);
+}
+.jd-switch-row:first-of-type { border-top: 0; }
+/* Disabled reads on the CONTROL, not the copy. Dimming the whole row to 0.45
+   put the hint text at ~1.8:1 in both themes — and the cold state, where every
+   switch is disabled, is exactly when someone is reading those hints to find
+   out what open-box and back-in-stock alerts even do. */
+.jd-switch-off { cursor: default; }
+.jd-switch-off .jd-switch-label { color: var(--jd-muted); font-weight: 500; }
+.jd-switch-off .jd-switch-icon { opacity: 0.5; }
+.jd-switch-off .jd-switch-track { opacity: 0.42; }
+.jd-switch-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--jd-muted);
+  transition: color 0.18s var(--ease-out);
+}
+.jd-switch-icon svg { width: 16px; height: 16px; display: block; }
+.jd-switch-text { flex: 1 1 auto; min-width: 0; }
+.jd-switch-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--jd-ink);
+}
+.jd-switch-hint {
+  display: block;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--jd-muted);
+  margin-top: 1px;
+}
+/* The real control, kept in the layout (not display:none) so it stays
+   focusable and reachable by keyboard and screen readers; the track below is
+   painted on top of it. */
+.jd-switch-input {
+  position: absolute;
+  right: 0;
+  top: 12px;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.jd-switch-track {
+  flex: 0 0 auto;
+  position: relative;
+  width: 30px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 9px;
+  background: rgba(28, 30, 33, 0.14);
+  transition: background 0.2s var(--ease-out);
+  pointer-events: none;
+}
+.jd-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s var(--ease-out);
+}
+.jd-switch-input:checked ~ .jd-switch-track { background: var(--jd-green); }
+.jd-switch-input:checked ~ .jd-switch-track .jd-switch-thumb { transform: translateX(12px); }
+.jd-switch-row:has(.jd-switch-input:checked) .jd-switch-icon { color: var(--jd-green-deep); }
+.jd-switch-input:focus-visible ~ .jd-switch-track {
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45);
+}
+@media (hover: hover) and (pointer: fine) {
+  .jd-switch-row:not(.jd-switch-off):hover .jd-switch-icon { color: var(--jd-ink); }
+  .jd-switch-row:not(.jd-switch-off):hover .jd-switch-track { background: rgba(28, 30, 33, 0.22); }
+  .jd-switch-row:not(.jd-switch-off):hover .jd-switch-input:checked ~ .jd-switch-track { background: var(--jd-green-deep); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jd-switch-thumb, .jd-switch-track, .jd-switch-icon { transition: none; }
+}
+
 /* Tab bar with sliding indicator */
 .jd-tabbar {
   position: relative;
@@ -981,6 +1088,28 @@
   #jackdaw-drawer.jd-dark .jd-range-btn:hover { color: #cdd6e4; }
 }
 #jackdaw-drawer.jd-dark .jd-store-select { background: #16213a; border-color: #253049; color: #cdd6e4; }
+/* Store triggers. The track's resting fill is a light-on-dark wash rather than
+   the light theme's ink wash, or an off switch reads as a hole in the card. */
+#jackdaw-drawer.jd-dark .jd-store-name { color: #e6eaf2; }
+#jackdaw-drawer.jd-dark .jd-store-empty { color: #6b7690; }
+#jackdaw-drawer.jd-dark .jd-switch-row { border-top-color: #1e293e; }
+#jackdaw-drawer.jd-dark .jd-switch-label { color: #e6eaf2; }
+/* Same specificity as the rule above, or the light theme's disabled label
+   would lose to it and a dead switch would read as live. */
+#jackdaw-drawer.jd-dark .jd-switch-off .jd-switch-label { color: #8b94a8; }
+#jackdaw-drawer.jd-dark .jd-switch-hint { color: #7c8598; }
+#jackdaw-drawer.jd-dark .jd-switch-icon { color: #7c8598; }
+#jackdaw-drawer.jd-dark .jd-switch-track { background: rgba(140, 152, 175, 0.22); }
+#jackdaw-drawer.jd-dark .jd-switch-thumb { background: #cdd6e4; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+#jackdaw-drawer.jd-dark .jd-switch-input:checked ~ .jd-switch-track { background: #22a559; }
+#jackdaw-drawer.jd-dark .jd-switch-input:checked ~ .jd-switch-track .jd-switch-thumb { background: #fff; }
+#jackdaw-drawer.jd-dark .jd-switch-row:has(.jd-switch-input:checked) .jd-switch-icon { color: #4ade80; }
+#jackdaw-drawer.jd-dark .jd-switch-input:focus-visible ~ .jd-switch-track { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45); }
+@media (hover: hover) and (pointer: fine) {
+  #jackdaw-drawer.jd-dark .jd-switch-row:not(.jd-switch-off):hover .jd-switch-icon { color: #e6eaf2; }
+  #jackdaw-drawer.jd-dark .jd-switch-row:not(.jd-switch-off):hover .jd-switch-track { background: rgba(140, 152, 175, 0.34); }
+  #jackdaw-drawer.jd-dark .jd-switch-row:not(.jd-switch-off):hover .jd-switch-input:checked ~ .jd-switch-track { background: #1c8f4b; }
+}
 #jackdaw-drawer.jd-dark .mk-rail::before { background: #253049; }
 #jackdaw-drawer.jd-dark .mk-collapsed-row { border-top-color: #1e293e; }
 #jackdaw-drawer.jd-dark .mk-expander { border-color: #2a3752; color: #8b94a8; }

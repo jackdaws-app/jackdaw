@@ -21,15 +21,31 @@
     const name = (document.querySelector('[data-name]')?.getAttribute('data-name')
       || document.querySelector('h1 [itemprop="name"], h1')?.textContent
       || '').trim().slice(0, 300);
-    // Best-effort open-box price: Micro Center shows "OPEN BOX ... $x.xx" near the buy box.
+    // Open-box price — the only figure on this page that genuinely differs
+    // between stores, because an open-box unit is one physical item sitting at
+    // one location. Micro Center prints the cheapest as "from $x.xx" in
+    // #opCostNew beside the buy box, and every individual unit's price inside
+    // the open-box picker modal.
+    //
+    // Do NOT reach for a node containing both "open box" and a price: there is
+    // no such node. The elements reading "Open Box" are nav-menu links under
+    // Clearance & Refurb carrying no price, and #opCostNew carries the price
+    // without ever saying "open box" — so a selector demanding both matched
+    // nothing, on every page, which is exactly what the original heuristic did
+    // silently for its whole life. Verified 2026-08-15 against three products
+    // with confirmed open-box stock: all three extracted nothing before this.
     let openBoxPrice;
-    const obEl = [...document.querySelectorAll('a, span, div')].find(
-      (n) => n.children.length === 0 && /open\s*box/i.test(n.textContent || "") && /\$\s*\d/.test(n.textContent || ""),
-    );
-    if (obEl) {
-      const m = (obEl.textContent || "").match(/\$\s*([\d,]+\.?\d*)/);
+    const obNodes = [
+      document.querySelector("#opCostNew"),
+      ...document.querySelectorAll(".openBoxModal .pricing"),
+    ];
+    for (const n of obNodes) {
+      const m = (n?.textContent || "").match(/\$\s*([\d,]+\.?\d*)/);
       const v = m ? parseFloat(m[1].replace(/,/g, "")) : NaN;
-      if (isFinite(v) && v > 0 && v < price) openBoxPrice = v;
+      // Below list is the sanity check that this is a used-unit price and not
+      // an accessory, bundle, or financing figure sharing the selector.
+      if (!isFinite(v) || v <= 0 || v >= price) continue;
+      if (openBoxPrice === undefined || v < openBoxPrice) openBoxPrice = v;
     }
     return {
       openBoxPrice,

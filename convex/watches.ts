@@ -23,6 +23,41 @@ const WATCH_WINDOW = 50;
 // has gone wrong.
 const MAX_ROWS_PER_PRODUCT = 10;
 
+// ---------------------------------------------------------------------------
+// Store-scoped triggers
+//
+// A per-store fact is only as fresh as the last Jackdaw user who loaded that
+// store's page, and nothing can tell us a unit sold except somebody visiting.
+// An open-box unit is a SINGLE physical item, so a stale "open box at your
+// store" is not a slightly-wrong number — it is a person driving to a shop for
+// something that left hours ago.
+//
+// So a per-store trigger refuses to fire on an observation older than this, and
+// the notification states the age either way. Missing a real deal is the
+// cheaper failure: the shopper loses nothing they knew about, where a wasted
+// trip costs them an afternoon and costs Jackdaw the trust the whole product
+// runs on. 48h is deliberately generous — a low-traffic store would otherwise
+// never produce an alert at all — and it is a ceiling, not a promise.
+const STORE_SIGNAL_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+// Recent observations to read per store when looking for a stock transition.
+// Small because it is per-watch inside a 50-watch loop, and because a restock
+// older than a few state changes is not news.
+const STORE_HISTORY_WINDOW = 5;
+
+// Store numbers that cannot carry a per-store trigger.
+//   "029" — Micro Center's "Shippable Items" pseudo-store, and the default for
+//           anyone who has never picked a location. It has no shelves, so it
+//           has no open-box unit and no local stock.
+//   "000" — page-world.js's fallback when the dataLayer offers neither
+//           storeNum nor closestStoreId. It means "we don't know".
+const NON_PHYSICAL_STORES = new Set(["029", "000"]);
+
+/** Can this store number back an open-box or restock trigger? */
+function isPhysicalStore(storeNum: string | undefined): storeNum is string {
+  return storeNum !== undefined && !NON_PHYSICAL_STORES.has(storeNum);
+}
+
 /** Evenly sample `values` down to at most `max`, keeping first and last. */
 function downsample(values: number[], max: number): number[] {
   if (values.length <= max) return values;
@@ -161,6 +196,13 @@ function canonical(rows: Doc<"watches">[]): Doc<"watches"> | null {
  * watch if it later signs out. One click re-arms it, and the alternative —
  * leaving it live — is a watchlist that shows the same product twice and
  * refuses to be turned off.
+ *
+ * Arming always turns the price trigger back on. Both doors into this function
+ * are "notify me about this product" — the bell, and typing a target — and the
+ * price is what that means by default. It also keeps an invariant setTriggers
+ * enforces from its own side: no armed watch has zero live triggers, so nothing
+ * can sit in a watchlist looking live while being unable to fire. Store-only is
+ * reached by switching price off afterwards, deliberately.
  */
 async function armOne(
   ctx: MutationCtx,
@@ -168,7 +210,7 @@ async function armOne(
   keep: Doc<"watches">,
   priceAtWatch: number,
 ): Promise<void> {
-  await ctx.db.patch(keep._id, { active: true, priceAtWatch });
+  await ctx.db.patch(keep._id, { active: true, priceAtWatch, alertPrice: true });
   for (const row of rows) {
     if (row._id === keep._id) continue;
     if (row.active) await ctx.db.patch(row._id, { active: false });
@@ -384,6 +426,85 @@ export const setTarget = mutation({
   },
 });
 
+/**
+ * Set which of the three triggers an already-armed watch fires on.
+ *
+ * Separate from toggle/setTarget rather than folded into them: those two own
+ * the "is there an alert, and at what number" question and are dense with
+ * account-scope invariants. Which reasons it fires on is an edit to an
+ * existing alert, so it gets its own narrow path and never bumps
+ * alerts:armed — the alert was already counted when it was armed.
+ *
+ * Every row in the scope is patched, not just the canonical one, so a browser
+ * whose row wins canonical() later still reads the preferences the person set.
+ */
+export const setTriggers = mutation({
+  args: {
+    deviceId: v.string(),
+    productId: v.string(),
+    storeNum: v.string(),
+    price: v.boolean(),
+    openBox: v.boolean(),
+    restock: v.boolean(),
+    sessionToken: v.optional(v.string()),
+  },
+  returns: v.object({
+    ok: v.boolean(),
+    reason: v.optional(
+      v.union(
+        v.literal("NOT_WATCHING"),
+        v.literal("NOT_A_STORE"),
+        v.literal("NO_TRIGGERS"),
+      ),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+    const storeNum = requireLength("storeNum", args.storeNum, 1, 10);
+
+    // Refused in band rather than thrown, for the reason the rest of this
+    // codebase answers in band: a throw would roll back its own writes, and a
+    // caller that has to distinguish "no alert here" from "backend down" gets
+    // nothing useful from an exception. Nothing is written before this point.
+    if ((args.openBox || args.restock) && !isPhysicalStore(storeNum)) {
+      return { ok: false, reason: "NOT_A_STORE" as const };
+    }
+
+    // An armed watch with nothing to fire on is a watchlist row that can never
+    // resolve — it would sit in the popup forever looking live. Turning
+    // everything off is `toggle`'s job, and saying so is more useful than
+    // silently writing a watch that does nothing.
+    if (!args.price && !args.openBox && !args.restock) {
+      return { ok: false, reason: "NO_TRIGGERS" as const };
+    }
+
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_productId", (q) => q.eq("productId", args.productId))
+      .unique();
+    if (product === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
+    }
+
+    const accountId = await scopeAccount(ctx, args.sessionToken);
+    const set = await watchSet(ctx, accountId, deviceId, product._id);
+    const watch = canonical(set.rows);
+    if (watch === null || !watch.active) {
+      return { ok: false, reason: "NOT_WATCHING" as const };
+    }
+
+    for (const row of set.rows) {
+      await ctx.db.patch(row._id, {
+        storeNum,
+        alertPrice: args.price,
+        alertOpenBox: args.openBox,
+        alertRestock: args.restock,
+      });
+    }
+    return { ok: true };
+  },
+});
+
 export const status = query({
   args: {
     deviceId: v.string(),
@@ -393,19 +514,40 @@ export const status = query({
   returns: v.object({
     watching: v.boolean(),
     target: v.union(v.number(), v.null()),
+    storeNum: v.union(v.string(), v.null()),
+    alertPrice: v.boolean(),
+    alertOpenBox: v.boolean(),
+    alertRestock: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const product = await ctx.db
       .query("products")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .unique();
-    if (product === null) return { watching: false, target: null };
+    if (product === null) {
+      return {
+        watching: false,
+        target: null,
+        storeNum: null,
+        alertPrice: false,
+        alertOpenBox: false,
+        alertRestock: false,
+      };
+    }
 
     const accountId = await scopeAccount(ctx, args.sessionToken);
     const set = await watchSet(ctx, accountId, args.deviceId, product._id);
     const watch = canonical(set.rows);
     const watching = watch !== null && watch.active;
-    return { watching, target: watching ? watch.priceAtWatch : null };
+    return {
+      watching,
+      target: watching ? watch.priceAtWatch : null,
+      storeNum: watching ? watch.storeNum ?? null : null,
+      // Absent means on, so this is the one flag that is not a plain `=== true`.
+      alertPrice: watching && watch.alertPrice !== false,
+      alertOpenBox: watching && watch.alertOpenBox === true,
+      alertRestock: watching && watch.alertRestock === true,
+    };
   },
 });
 
@@ -437,6 +579,116 @@ export const status = query({
  * firedAt column plus a per-device seen list read through its own index, not a
  * change to the scope here.
  */
+type FireReason = "price" | "openBox" | "restock";
+
+type Fire = {
+  productId: string;
+  name: string;
+  urlPath: string;
+  priceAtWatch: number;
+  currentPrice: number;
+  storeNum: string;
+  reason: FireReason;
+  /** When the observation behind this firing was last seen. */
+  observedAt: number;
+  /** Set only on the openBox reason. */
+  openBoxPrice?: number;
+};
+
+/**
+ * Why this watch should notify right now, or null.
+ *
+ * At most ONE reason per watch, because a watch is one alert and ack disarms
+ * it: emitting two rows would produce two toasts the single ack could not
+ * both answer. Price wins ties — it is the threshold the person actually
+ * typed, where the per-store triggers are standing interest.
+ */
+async function fireFor(
+  ctx: QueryCtx,
+  watch: Doc<"watches">,
+  now: number,
+): Promise<{
+  reason: FireReason;
+  observedAt: number;
+  storeNum: string;
+  currentPrice: number;
+  openBoxPrice?: number;
+} | null> {
+  // Price: newest observation from ANY store. Micro Center prices nationally,
+  // so the freshest reading is the best reading, and narrowing this to the
+  // watch's own store would only delay the alert (see schema.ts).
+  //
+  // `!== false` rather than a truthiness test: absent means on, for every row
+  // written before the flag existed.
+  const latest =
+    watch.alertPrice === false
+      ? null
+      : await ctx.db
+          .query("pricePoints")
+          .withIndex("by_product", (q) => q.eq("productDocId", watch.productDocId))
+          .order("desc")
+          .first();
+
+  if (latest !== null && latest.price <= watch.priceAtWatch + DROP_EPSILON) {
+    return {
+      reason: "price",
+      observedAt: latest.lastSeenAt,
+      storeNum: latest.storeNum,
+      currentPrice: latest.price,
+    };
+  }
+
+  const wantsStoreSignal = watch.alertOpenBox === true || watch.alertRestock === true;
+  if (!wantsStoreSignal || !isPhysicalStore(watch.storeNum)) return null;
+
+  // Newest-first at this one store. by_product_store keeps this to a handful of
+  // reads per watch rather than a scan of the product's whole history.
+  const atStore = await ctx.db
+    .query("pricePoints")
+    .withIndex("by_product_store", (q) =>
+      q.eq("productDocId", watch.productDocId).eq("storeNum", watch.storeNum as string),
+    )
+    .order("desc")
+    .take(STORE_HISTORY_WINDOW);
+
+  const newest = atStore[0];
+  if (newest === undefined) return null;
+
+  // The staleness gate. Everything below describes what SOMEBODY SAW, not what
+  // is on the shelf now, so past this age we say nothing at all.
+  if (now - newest.lastSeenAt > STORE_SIGNAL_MAX_AGE_MS) return null;
+
+  if (watch.alertOpenBox === true && newest.openBoxPrice !== undefined) {
+    return {
+      reason: "openBox",
+      observedAt: newest.lastSeenAt,
+      storeNum: newest.storeNum,
+      currentPrice: newest.price,
+      openBoxPrice: newest.openBoxPrice,
+    };
+  }
+
+  // Restock needs the TRANSITION, not the state: "in stock" on its own would
+  // fire the moment the alert was armed on anything currently available, which
+  // is not news. observations.record inserts a new row when inStock changes and
+  // patches when it doesn't, so an out-of-stock row inside this window is
+  // exactly the evidence that the item came back.
+  if (
+    watch.alertRestock === true &&
+    newest.inStock &&
+    atStore.some((p) => !p.inStock)
+  ) {
+    return {
+      reason: "restock",
+      observedAt: newest.lastSeenAt,
+      storeNum: newest.storeNum,
+      currentPrice: newest.price,
+    };
+  }
+
+  return null;
+}
+
 export const check = query({
   args: {
     deviceId: v.string(),
@@ -450,44 +702,42 @@ export const check = query({
       priceAtWatch: v.number(),
       currentPrice: v.number(),
       storeNum: v.string(),
+      reason: v.union(
+        v.literal("price"),
+        v.literal("openBox"),
+        v.literal("restock"),
+      ),
+      observedAt: v.number(),
+      openBoxPrice: v.optional(v.number()),
     }),
   ),
   handler: async (ctx, args) => {
     const accountId = await scopeAccount(ctx, args.sessionToken);
     const watches = await armedWatches(ctx, accountId, args.deviceId);
+    const now = Date.now();
 
-    const drops: {
-      productId: string;
-      name: string;
-      urlPath: string;
-      priceAtWatch: number;
-      currentPrice: number;
-      storeNum: string;
-    }[] = [];
+    const fires: Fire[] = [];
 
     for (const watch of watches) {
-      const latest = await ctx.db
-        .query("pricePoints")
-        .withIndex("by_product", (q) => q.eq("productDocId", watch.productDocId))
-        .order("desc")
-        .first();
-      if (latest === null) continue;
-      // Fire when current <= target + epsilon (at-or-below the chosen target).
-      if (latest.price > watch.priceAtWatch + DROP_EPSILON) continue;
+      const hit = await fireFor(ctx, watch, now);
+      if (hit === null) continue;
 
       const product = await ctx.db.get(watch.productDocId);
       if (product === null) continue;
 
-      drops.push({
+      fires.push({
         productId: product.productId,
         name: product.name,
         urlPath: product.urlPath,
         priceAtWatch: watch.priceAtWatch,
-        currentPrice: latest.price,
-        storeNum: latest.storeNum,
+        currentPrice: hit.currentPrice,
+        storeNum: hit.storeNum,
+        reason: hit.reason,
+        observedAt: hit.observedAt,
+        ...(hit.openBoxPrice === undefined ? {} : { openBoxPrice: hit.openBoxPrice }),
       });
     }
-    return drops;
+    return fires;
   },
 });
 
@@ -502,6 +752,14 @@ const dashboardRowValidator = v.object({
   lowest: v.number(),
   trend: v.array(v.number()),
   met: v.boolean(),
+  // Which triggers are armed, so the popup can say what each row is waiting
+  // for rather than showing every watch as a price alert.
+  alertPrice: v.boolean(),
+  alertOpenBox: v.boolean(),
+  alertRestock: v.boolean(),
+  // The store the per-store triggers watch. Distinct from `storeNum` above,
+  // which is wherever the latest observation happened to come from.
+  watchStore: v.union(v.string(), v.null()),
 });
 
 type DashboardRow = {
@@ -515,6 +773,10 @@ type DashboardRow = {
   lowest: number;
   trend: number[];
   met: boolean;
+  alertPrice: boolean;
+  alertOpenBox: boolean;
+  alertRestock: boolean;
+  watchStore: string | null;
 };
 
 /**
@@ -585,7 +847,18 @@ export const dashboard = query({
         inStock: latest === null ? false : latest.inStock,
         lowest: lowestSoFar ?? 0,
         trend: downsample(chronological, MAX_TREND_POINTS),
-        met: currentPrice > 0 && currentPrice <= watch.priceAtWatch + DROP_EPSILON,
+        // "met" is a statement about the price trigger, so a watch whose price
+        // trigger is off is never met however low the price goes — otherwise
+        // the popup would sort a store-only alert to the top and badge it as
+        // ready to fire when it is waiting on something else entirely.
+        met:
+          watch.alertPrice !== false &&
+          currentPrice > 0 &&
+          currentPrice <= watch.priceAtWatch + DROP_EPSILON,
+        alertPrice: watch.alertPrice !== false,
+        alertOpenBox: watch.alertOpenBox === true,
+        alertRestock: watch.alertRestock === true,
+        watchStore: watch.storeNum ?? null,
       });
     }
 

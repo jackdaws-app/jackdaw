@@ -89,6 +89,58 @@ export default defineSchema({
     // which is why auth:deleteAccount can clear it back off and leave the
     // device owning its watches exactly as before.
     accountId: v.optional(v.id("accounts")),
+
+    // ---------------------------------------------------------------------
+    // Triggers
+    //
+    // A watch is ONE alert with up to three reasons to fire, because ack
+    // disarms the whole row — so two reasons firing at once would produce two
+    // notifications a single dismissal could not both answer.
+    //
+    // The price trigger is deliberately NOT store-scoped. Micro Center prices
+    // nationally — 12 products sampled across GPUs, laptops, CPUs and SSDs
+    // against 4-5 stores each showed zero price variation (2026-08-15) — so
+    // "newest observation from any store" is both correct and the freshest
+    // reading available, and filtering it to one store would only make alerts
+    // staler while changing no number.
+    //
+    // Two facts DO vary by store, and the fields below are for those: whether
+    // the item is in stock, and the open-box price, which is the only
+    // genuinely per-store price on the page because an open-box unit is one
+    // physical item at one location.
+    //
+    // All four are optional so every row written before this existed keeps
+    // working untouched — absent means "price trigger only", which is what
+    // those rows have always meant.
+    // ---------------------------------------------------------------------
+
+    // Whether priceAtWatch is a live trigger. Absent means yes, which is what
+    // every row predating this field meant and still means.
+    //
+    // It can be switched off because price wins ties and ack disarms the whole
+    // watch: somebody who wants "tell me when it's back in stock at Westmont"
+    // and is forced to carry a price target gets the price alert first, acks
+    // it, and the restock alert they actually asked for is silently gone. The
+    // flag is what makes a store-only alert a real thing rather than a price
+    // alert wearing a hat.
+    alertPrice: v.optional(v.boolean()),
+    // The store the per-store triggers below apply to, captured from the page's
+    // own dataLayer when the alert is armed.
+    //
+    // "029" is NOT a physical store — it is Micro Center's "Shippable Items"
+    // pseudo-store and the default for anyone who has never picked a location,
+    // and "000" is page-world.js's fallback when the dataLayer carries neither
+    // storeNum nor closestStoreId. Neither can satisfy a per-store trigger, so
+    // watches.ts refuses to arm one against them rather than storing a watch
+    // that could never fire.
+    storeNum: v.optional(v.string()),
+    // Fire when an open-box unit is seen at storeNum. Open-box is where the
+    // real discounts are, and it is invisible from any other store's page.
+    alertOpenBox: v.optional(v.boolean()),
+    // Fire when storeNum goes out-of-stock -> in-stock. Micro Center's model is
+    // in-store pickup ("Available for In-Store Pickup Only" on most hardware),
+    // so stock at YOUR store is the fact that decides whether a trip happens.
+    alertRestock: v.optional(v.boolean()),
   })
     // Watches are soft-deactivated (toggle/ack set active:false rather than
     // deleting), so a device's row count grows without bound. Scoping the
