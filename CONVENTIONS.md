@@ -58,6 +58,12 @@ value so the UI can label it.
   painting a `linear-gradient` reports `backgroundColor: rgba(0,0,0,0)`, so walk to the
   gradient's first stop; and a hidden collapsed subtree still reports a non-null
   `offsetParent`, so it surfaces as a false low-contrast hit.
+- **A muted token passes on the surface it was tuned for and can fail one layer out.** The
+  admin panel's grey measures 4.83 on its white cards and 4.37 on the warm page ground
+  behind them — under AA for the small labels that sit there. Same colour, same page, and
+  only the handful of elements outside a card were affected. Sweep *every* text node
+  against its own resolved backdrop rather than checking a token once; and fix it at the
+  usage site, because the token was right everywhere else.
 - **Anything drawn to canvas needs palette entries in `chart.js` PALETTES** for both
   themes. Canvas doesn't inherit CSS custom properties.
 - **Derive reserved space from measurement.** The chart's price gutter was a hard-coded 52

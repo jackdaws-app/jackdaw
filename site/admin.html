@@ -91,6 +91,24 @@
         <div id="priceIndex"></div>
       </section>
 
+      <!--
+        The panel changes subject here, and until this header existed it did so
+        silently. Everything above answers the question a retail partner asks —
+        how many shoppers, how much intent, what is the market doing. Everything
+        below answers a question only we ask: is any of it still working?
+
+        Both belong on one page (a silently broken reader corrupts every number
+        above it, so you cannot read the top half honestly without the bottom),
+        but one eyebrow at the top of the document implied the whole thing was
+        the partnership case, which invited exactly the objection that a
+        selector count has nothing to do with reach. It doesn't. It is here to
+        tell you whether the reach figures can be trusted.
+      -->
+      <div class="admin-section">
+        <p class="eyebrow">Operations</p>
+        <h2 class="admin-section-title">Is any of this still working?</h2>
+      </div>
+
       <section class="admin-card" id="signalsCard" hidden>
         <div class="admin-card-head">
           <h2>Health signals</h2>
@@ -100,13 +118,13 @@
       </section>
 
       <!--
-        Can the readers still find what they look for on Micro Center's pages?
-        Sibling of Health signals above, and a different question: that card
-        reports things that went visibly wrong, this one reports a reader that
-        went quietly right-looking while finding nothing. Four fields have
-        failed that way; none of them raised a signal, because a selector that
-        matches nothing throws no error.
+        Sibling of Health signals, and a different question. That card reports
+        things that went visibly wrong; this one reports a reader that went
+        quietly right-looking while finding nothing. Four fields have failed
+        that way, and none raised a signal, because a selector that matches
+        nothing throws no error.
       -->
+
       <section class="admin-card" id="selectorsCard" hidden>
         <div class="admin-card-head">
           <h2>Selector health</h2>

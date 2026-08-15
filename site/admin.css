@@ -114,6 +114,39 @@
   padding: 16px 18px 18px;
   margin-bottom: 16px;
 }
+
+/* ── The partnership half ends here ──
+   A divider with a name on it. Cards are 16px apart; this gets 34px above and
+   14px below so the gap reads as a break in the document rather than one more
+   card, without a rule line competing with the card borders either side. The
+   title is deliberately smaller than the page's `.h-section` — this is a
+   second-level heading, not a second page. */
+.admin-section {
+  margin: 34px 0 14px;
+}
+.admin-section .eyebrow { margin-bottom: 6px; }
+
+/* `--muted` is tuned for the white cards, where it measures 4.83. The two
+   eyebrows are the only muted text sitting directly on `--paper-warm`, and the
+   warmer backdrop drops the same grey to 4.37 — under AA for 11px, which this
+   is. Fixed at the usage site rather than in the token, because the token is
+   correct everywhere else on the page. Scoped to the admin body: the marketing
+   site uses `.eyebrow` on the same warm ground and has the same shortfall, but
+   that is a different surface with its own review. */
+.admin-body .eyebrow { color: var(--ink-soft); }
+/* Same shortfall, same cause: the two page-level footnotes sit on the warm
+   ground rather than inside a card. A sweep of every text node in the panel
+   found exactly these and the eyebrows below AA — the `.admin-fine` inside a
+   card is on white and measures 4.83, so it is left alone. */
+.panel-wrap > .admin-fine { color: var(--ink-soft); }
+.admin-section-title {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(21px, 2.4vw, 27px);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
 .admin-card-head {
   display: flex;
   align-items: baseline;
