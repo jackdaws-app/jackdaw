@@ -413,6 +413,9 @@ section { padding: clamp(60px, 9vw, 130px) clamp(18px, 5vw, 54px); max-width: 13
 .mini-vote { font-weight: 700; font-size: 12px; color: var(--green-deep); font-variant-numeric: tabular-nums; }
 .mini-comment p { font-size: 13px; color: var(--ink-soft); }
 .mini-comment b { color: var(--ink); }
+/* The same mark the extension puts beside a claimed handle. One name carries
+   it and one doesn't, which is the whole point of the model. */
+.mini-verified { width: 11px; height: 11px; color: var(--green-deep); vertical-align: -1px; margin-left: 3px; }
 
 /* ── Privacy ── */
 .privacy { border-top: 1px solid var(--hairline); background: var(--paper-warm); max-width: none; }

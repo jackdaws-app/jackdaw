@@ -19,6 +19,10 @@
   let chartHeight = 190;
   let watchBtn = null;
   let replyTo = null; // comment _id an open reply form belongs to
+  // {signedIn:false} | {signedIn:true, email, handle} — never the session token,
+  // which stays in the service worker. This script runs inside a page Micro
+  // Center controls; it gets to know who you are, not how to prove it.
+  let account = { signedIn: false };
   let uiRoot = null; // ShadowRoot — isolates our UI from the host page's CSS entirely
 
   async function ensureRoot() {
@@ -205,10 +209,15 @@
   }
 
   async function refreshAll() {
-    const [h, c] = await Promise.all([
+    const [h, c, a] = await Promise.all([
       send({ type: "history", productId: product.productId }),
       send({ type: "comments:list", productId: product.productId }),
+      send({ type: "auth:state" }),
     ]);
+    // A failed auth check falls back to the anonymous compose form — the
+    // normal state of this product, not a degraded one. The backend stays the
+    // authority on who signed a comment either way.
+    account = a && !a.error && a.result ? a.result : { signedIn: false };
     // A failed request and a product with no history are different things and
     // must not look the same: one offers a retry, the other invites a first visit.
     historyFailed = !!(h && h.error);
@@ -945,6 +954,37 @@
     return sec;
   }
 
+  // The verified mark. A bare check, not a filled badge: at 11px a badge reads
+  // as a notification dot, and this has to sit inside a line of meta text
+  // without shouting. Only a claimed handle earns it — a tick beside a name
+  // anyone can type would be worse than no tick at all.
+  const VERIFIED_MARK =
+    '<svg class="mk-verified" viewBox="0 0 12 12" role="img">' +
+    "<title>Verified — a claimed handle</title>" +
+    '<path d="M2.4 6.3 4.8 8.6 9.6 3.5" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  const HANDLE_REASONS = {
+    TAKEN: "That handle is taken.",
+    RESERVED: "That handle is reserved.",
+    // INVALID covers two refusals the backend deliberately doesn't separate:
+    // the wrong shape, and a word the content filter won't allow. So this
+    // leads with the refusal — true either way — and gives the shape after,
+    // rather than reciting character rules at someone whose handle was the
+    // right shape all along.
+    INVALID:
+      "That handle can't be used. Handles are 3–20 characters — letters, numbers, - and _ — starting and ending with a letter or number.",
+    NO_SESSION: "Open the Jackdaw toolbar icon to sign in first.",
+  };
+
+  // Refusals that are about the typed name and nothing else. They go inline on
+  // the name field rather than into a toast: the fix is to change that one
+  // input, and a toast floating over the panel points at nothing.
+  const NAME_REFUSALS = {
+    NAME_CLAIMED: "Someone has claimed that name. Pick another, or sign in to claim your own.",
+    NAME_RESERVED: "That name is reserved. Pick another.",
+  };
+
   function renderComment(c, depth) {
     const wrap = el("div", "mk-thread" + (depth ? " mk-thread-nested" : ""));
 
@@ -953,7 +993,7 @@
     if (collapsedThreads.has(c._id)) {
       const replies = countReplies(c);
       const row = el("button", "mk-comment mk-collapsed-row");
-      row.innerHTML = `<span class="mk-expander">+</span><span class="mk-author">${escapeHtml(c.displayName)}</span><span class="mk-collapsed-snippet"> · ${escapeHtml(c.body.slice(0, 64))}${c.body.length > 64 ? "…" : ""}</span>${replies ? `<span class="mk-collapsed-count">${replies} repl${replies === 1 ? "y" : "ies"}</span>` : ""}`;
+      row.innerHTML = `<span class="mk-expander">+</span><span class="mk-author">${escapeHtml(c.displayName)}</span>${c.verified ? VERIFIED_MARK : ""}<span class="mk-collapsed-snippet"> · ${escapeHtml(c.body.slice(0, 64))}${c.body.length > 64 ? "…" : ""}</span>${replies ? `<span class="mk-collapsed-count">${replies} repl${replies === 1 ? "y" : "ies"}</span>` : ""}`;
       row.addEventListener("click", () => {
         collapsedThreads.delete(c._id);
         renderRight();
@@ -1023,7 +1063,9 @@
       collapsedThreads.add(c._id);
       renderRight();
     });
-    meta.append(authorEl, el("span", null, " · " + fmtRel(c._creationTime)));
+    meta.append(authorEl);
+    if (c.verified) meta.insertAdjacentHTML("beforeend", VERIFIED_MARK);
+    meta.append(el("span", null, " · " + fmtRel(c._creationTime)));
     const body = el("div", "mk-comment-body", c.body);
     const actions = el("div", "mk-comment-actions");
     if (depth < 3) {
@@ -1061,6 +1103,9 @@
       case "LINKS_NOT_ALLOWED": return "Links aren't allowed in comments";
       case "CONTACT_INFO_NOT_ALLOWED": return "Contact info isn't allowed";
       case "CONTENT_REJECTED": return "Keep it civil — comment rejected";
+      case "NAME_CLAIMED": return "Someone has claimed that name — pick another";
+      case "NAME_RESERVED": return "That name is reserved — pick another";
+      case "NEED_HANDLE": return "Pick a handle first";
       default: return fallback;
     }
   }
@@ -1071,42 +1116,120 @@
 
   function composeForm(parentId, placeholder, cta) {
     const form = el("div", "mk-form");
-    const nameInput = el("input", "mk-input");
-    nameInput.placeholder = "Display name";
-    nameInput.maxLength = 40;
-    chrome.storage.local.get("displayName").then((v) => { if (v.displayName) nameInput.value = v.displayName; });
+    const signedIn = !!account.signedIn;
+
+    // Who this comment gets signed as, settled before a word is typed. Three
+    // states, and only one of them is an editable name: an account with a
+    // handle posts as that handle, an account without one claims it here on
+    // the way to its first comment, and everyone else keeps the free-text name
+    // this product has always had.
+    let nameInput = null; // anonymous — the display name
+    let handleInput = null; // signed in, unclaimed — the handle being claimed
+    const errEl = el("div", "mk-form-error");
+    errEl.hidden = true;
+
+    if (signedIn && account.handle) {
+      const who = el("div", "mk-as");
+      who.append(el("span", "mk-as-label", "Posting as"), el("span", "mk-as-handle", account.handle));
+      who.insertAdjacentHTML("beforeend", VERIFIED_MARK);
+      form.append(who);
+    } else if (signedIn) {
+      form.append(
+        el("div", "mk-as-hint", "Pick a handle — it's permanent, it's yours alone, and your comments carry a verified mark."),
+      );
+      handleInput = el("input", "mk-input");
+      handleInput.placeholder = "handle";
+      handleInput.maxLength = 20;
+      handleInput.autocapitalize = "off";
+      handleInput.spellcheck = false;
+      form.append(handleInput, errEl);
+    } else {
+      nameInput = el("input", "mk-input");
+      nameInput.placeholder = "Display name";
+      nameInput.maxLength = 40;
+      chrome.storage.local.get("displayName").then((v) => { if (v.displayName) nameInput.value = v.displayName; });
+      form.append(nameInput, errEl);
+    }
+
     const bodyInput = el("textarea", "mk-input mk-textarea");
     bodyInput.placeholder = placeholder;
     bodyInput.maxLength = 2000;
     const rowEl = el("div", "mk-form-row");
     const btn = el("button", "mk-post", cta);
+
+    const nudge = (input) => {
+      input.focus();
+      input.classList.add("mk-input-nudge");
+      setTimeout(() => input.classList.remove("mk-input-nudge"), 400);
+    };
+    const fail = (input, message) => {
+      errEl.textContent = message;
+      errEl.hidden = false;
+      nudge(input);
+    };
+
     btn.addEventListener("click", async () => {
-      const displayName = nameInput.value.trim();
+      errEl.hidden = true;
       const body = bodyInput.value.trim();
-      if (!displayName) { nameInput.focus(); nameInput.classList.add("mk-input-nudge"); setTimeout(() => nameInput.classList.remove("mk-input-nudge"), 400); return; }
+      if (handleInput && !handleInput.value.trim()) return nudge(handleInput);
+      if (nameInput && !nameInput.value.trim()) return nudge(nameInput);
       if (!body) { bodyInput.focus(); return; }
+
       btn.disabled = true;
-      await chrome.storage.local.set({ displayName });
-      const args = { type: "comments:add", productId: product.productId, displayName, body };
-      if (parentId) args.parentId = parentId;
-      const res = await send(args);
-      btn.disabled = false;
-      if (res.error) {
-        toast(friendlyError(res, "Couldn't post — try again"));
-        return;
+      try {
+        // The claim runs first and separately, so a refused handle costs
+        // nothing but the handle: the typed comment stays on screen.
+        if (handleInput) {
+          const claim = await send({ type: "auth:claimHandle", handle: handleInput.value.trim() });
+          if (claim.error) return fail(handleInput, friendlyError(claim, "Couldn't set that handle — try again"));
+          if (!claim.result.ok) {
+            // LOCKED means this form was drawn against stale state — the
+            // account already has a handle. Re-read rather than explain.
+            if (claim.result.reason === "LOCKED") {
+              const a = await send({ type: "auth:state" });
+              if (a && !a.error && a.result) account = a.result;
+              renderRight();
+              return;
+            }
+            return fail(handleInput, HANDLE_REASONS[claim.result.reason] || "That handle can't be used.");
+          }
+          account = { ...account, handle: claim.result.handle };
+        }
+
+        const displayName = nameInput ? nameInput.value.trim() : account.handle;
+        if (nameInput) await chrome.storage.local.set({ displayName });
+        const args = { type: "comments:add", productId: product.productId, displayName, body };
+        if (parentId) args.parentId = parentId;
+        const res = await send(args);
+        if (res.error) {
+          if (res.code === "NEED_HANDLE") {
+            account = { ...account, handle: null };
+            toast("Pick a handle first");
+            renderRight();
+            return;
+          }
+          if (nameInput && NAME_REFUSALS[res.code]) {
+            return fail(nameInput, NAME_REFUSALS[res.code]);
+          }
+          toast(friendlyError(res, "Couldn't post — try again"));
+          return;
+        }
+        replyTo = null;
+        const c = await send({ type: "comments:list", productId: product.productId });
+        comments = c && !c.error ? c.result : comments;
+        renderRight();
+      } finally {
+        btn.disabled = false;
       }
-      replyTo = null;
-      const c = await send({ type: "comments:list", productId: product.productId });
-      comments = c && !c.error ? c.result : comments;
-      renderRight();
     });
+
     if (parentId) {
       const cancel = el("button", "mk-cancel", "Cancel");
       cancel.addEventListener("click", () => { replyTo = null; renderRight(); });
       rowEl.append(cancel);
     }
     rowEl.append(btn);
-    form.append(nameInput, bodyInput, rowEl);
+    form.append(bodyInput, rowEl);
     return form;
   }
 })();

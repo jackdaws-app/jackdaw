@@ -13,11 +13,18 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import {
   SESSION_TTL_MS,
+  bump,
+  handleFilterForm,
+  handleKeyOf,
   hashSecret,
+  isCleanContent,
+  isReservedHandleKey,
+  isWellFormedHandle,
   normalizeEmail,
   rateLimiter,
   requireLength,
   resolveSession,
+  sanitize,
   secretsMatch,
   sessionByToken,
 } from "./lib";
@@ -588,6 +595,7 @@ export const me = query({
       accountId: v.id("accounts"),
       email: v.string(),
       createdAt: v.number(),
+      handle: v.union(v.string(), v.null()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -597,6 +605,11 @@ export const me = query({
       accountId: resolved.account._id,
       email: resolved.account.email,
       createdAt: resolved.account.createdAt,
+      // null means "signed in, no handle yet" — a real state, not an error.
+      // It is the one thing standing between this account and commenting
+      // (comments:add answers NEED_HANDLE), so the client reads it to decide
+      // whether to route into the claim step.
+      handle: resolved.account.handle ?? null,
     };
   },
 });
@@ -649,6 +662,142 @@ export const signOut = mutation({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Claimed handles
+//
+// A handle is the only thing an account gives a *reader* rather than its owner:
+// a name shown with a verified marker that exactly one person can hold. The
+// reservation is what makes the marker mean anything — the key is reserved
+// against anonymous commenters too (comments:add answers NAME_CLAIMED), so an
+// unticked "hex_byte" cannot appear beside the ticked one and let the reader
+// think the tick is decoration.
+//
+// PERMANENT ONCE CLAIMED. There is no rename path anywhere in this file, and
+// adding one would be a change to the data model rather than a feature: every
+// comment stores its author's handle as text at post time (that is what keeps a
+// thread readable after an account is deleted), so a rename would strand every
+// earlier comment under a name its author no longer holds. Permanence is what
+// lets the copy be trusted.
+// ---------------------------------------------------------------------------
+
+/** Refusals claimHandle answers in band. */
+type ClaimRefusal = "NO_SESSION" | "LOCKED" | "INVALID" | "RESERVED" | "TAKEN";
+
+/**
+ * Claim this account's one permanent handle.
+ *
+ * ANSWERS IN BAND, never throwing for an expected outcome — the same structural
+ * decision as consumeCode, for the same reason (header, decision 1). The
+ * handleClaim bucket is consumed before any verdict is reached, and a mutation
+ * that threw its refusal would roll that consumption back and hand a loop
+ * unlimited attempts at the two index lookups below. So every refusal here is a
+ * returned value that commits.
+ *
+ * The one exception is exhausting the bucket itself, which throws RATE_LIMITED
+ * like every other rate-limited endpoint in the codebase. That is safe for the
+ * exact reason the others are not: a refused `limit()` consumed nothing, so
+ * there is nothing for the throw to roll back.
+ *
+ * Reasons, in the order they are checked:
+ *   NO_SESSION — not signed in (expired and garbage tokens included).
+ *   LOCKED     — this account already has a handle. Checked before the string
+ *                is even looked at, because nothing about it could matter.
+ *   INVALID    — wrong shape, or the content filter refused it.
+ *   RESERVED   — a name nobody may hold (lib.ts RESERVED_HANDLE_KEYS).
+ *   TAKEN      — another account holds this key, or a deleted account did.
+ */
+export const claimHandle = mutation({
+  args: {
+    sessionToken: v.string(),
+    deviceId: v.string(),
+    handle: v.string(),
+  },
+  returns: v.union(
+    v.object({ ok: v.literal(true), handle: v.string() }),
+    v.object({
+      ok: v.literal(false),
+      reason: v.union(
+        v.literal("NO_SESSION"),
+        v.literal("LOCKED"),
+        v.literal("INVALID"),
+        v.literal("RESERVED"),
+        v.literal("TAKEN"),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+
+    // Before anything else, so every attempt that reaches a verdict has paid
+    // for it. Throwing here is the safe case — see the note above.
+    const limit = await rateLimiter.limit(ctx, "handleClaim", { key: deviceId });
+    if (!limit.ok) {
+      throw new ConvexError({
+        code: "RATE_LIMITED",
+        message: "Too many attempts — try again later",
+        retryAfter: limit.retryAfter,
+      });
+    }
+
+    const refuse = (reason: ClaimRefusal) => ({ ok: false as const, reason });
+
+    const resolved = await resolveSession(ctx, args.sessionToken);
+    if (resolved === null) return refuse("NO_SESSION");
+    if (resolved.account.handle !== undefined) return refuse("LOCKED");
+
+    // Length is part of the shape test, so a 5,000-character argument is
+    // rejected by the regex rather than by a separate ceiling. Sanitized first
+    // so a trailing newline is a trim, not a refusal.
+    const handle = sanitize(args.handle);
+    if (!isWellFormedHandle(handle)) return refuse("INVALID");
+    // Profanity, links and contact info, through the same filter comments use.
+    // INVALID rather than a reason of its own: the union is the client's
+    // contract and a rejected word is, from the picker's point of view, simply
+    // a name it may not have.
+    //
+    // Both forms, because "_" is a word character to `\b` and would otherwise
+    // walk a slur straight past the blocklist — see handleFilterForm.
+    if (!isCleanContent(handle)) return refuse("INVALID");
+    if (!isCleanContent(handleFilterForm(handle))) return refuse("INVALID");
+
+    const handleKey = handleKeyOf(handle);
+    // Unreachable while the shape test demands alphanumeric ends, and kept
+    // because an empty key would match every row that has no handle at all.
+    if (handleKey.length === 0) return refuse("INVALID");
+    if (isReservedHandleKey(handleKey)) return refuse("RESERVED");
+
+    // Two point lookups, both indexed. A live holder and a retired one are one
+    // answer — the name is spoken for either way, and saying which would leak
+    // that an account once existed.
+    const live = await ctx.db
+      .query("accounts")
+      .withIndex("by_handleKey", (q) => q.eq("handleKey", handleKey))
+      .first();
+    if (live !== null) return refuse("TAKEN");
+    const retired = await ctx.db
+      .query("retiredHandles")
+      .withIndex("by_handleKey", (q) => q.eq("handleKey", handleKey))
+      .first();
+    if (retired !== null) return refuse("TAKEN");
+
+    // Two claims of the same free key race on this write: both read the empty
+    // index range, both patch, and Convex's OCC invalidates the loser's read
+    // set and re-runs it — where it now finds the winner's row and answers
+    // TAKEN. The uniqueness invariant holds without a lock.
+    await ctx.db.patch(resolved.account._id, {
+      handle,
+      handleKey,
+    });
+
+    // Lifetime claims, not live handles: nothing decrements it, and a deleted
+    // account's handle stays retired rather than returning to the pool. Label
+    // it that way anywhere it is displayed.
+    await bump(ctx, "handles:claimed");
+
+    return { ok: true as const, handle };
+  },
+});
+
 /**
  * Delete the account, every session it has, and its outstanding sign-in code.
  * Required by the Chrome Web Store, and the honest reading of GDPR/CCPA
@@ -658,6 +807,16 @@ export const signOut = mutation({
  * anonymous owner it was before anyone signed in, and taking someone's alerts
  * away as a side effect of removing their email address would be a bug wearing
  * a privacy costume. Clearing accountId puts the row back exactly as it was.
+ *
+ * COMMENTS ARE UNLINKED TOO, and for a second reason on top of that one: the
+ * words stay because deleting an account must not silently delete other
+ * people's threads, and the accountId goes because the verified marker is a
+ * claim about an identity nobody can prove any more. The displayName stays as
+ * written — it is what the thread said at the time.
+ *
+ * THE HANDLE IS RETIRED, NOT RELEASED. See the retiredHandles comment in
+ * schema.ts: returning it to the pool would let the next claimant's ticked
+ * comments sit beside the old unticked ones under one name.
  *
  * Requires a live session — deletion is the one operation here that must not
  * be a silent no-op on a bad token, because a client that believes it deleted
@@ -684,6 +843,16 @@ export const deleteAccount = mutation({
       await ctx.db.delete(code._id);
     }
 
+    // Retire the handle before the row holding it goes. Nothing else can have
+    // written this key (a live account holds it exclusively, and a retired key
+    // is never claimable again), so there is no duplicate to guard against.
+    if (resolved.account.handleKey !== undefined) {
+      await ctx.db.insert("retiredHandles", {
+        handleKey: resolved.account.handleKey,
+        retiredAt: Date.now(),
+      });
+    }
+
     const swept = await sweepAccountRows(ctx, accountId);
     await ctx.db.delete(accountId);
 
@@ -701,14 +870,19 @@ export const deleteAccount = mutation({
 });
 
 /**
- * One batch of account teardown: sessions deleted, watches unlinked. Both
- * operations remove their rows from the range being read, so repeated batches
- * always make progress and the continuation terminates.
+ * One batch of account teardown: sessions deleted, watches and comments
+ * unlinked. Every operation removes its rows from the range being read, so
+ * repeated batches always make progress and the continuation terminates.
  */
 async function sweepAccountRows(
   ctx: MutationCtx,
   accountId: Id<"accounts">,
-): Promise<{ sessions: number; watches: number; more: boolean }> {
+): Promise<{
+  sessions: number;
+  watches: number;
+  comments: number;
+  more: boolean;
+}> {
   const sessions = await ctx.db
     .query("sessions")
     .withIndex("by_account", (q) => q.eq("accountId", accountId))
@@ -727,10 +901,26 @@ async function sweepAccountRows(
     await ctx.db.patch(watch._id, { accountId: undefined });
   }
 
+  // The comment text and its displayName stay; only the link that produces the
+  // verified marker goes. Bounded and continued exactly like the two above
+  // rather than truncated, because a comment left pointing at a deleted account
+  // would keep a tick nobody can stand behind.
+  const comments = await ctx.db
+    .query("comments")
+    .withIndex("by_account", (q) => q.eq("accountId", accountId))
+    .take(SWEEP_LIMIT);
+  for (const comment of comments) {
+    await ctx.db.patch(comment._id, { accountId: undefined });
+  }
+
   return {
     sessions: sessions.length,
     watches: watches.length,
-    more: sessions.length >= SWEEP_LIMIT || watches.length >= SWEEP_LIMIT,
+    comments: comments.length,
+    more:
+      sessions.length >= SWEEP_LIMIT ||
+      watches.length >= SWEEP_LIMIT ||
+      comments.length >= SWEEP_LIMIT,
   };
 }
 
@@ -740,6 +930,7 @@ export const purgeAccountRows = internalMutation({
   returns: v.object({
     sessions: v.number(),
     watches: v.number(),
+    comments: v.number(),
     more: v.boolean(),
   }),
   handler: async (ctx, args) => {

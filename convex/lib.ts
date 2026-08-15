@@ -70,6 +70,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // is dead) is the real defence; this is the outer bound that stops an
   // attacker cycling fresh codes to buy fresh attempt budgets.
   authVerify: { kind: "token bucket", rate: 10, period: HOUR },
+  // Handle claims, keyed on deviceId. Sized for a person picking a name — the
+  // first few tries are genuinely expected to come back TAKEN or INVALID — and
+  // it is not really an anti-guessing control: an account may hold exactly one
+  // handle (LOCKED thereafter), and which handles are taken is public on every
+  // comment anyway. It exists so a loop can't hammer the two index lookups.
+  //
+  // This bucket only works because auth:claimHandle answers in band: a mutation
+  // that threw its refusal would roll back the token it just consumed and the
+  // limit would not exist. Same reasoning as the code-attempt counter above.
+  handleClaim: { kind: "token bucket", rate: 20, period: HOUR },
 });
 
 export type RateLimitName =
@@ -563,27 +573,224 @@ const PROFANITY = [
 const PROFANITY_PATTERN = new RegExp(`\\b(?:${PROFANITY.join("|")})\\b`, "i");
 
 /**
+ * The one implementation of the filter: which rule this text breaks, or null.
+ *
+ * Both public entry points below are wrappers over this, so the word list and
+ * the patterns exist exactly once. Two call sites need two different shapes —
+ * comments throw, handle claims answer in band (auth:claimHandle must commit
+ * its rate-limit token, so it cannot throw for an expected refusal) — and the
+ * one thing that must never happen is a second copy of PROFANITY drifting out
+ * of step with this one.
+ */
+function contentViolation(
+  text: string,
+): { code: string; message: string } | null {
+  if (URL_PATTERNS.some((re) => re.test(text))) {
+    return {
+      code: "LINKS_NOT_ALLOWED",
+      message: "Links aren't allowed in comments",
+    };
+  }
+  if (PHONE_PATTERN.test(text) || EMAIL_PATTERN.test(text)) {
+    return {
+      code: "CONTACT_INFO_NOT_ALLOWED",
+      message: "Contact info isn't allowed in comments",
+    };
+  }
+  if (PROFANITY_PATTERN.test(text.toLowerCase())) {
+    return {
+      code: "CONTENT_REJECTED",
+      message: "Keep it civil — comment rejected",
+    };
+  }
+  return null;
+}
+
+/**
+ * Does this text pass the filter? Non-throwing counterpart of
+ * {@link requireCleanContent}, for callers that report a refusal in band.
+ */
+export function isCleanContent(text: string): boolean {
+  return contentViolation(text) === null;
+}
+
+/**
  * Reject links, contact info, and profanity in user-visible text.
  * Throws ConvexError with codes LINKS_NOT_ALLOWED / CONTACT_INFO_NOT_ALLOWED /
  * CONTENT_REJECTED. Call with already-sanitized text.
  */
 export function requireCleanContent(text: string): void {
-  if (URL_PATTERNS.some((re) => re.test(text))) {
-    throw new ConvexError({
-      code: "LINKS_NOT_ALLOWED",
-      message: "Links aren't allowed in comments",
-    });
-  }
-  if (PHONE_PATTERN.test(text) || EMAIL_PATTERN.test(text)) {
-    throw new ConvexError({
-      code: "CONTACT_INFO_NOT_ALLOWED",
-      message: "Contact info isn't allowed in comments",
-    });
-  }
-  if (PROFANITY_PATTERN.test(text.toLowerCase())) {
-    throw new ConvexError({
-      code: "CONTENT_REJECTED",
-      message: "Keep it civil — comment rejected",
-    });
-  }
+  const violation = contentViolation(text);
+  if (violation === null) return;
+  throw new ConvexError(violation);
+}
+
+// ---------------------------------------------------------------------------
+// Claimed handles
+// ---------------------------------------------------------------------------
+
+/**
+ * Fold a name to its collision key: lowercase, then every character outside
+ * [a-z0-9] removed.
+ *
+ * Separators are stripped rather than kept because the near-miss is the whole
+ * attack. If "hex-byte" and "hex_byte" were different keys, the reservation
+ * would protect one spelling of a name and hand out every neighbouring one —
+ * and a reader skimming a thread cannot tell them apart. So Hex_Byte, hex-byte,
+ * HEXBYTE and "hex byte" are one identity, claimable once and typeable by
+ * nobody else.
+ *
+ * Used for BOTH jobs the key does: uniqueness between accounts, and the block
+ * on anonymous commenters typing a claimed name. They must fold identically or
+ * the second is a sieve, which is why there is one function rather than two.
+ *
+ * Returns "" for a string with no alphanumerics at all; callers treat that as
+ * "no identity here" rather than as a key to look up.
+ */
+export function handleKeyOf(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * 3–20 characters, first and last alphanumeric, `_` and `-` allowed between.
+ *
+ * ASCII only, deliberately. handleKeyOf folds case and separators, but nothing
+ * can fold a Cyrillic "а" onto a Latin "a" — so allowing non-ASCII would mean
+ * handing out visually identical handles with different keys, and the
+ * reservation promise would be false on the claim side as well as the typed
+ * side. (It is still only a promise about *claimed* names: see the note on
+ * confusables above comments:add.)
+ */
+const HANDLE_SHAPE = /^[A-Za-z0-9][A-Za-z0-9_-]{1,18}[A-Za-z0-9]$/;
+
+/**
+ * Names nobody may claim, compared on the handleKey so every spelling of each
+ * is covered at once ("m-o-d" folds to "mod").
+ *
+ * Three kinds of word: things that would read as Jackdaw or Micro Center
+ * speaking, things that would read as a role with authority over other
+ * commenters, and words the UI itself might render in place of a name — a
+ * handle of "deleted" or "anonymous" impersonates a *state*, which is the same
+ * trick one level down.
+ */
+const RESERVED_HANDLE_KEYS = new Set([
+  // The project speaking for itself
+  "jackdaw",
+  "jackdaws",
+  "jackdawapp",
+  "jackdawsapp",
+  "jackdawteam",
+  "jackdawstaff",
+  "jackdawsupport",
+  "jackdawofficial",
+  "jackdawbot",
+  // The retailer
+  "microcenter",
+  "micro",
+  "microcenterofficial",
+  "mc",
+  // Authority over other commenters
+  "admin",
+  "admins",
+  "administrator",
+  "mod",
+  "mods",
+  "moderator",
+  "moderators",
+  "staff",
+  "team",
+  "support",
+  "help",
+  "helpdesk",
+  "official",
+  "system",
+  "sysop",
+  "operator",
+  "owner",
+  "founder",
+  "security",
+  "abuse",
+  "legal",
+  "privacy",
+  "terms",
+  "billing",
+  // The marker itself
+  "verified",
+  "verify",
+  // Machine and mailbox names
+  "root",
+  "api",
+  "bot",
+  "webmaster",
+  "noreply",
+  "donotreply",
+  "mail",
+  "email",
+  // States the UI may render where a name goes
+  "null",
+  "undefined",
+  "none",
+  "nil",
+  "anonymous",
+  "anon",
+  "guest",
+  "unknown",
+  "deleted",
+  "removed",
+  "banned",
+  "everyone",
+  "here",
+  "all",
+  "me",
+]);
+
+/**
+ * Brand names nobody may wear, blocked as a PREFIX rather than by enumeration.
+ *
+ * The set above covers "microcenter" and "staff" as separate keys, which left
+ * the compound "microcenterstaff" claimable — 16 alphanumeric characters, so it
+ * passes HANDLE_SHAPE and would have carried a verified marker. Enumerating the
+ * compounds loses: the family is "brand + any word that sounds like a role",
+ * and the one role word left off the list is the one that gets used.
+ *
+ * So the rule is the blunt one — no handle may BEGIN with either brand name.
+ * It over-blocks the enthusiast case ("MicroCenterFan" is refused, and could be
+ * "MCFan" instead), and that is the right side to err on: Jackdaw is not
+ * affiliated with Micro Center and says so on every surface, so a ticked handle
+ * reading as the retailer is the single most damaging name in the product.
+ *
+ * Only these two are long and distinctive enough to prefix-match. "mc" and
+ * "micro" stay exact-match above, because prefix-blocking them would refuse
+ * "mcqueen" and "microwave" for nothing.
+ */
+const RESERVED_HANDLE_PREFIXES = ["jackdaw", "microcenter"];
+
+/** Is this fold a name nobody may claim? */
+export function isReservedHandleKey(key: string): boolean {
+  if (RESERVED_HANDLE_KEYS.has(key)) return true;
+  return RESERVED_HANDLE_PREFIXES.some((p) => key.startsWith(p));
+}
+
+/**
+ * The form of a handle the content filter has to see, with separators turned
+ * into spaces.
+ *
+ * PROFANITY_PATTERN is a word-boundary blocklist, and JavaScript's `\b` counts
+ * "_" as a word character — so "shit-head" is caught and "shit_head" is not.
+ * Underscores are legal inside a handle, which makes that a one-character
+ * bypass on the one name in the product that gets a verified marker beside it.
+ * Proven on dev before this existed: the claim succeeded.
+ *
+ * Callers filter the raw handle as well. Nothing here can weaken the link,
+ * contact-info or phone patterns (a handle may not contain "." or "@", and
+ * PHONE_PATTERN already treats spaces as digit separators), but checking both
+ * forms means that stays true without anyone having to re-derive it.
+ */
+export function handleFilterForm(handle: string): string {
+  return handle.replace(/[_-]+/g, " ");
+}
+
+/** Does this string satisfy the handle format? Call with sanitized text. */
+export function isWellFormedHandle(handle: string): boolean {
+  return HANDLE_SHAPE.test(handle);
 }

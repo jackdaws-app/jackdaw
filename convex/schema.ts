@@ -30,6 +30,13 @@ export default defineSchema({
   comments: defineTable({
     productDocId: v.id("products"),
     deviceId: v.string(),
+    // The name shown on the comment, frozen at post time. For an anonymous
+    // comment it is whatever was typed; for a signed-in one the server
+    // overwrites it with the account's claimed handle and ignores the client's
+    // argument entirely (comments.ts). Storing the text rather than resolving
+    // it through accountId on read is what keeps a thread readable after the
+    // account is deleted — and is safe precisely because a handle is permanent
+    // once claimed, so the copy can never drift from the original.
     displayName: v.string(),
     body: v.string(),
     score: v.number(),
@@ -37,10 +44,20 @@ export default defineSchema({
     parentId: v.optional(v.id("comments")),
     hidden: v.optional(v.boolean()),
     reportCount: v.optional(v.number()),
+    // Set only when the comment was posted through a session that resolved to
+    // an account holding a handle. It is the ONLY source of the verified marker
+    // (comments:list derives `verified` from its presence), which is why
+    // auth:deleteAccount clears it: once the account is gone nobody can prove
+    // that identity, so the tick has to go with it while the words stay.
+    accountId: v.optional(v.id("accounts")),
   })
     .index("by_product", ["productDocId"])
     .index("by_parent", ["parentId"])
-    .index("by_reportCount", ["reportCount"]),
+    .index("by_reportCount", ["reportCount"])
+    // The delete-account sweep, which unlinks this account's comments in
+    // bounded batches. Same shape and same reason as watches' by_account_active
+    // one table over: an account-scoped teardown must never scan comments.
+    .index("by_account", ["accountId"]),
 
   reports: defineTable({
     commentId: v.id("comments"),
@@ -120,7 +137,49 @@ export default defineSchema({
     email: v.string(),
     createdAt: v.number(),
     lastLoginAt: v.number(),
-  }).index("by_email", ["email"]),
+    // The claimed handle, in the casing the person typed — this is the string
+    // rendered beside the verified marker. Optional because an account without
+    // one is a perfectly good account: it syncs watches, it just can't comment
+    // until it picks a handle (comments:add answers NEED_HANDLE).
+    //
+    // PERMANENT ONCE SET. auth:claimHandle refuses a second claim (LOCKED) and
+    // there is no rename path anywhere, because comments store the handle text
+    // at post time — a rename would leave every earlier comment attributed to a
+    // name its author no longer holds, which is exactly the confusion the tick
+    // is supposed to end.
+    handle: v.optional(v.string()),
+    // The collision key: `handle` lowercased with every character outside
+    // [a-z0-9] stripped, so Hex_Byte / hex-byte / HEXBYTE / "hex byte" all fold
+    // to "hexbyte" (lib.ts handleKeyOf). One key does two jobs — uniqueness
+    // between accounts, and the block that stops an anonymous commenter typing
+    // a claimed name — and it strips separators because the near-miss is the
+    // whole attack: "hex-byte" beside "hex_byte" is indistinguishable to a
+    // reader skimming a thread.
+    handleKey: v.optional(v.string()),
+  })
+    .index("by_email", ["email"])
+    // Point lookups only, from two paths: claiming (is this key free?) and
+    // anonymous commenting (is this typed name someone's claimed handle?).
+    // Rows with no handle sort under `undefined` and can never match a string
+    // probe, so the index stays exact without a partial-index equivalent.
+    .index("by_handleKey", ["handleKey"]),
+
+  // Handles belonging to deleted accounts. A retired key is never re-claimable
+  // and stays un-typeable by anonymous commenters, forever.
+  //
+  // Without this, someone claims a deleted user's handle and their new ticked
+  // comments sit in the same threads as the old unticked ones under the same
+  // name — the tick would then be actively misleading rather than merely
+  // meaningless, which is worse than having no marker at all.
+  //
+  // This survives auth:deleteAccount deliberately and is not a hole in erasure:
+  // a handle is a pseudonym the person chose to publish next to their comments,
+  // and those comments are still there. The email address — the one piece of
+  // personal data Jackdaw holds — is deleted outright.
+  retiredHandles: defineTable({
+    handleKey: v.string(),
+    retiredAt: v.number(),
+  }).index("by_handleKey", ["handleKey"]),
 
   // A session is a bearer token: whoever holds it is the account. Only the
   // hash is ever stored, so a database dump is not a pile of live credentials —
@@ -163,7 +222,7 @@ export default defineSchema({
   //   obs:total · obs:store:<storeNum> · obs:day:<YYYY-MM-DD>
   //   pricepoints:total · products:total · devices:total
   //   comments:total · comments:day:<YYYY-MM-DD> · comments:hidden
-  //   reports:total · alerts:armed · alerts:fired
+  //   reports:total · alerts:armed · alerts:fired · handles:claimed
   //   evt:<name> · evt:<name>:day:<YYYY-MM-DD>
   //
   // The evt: namespace is client health telemetry. <name> is one of the six

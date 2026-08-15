@@ -154,12 +154,19 @@ async function authState() {
     // Sliding expiry lives in a mutation because queries can't write. Cheap:
     // the backend only writes once a day per session.
     convexMutation("auth:touch", { sessionToken: session.token }).catch(() => {});
-    if (me.email !== session.email) {
-      await chrome.storage.local.set({ [SESSION_KEY]: { ...session, email: me.email } });
+    // Mirror the backend's answer into storage so the offline branch below has
+    // something true to say. The handle is cached for the same reason the
+    // address is: a compose form that forgets who you are the moment the
+    // network blips would send you back to a claim step you already completed.
+    const handle = me.handle ?? null;
+    if (me.email !== session.email || handle !== (session.handle ?? null)) {
+      await chrome.storage.local.set({
+        [SESSION_KEY]: { ...session, email: me.email, handle },
+      });
     }
-    return { signedIn: true, email: me.email };
+    return { signedIn: true, email: me.email, handle };
   } catch {
-    return { signedIn: true, email: session.email, stale: true };
+    return { signedIn: true, email: session.email, handle: session.handle ?? null, stale: true };
   }
 }
 
@@ -200,6 +207,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         return { ok: true };
       }
+      case "auth:claimHandle": {
+        const session = await getSession();
+        // Answered in the same shape the backend uses, so the caller has one
+        // set of reasons to handle rather than two.
+        if (!session) return { ok: false, reason: "NO_SESSION" };
+        const res = await convexMutation("auth:claimHandle", {
+          sessionToken: session.token,
+          deviceId,
+          handle: msg.handle,
+        });
+        // Cache it the moment it lands. The compose form re-reads auth:state
+        // right after posting, and a round trip that answered "no handle" to
+        // someone who just claimed one would send them back to the claim step.
+        if (res.ok) {
+          await chrome.storage.local.set({
+            [SESSION_KEY]: { ...session, handle: res.handle },
+          });
+        }
+        return res;
+      }
       case "auth:delete": {
         const session = await getSession();
         if (!session) return { ok: true };
@@ -215,12 +242,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return convexQuery("products:history", { productId: msg.productId });
       case "comments:list":
         return convexQuery("comments:list", { productId: msg.productId, deviceId });
+      // The session decides the author: signed in with a claimed handle, the
+      // backend signs the comment with that handle and ignores displayName
+      // outright, so a caller can never post a verified comment as someone else.
       case "comments:add":
         return convexMutation("comments:add", {
           productId: msg.productId,
           deviceId,
           displayName: msg.displayName,
           body: msg.body,
+          // Forwarding this is what makes a reply a reply. It was dropped here
+          // while the renderer read it, so replies typed in the panel landed at
+          // the top of the thread — invisible in the seeded data, which writes
+          // parentId straight to the database.
+          ...(msg.parentId ? { parentId: msg.parentId } : {}),
+          ...(await scopeArg()),
         });
       case "comments:vote":
         return convexMutation("comments:vote", { commentId: msg.commentId, deviceId, value: msg.value });

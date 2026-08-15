@@ -480,6 +480,22 @@ body.dark .pop-err { color: #f87171; }
   overflow-wrap: anywhere;
   margin-bottom: 2px;
 }
+.pop-acct-handle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--jd-ink);
+  margin-bottom: 2px;
+}
+.pop-verified { width: 11px; height: 11px; color: var(--jd-green-deep); flex: none; }
+.pop-acct-handle-note {
+  font-weight: 500;
+  color: var(--jd-muted);
+  margin-left: 2px;
+}
+body.dark .pop-verified { color: #4ade80; }
 .pop-done { text-align: center; padding: 6px 0 2px; }
 .pop-done-mark {
   width: 30px;

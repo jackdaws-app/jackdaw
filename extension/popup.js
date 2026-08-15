@@ -160,6 +160,11 @@
   const scrimEl = document.getElementById("scrim");
 
   const CHECK = `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.4 8.5l3 3 6.2-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  // The same mark the discussion panel puts beside a claimed handle, so the
+  // two surfaces are visibly saying one thing.
+  const VERIFIED_MARK =
+    `<svg class="pop-verified" viewBox="0 0 12 12" role="img"><title>Verified — a claimed handle</title>` +
+    `<path d="M2.4 6.3 4.8 8.6 9.6 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
   // Backend error codes are contracts; these are the sentences a person reads.
   const ERRORS = {
@@ -344,6 +349,9 @@
   function renderSignedInDone(result) {
     auth = { signedIn: true, email: result.email };
     paintAcct();
+    // A returning account may already own a handle, which verifyCode has no
+    // reason to report — pick it up so the account sheet is right next time.
+    refreshAuth();
     loadList();
 
     sheetBody.textContent = "";
@@ -380,6 +388,16 @@
       ),
     );
     sheetBody.append(el("div", "pop-acct-email", auth.email || ""));
+    // Shown, never asked for. A handle is claimed where it first matters — the
+    // compose form on a product page — because an account that only tracks
+    // prices never needs one, and a form here would imply otherwise.
+    if (auth.handle) {
+      const who = el("div", "pop-acct-handle");
+      who.append(el("span", null, auth.handle));
+      who.insertAdjacentHTML("beforeend", VERIFIED_MARK);
+      who.append(el("span", "pop-acct-handle-note", "your name on comments"));
+      sheetBody.append(who);
+    }
 
     const actions = el("div", "pop-actions");
     const out = el("button", "pop-btn ghost", "Sign out");

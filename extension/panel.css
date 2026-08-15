@@ -853,6 +853,35 @@
   60% { transform: translateX(3px); }
 }
 
+/* ---------- Identity ---------- */
+/* The mark rides inside 11px meta text, so it is sized to the type rather than
+   to a hit target — it is a label, not a control. */
+.mk-verified {
+  width: 11px;
+  height: 11px;
+  margin-left: 3px;
+  /* Deep green, not the brand green: this mark carries meaning, so it is held
+     to text contrast rather than the 3:1 an icon could get away with. */
+  color: var(--jd-green-deep);
+  vertical-align: -1px;
+  flex: none;
+}
+/* "Posting as" replaces the name field outright when an account owns the
+   comment. A disabled input would imply it could still be edited; this slot
+   got simpler, and should look it. */
+.mk-as { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 1px 0 2px; }
+.mk-as-label {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--jd-muted);
+}
+.mk-as-handle { font-weight: 600; color: var(--jd-ink); }
+.mk-as .mk-verified { margin-left: -3px; }
+.mk-as-hint { font-size: 11px; line-height: 1.45; color: var(--jd-muted); }
+.mk-form-error { font-size: 11px; line-height: 1.45; color: #b91c1c; }
+
 .mk-form { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .mk-input {
   border: 1px solid var(--jd-hairline);
@@ -916,6 +945,9 @@
 #jackdaw-drawer.jd-dark .mk-comment { border-top-color: #1e293e; }
 #jackdaw-drawer.jd-dark .mk-thread-nested { border-left-color: #1e293e; }
 #jackdaw-drawer.jd-dark .mk-author { color: #cdd6e4; }
+#jackdaw-drawer.jd-dark .mk-verified { color: #4ade80; }
+#jackdaw-drawer.jd-dark .mk-as-handle { color: #e6eaf2; }
+#jackdaw-drawer.jd-dark .mk-form-error { color: #f87171; }
 /* Vote arrows: neutral resting color, but ACTIVE colors must survive dark mode
    (the previous rule out-specified .mk-active-up/down — that was the bug). */
 #jackdaw-drawer.jd-dark .mk-vote-btn { color: #55617a; }
