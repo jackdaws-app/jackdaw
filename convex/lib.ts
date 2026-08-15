@@ -1,4 +1,4 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
 import { env } from "./_generated/server";
@@ -474,6 +474,209 @@ export function normalizeSku(raw: string): string {
  */
 export function conditionFromName(name: string): "refurbished" | undefined {
   return /\((?:[^()]*\s)?refurbished\s*\)/i.test(name) ? "refurbished" : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Which store numbers name an actual building
+// ---------------------------------------------------------------------------
+
+/**
+ * Store numbers that name no shelf.
+ *
+ *   "029" — Micro Center's "Shippable Items" pseudo-store, and the default for
+ *           anyone who has never picked a location. It has no shelves, so it
+ *           has no open-box unit and no local stock.
+ *   "000" — page-world.js's fallback when the dataLayer offers neither
+ *           storeNum nor closestStoreId. It means "we don't know".
+ *
+ * This lives here, not beside its first caller, because THREE places need the
+ * same answer and they were drifting: `watches.setTriggers` refuses to arm a
+ * store-scoped trigger on one of these, `watches.fireFor` refuses to read one,
+ * and `observations.reportBatch` must refuse to WRITE a shelf row for one. The
+ * third was missing — the batch writer would happily record "3 units in stock"
+ * against a store that does not physically exist, and the only thing preventing
+ * it was that `content.js` never asked for such a row back. That is a rule
+ * living in the client, one caller away from being violated, which is the shape
+ * of every silent-write bug in this codebase.
+ *
+ * A price reading under "029" is perfectly good and is NOT filtered here:
+ * Micro Center prices nationally, so an online-only shopper's sighting is the
+ * same fact as anyone else's and serves every watcher. What a pseudo-store
+ * cannot produce is anything about a *shelf* — stock depth or an open-box unit.
+ *
+ * `extension/content.js` keeps its own copy (a content script cannot import
+ * from `convex/`), but that copy now only decides what to *display*. This one
+ * decides what may be *stored*, which is the half that has to hold.
+ */
+const NON_PHYSICAL_STORES = new Set(["029", "000"]);
+
+/** Does this store number name an actual building with shelves in it? */
+export function isPhysicalStore(storeNum: string | undefined): storeNum is string {
+  return storeNum !== undefined && !NON_PHYSICAL_STORES.has(storeNum);
+}
+
+// ---------------------------------------------------------------------------
+// Selector health
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the readers can still find what they are looking for on the page.
+ *
+ * WHY THIS EXISTS. Four times now a reader has silently matched nothing and
+ * stayed that way, because a selector that finds nothing produces no error, no
+ * log line and no missing row — just a field that is quietly always absent:
+ *
+ *   - `#opCostNew` — the open-box extractor demanded a node saying "Open Box"
+ *     beside the price. No such node exists, so it matched NOTHING on every
+ *     product page for its entire life, and nobody could have noticed.
+ *   - `conditionFromName` — anchored the marker to the end of the name; the
+ *     live shape puts it mid-name. Would have matched nothing, on every
+ *     refurbished page. Caught by driving one, not by any test.
+ *   - `.clearance` — written up as unreadable from a grid card when it is
+ *     present on 96 of 96, so the field went uncollected for months.
+ *   - `.standardDiscount` — nearly anchored to the wrong element, which would
+ *     have cleared real list prices site-wide.
+ *
+ * Fixtures cannot catch this class. A fixture is markup I wrote, and I write it
+ * to match the selector I just wrote; the live site is the only authority, and
+ * it changes without telling us. So the readers count what they saw and the
+ * counts come here, where a ratio going to zero is visible.
+ *
+ * THREE NUMBERS PER READER, because two failure modes need telling apart:
+ *
+ *   seen   the reader ran and was in a position to look
+ *   found  the element it looks for was actually present
+ *   bad    the element WAS present and could not be parsed
+ *
+ * `found` collapsing toward zero means the element was renamed or removed.
+ * `bad` climbing means the element is still there and its wording changed —
+ * the case where the three-state reads deliberately keep the old value rather
+ * than write a wrong one, which is safe but silent, and this is what breaks the
+ * silence. The original `#opCostNew` bug had the signature `found` high with
+ * `bad` equally high: the anchor was right there and nothing could be read out
+ * of it.
+ *
+ * WHAT IT IS NOT. These are numbers a content script supplies about its own
+ * behaviour, so they are advisory telemetry and not evidence of anything. They
+ * are clamped and consistency-checked below, but a client that lies within the
+ * clamp can still make the readers look healthier than they are. Nothing
+ * depends on them; they exist to raise a question, and the answer always comes
+ * from driving a real page. The admin panel says this in place.
+ *
+ * NOT per store, per category or per page. A selector is a property of Micro
+ * Center's markup, and it either works or it does not — slicing these would add
+ * dimensions that cannot change the answer while multiplying the row count.
+ */
+export const SELECTOR_NAMES = [
+  // Grid cards. `card` is the container itself (`li.product_wrapper`): seen is
+  // how many the page rendered, found is how many produced a usable reading.
+  // It is the one reader whose failure hides all the others — if the container
+  // selector breaks, the batch is empty and nothing downstream ever runs — so
+  // catalog.js reports a batch with ZERO items rather than staying silent, and
+  // this counter is the only thing that arrives.
+  "card",
+  // The card's own `.price_wrapper .price`, which anchors the list-price read.
+  // Expected ~1.00; anything else means the anchor moved and `listSeen` has
+  // stopped being licensed by anything.
+  "price",
+  // `.clearance` — open box. Expected ~1.00 found (it is on every card, empty
+  // when there is no unit), and ~0 bad.
+  "clearance",
+  // `div.standardDiscount` — the advertised list price. UNLIKE the others this
+  // is legitimately absent most of the time (about a third of cards carry a
+  // discount), so a low found/seen is NORMAL here and only zero is a signal.
+  // The panel labels it so nobody reads the ratio as a fault.
+  "discount",
+  // Product page: `#opCostNew` / `.openBoxModal .pricing`. seen is one per
+  // product-page sighting; found means the element was on the page at all.
+  "openBox",
+] as const;
+
+export type SelectorName = (typeof SELECTOR_NAMES)[number];
+
+const selectorTally = v.object({
+  seen: v.number(),
+  found: v.number(),
+  bad: v.number(),
+});
+
+/** Optional on every call: an old client sends none and is simply not counted. */
+export const selectorHealthValidator = v.optional(
+  v.object({
+    card: v.optional(selectorTally),
+    price: v.optional(selectorTally),
+    clearance: v.optional(selectorTally),
+    discount: v.optional(selectorTally),
+    openBox: v.optional(selectorTally),
+  }),
+);
+
+export type SelectorHealth = Partial<
+  Record<SelectorName, { seen: number; found: number; bad: number }>
+>;
+
+/**
+ * Validate a client's tally and fold it into the counters. Returns false if the
+ * block was refused.
+ *
+ * ALL OR NOTHING. One inconsistent tally rejects the whole block rather than
+ * the offending reader, because a client that can produce `found > seen` is a
+ * client whose other numbers mean nothing either — accepting the rest would
+ * mix trustworthy and untrustworthy counts into rows that can never be
+ * separated again. Counters have no decrement path; the only safe direction is
+ * to refuse.
+ *
+ * REFUSED IN BAND, never thrown. A tally is a side note attached to a real
+ * sighting, and a throw would roll back the sighting — and its counters — over
+ * a number nothing depends on. The refusal is counted (`sel:rejected`) and
+ * returned to the caller so it cannot vanish.
+ */
+export async function recordSelectorHealth(
+  ctx: MutationCtx,
+  health: SelectorHealth | undefined,
+  cap: number,
+  now: number,
+): Promise<boolean> {
+  if (health === undefined) return true;
+
+  for (const name of SELECTOR_NAMES) {
+    const t = health[name];
+    if (t === undefined) continue;
+    // `found <= seen` and `bad <= found` are the shape's own invariants — the
+    // reader cannot find an element on a card it never looked at, nor fail to
+    // parse one it never found. A payload breaking either is not a client with
+    // a bug, it is a client whose numbers are fabricated.
+    if (
+      !Number.isInteger(t.seen) || !Number.isInteger(t.found) || !Number.isInteger(t.bad) ||
+      t.seen < 0 || t.seen > cap ||
+      t.found < 0 || t.found > t.seen ||
+      t.bad < 0 || t.bad > t.found
+    ) {
+      await bump(ctx, "sel:rejected");
+      return false;
+    }
+  }
+
+  const day = utcDay(now);
+  for (const name of SELECTOR_NAMES) {
+    const t = health[name];
+    if (t === undefined) continue;
+    for (const field of ["seen", "found", "bad"] as const) {
+      const n = t[field];
+      // Zero deltas are skipped rather than written: `bump` would insert a row
+      // to hold a zero, and every reader would carry a `bad` row that has never
+      // been anything else. The panel reads a missing counter as 0, which is
+      // the same answer without the rows.
+      if (n === 0) continue;
+      await bump(ctx, `sel:${name}:${field}`, n);
+      // The lifetime ratio degrades only slowly once a selector breaks — ten
+      // thousand good readings drown the first thousand bad ones — so the daily
+      // series is what actually shows a break the day it happens. Same shape as
+      // `obs:day:*`, and read take-capped by the panel.
+      await bump(ctx, `sel:day:${day}:${name}:${field}`, n);
+    }
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

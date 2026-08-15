@@ -6,7 +6,10 @@ import {
   categoryKey,
   conditionFromName,
   initCounter,
+  isPhysicalStore,
   normalizeSku,
+  recordSelectorHealth,
+  selectorHealthValidator,
   requireLength,
   sanitize,
   tryRateLimit,
@@ -32,6 +35,10 @@ export const report = mutation({
     category: v.optional(v.string()),
     mpn: v.optional(v.string()),
     ean: v.optional(v.string()),
+    // Only `openBox` is ever populated from this path — it is the one reader on
+    // a product page whose target can be absent for legitimate reasons, and the
+    // one that matched nothing for its entire life without anyone noticing.
+    selectors: selectorHealthValidator,
   },
   // `rateLimited` refuses the write in-band instead of throwing, which is what
   // makes the abuse counter below possible. Safe here because the only caller
@@ -41,6 +48,7 @@ export const report = mutation({
     ok: v.boolean(),
     throttled: v.boolean(),
     rateLimited: v.boolean(),
+    selectorsRejected: v.boolean(),
   }),
   handler: async (ctx, args) => {
     // Validate numeric input.
@@ -98,7 +106,7 @@ export const report = mutation({
       device.lastReportAt !== undefined &&
       now - device.lastReportAt < THROTTLE_MS
     ) {
-      return { ok: true, throttled: true, rateLimited: false };
+      return { ok: true, throttled: true, rateLimited: false, selectorsRejected: false };
     }
 
     // Global per-device cap on price reports (token bucket, 120/hour).
@@ -110,7 +118,7 @@ export const report = mutation({
     // refused either way; only the signalling differs.
     if (!(await tryRateLimit(ctx, "priceReport", deviceId))) {
       await bump(ctx, `abuse:ratelimited:day:${utcDay(now)}`);
-      return { ok: false, throttled: false, rateLimited: true };
+      return { ok: false, throttled: false, rateLimited: true, selectorsRejected: false };
     }
 
     if (device === null) {
@@ -251,7 +259,11 @@ export const report = mutation({
     const catKey = categoryKey(category);
     if (catKey !== null) await bump(ctx, `obs:cat:${catKey}`);
 
-    return { ok: true, throttled: false, rateLimited: false };
+    // Cap of 1: a product page is one page, so every tally on this path is a
+    // single observation and anything larger is a client inventing numbers.
+    const selectorsOk = await recordSelectorHealth(ctx, args.selectors, 1, now);
+
+    return { ok: true, throttled: false, rateLimited: false, selectorsRejected: !selectorsOk };
   },
 });
 
@@ -383,6 +395,10 @@ export const reportBatch = mutation({
         category: v.optional(v.string()),
       }),
     ),
+    // Did the readers still find what they look for? See recordSelectorHealth
+    // in lib.ts for what the three numbers mean and why they are only advisory.
+    // Optional: a client predating it sends nothing and is simply not counted.
+    selectors: selectorHealthValidator,
   },
   // Refused in band for the same reason `report` is: the caller discards the
   // result, so a refusal can be counted instead of rolling itself back. The
@@ -395,6 +411,10 @@ export const reportBatch = mutation({
     skipped: v.number(),
     throttled: v.boolean(),
     rateLimited: v.boolean(),
+    // True when a selector tally arrived and was refused as inconsistent. Not
+    // an error — the sighting itself still landed — but it must not be silent,
+    // so it is both counted (`sel:rejected`) and returned.
+    selectorsRejected: v.boolean(),
     reason: v.union(v.literal("NO_STORE"), v.null()),
   }),
   handler: async (ctx, args) => {
@@ -403,6 +423,7 @@ export const reportBatch = mutation({
       skipped: args.items.length,
       throttled: false,
       rateLimited: false,
+      selectorsRejected: false,
     };
 
     if (args.items.length > CATALOG_MAX_ITEMS) {
@@ -420,9 +441,41 @@ export const reportBatch = mutation({
     if (storeNum === "000") {
       return { ok: false, ...nothing, reason: "NO_STORE" as const };
     }
-    if (args.items.length === 0) {
-      return { ok: true, ...nothing, skipped: 0, reason: null };
-    }
+    // NOTE there is deliberately no early return for an empty batch any more.
+    //
+    // A results page that yields zero readable cards is the single most
+    // important thing this endpoint can hear about: it is what a break in the
+    // `li.product_wrapper` container selector looks like from the outside, and
+    // under the old early return it was indistinguishable from silence. The
+    // batch now falls through — the item loop simply does not execute, the
+    // `accepted > 0` block below is skipped, and the only thing recorded is the
+    // selector tally saying "the page rendered N cards and none of them read".
+    //
+    // It still passes through the fingerprint throttle and the rate limiter
+    // first, which is what stops a refresh loop on an empty search from
+    // spending the whole budget on nothing. An empty batch fingerprints to a
+    // constant for a given store, so a second identical one inside the window
+    // is dropped exactly like a repeated real page.
+    //
+    // Genuine no-result searches land here too, and are NOT separable from a
+    // broken selector at this level. The panel says so rather than pretending
+    // otherwise; what makes the signal readable is the ratio over thousands of
+    // pages, not any single one.
+
+    // Does this store number name a building? "000" is already refused above,
+    // so in practice this is asking about "029" — Micro Center's "Shippable
+    // Items" pseudo-store, and the default for anyone who has never picked a
+    // location, which makes it one of the most common values to arrive here.
+    //
+    // The PRICES in this batch are kept either way and are worth exactly as
+    // much as anyone else's: Micro Center prices nationally, so an online-only
+    // shopper's sighting serves every watcher regardless of where they live.
+    // What gets dropped below is only the SHELF row — a unit count and an
+    // open-box depth for a store with no shelves to count. Writing one would
+    // record a fact about a place that does not exist.
+    //
+    // Loop-invariant, so it is resolved once here rather than per item.
+    const hasShelves = isPhysicalStore(storeNum);
 
     const now = Date.now();
 
@@ -707,33 +760,39 @@ export const reportBatch = mutation({
       if (widen !== null) await ctx.db.patch(productDocId, widen);
 
       // --- shelf state (current only, never appended) -----------------------
-      const shelf = await ctx.db
-        .query("storeStock")
-        .withIndex("by_product_store", (q) =>
-          q.eq("productDocId", productDocId).eq("storeNum", storeNum),
-        )
-        .unique();
-      const shelfRow = {
-        inStock: raw.inStock,
-        units: raw.units,
-        atLeast: raw.atLeast === true ? true : undefined,
-        // Replaced like every other field here, NOT carried like the price
-        // above, and the difference is what the two numbers cost when wrong.
-        // The row is a snapshot under one `observedAt`; holding a count from an
-        // earlier reading while stamping it `now` would make it lie about its
-        // own age, which is the one thing this table is not allowed to do.
-        // Nothing alerts on a count and nothing accumulates it, so an
-        // unobserved one costs a missing figure until the next legible card —
-        // whereas an unobserved open-box PRICE, cleared, fires every watcher.
-        openBoxUnits: raw.openBoxUnits,
-        observedAt: now,
-      };
-      if (shelf === null) {
-        await ctx.db.insert("storeStock", { productDocId, storeNum, ...shelfRow });
-      } else {
-        // replace, not merge: this row is a snapshot, and a shelf that no
-        // longer shows a number must not keep yesterday's.
-        await ctx.db.patch(shelf._id, shelfRow);
+      // Skipped entirely for a pseudo-store — see `hasShelves` above. Not a
+      // "skip" in the sense the `skipped` counter reports: the item itself was
+      // accepted and its price recorded, and there is nothing here to tell the
+      // caller about. A store with no shelves simply has no shelf state.
+      if (hasShelves) {
+        const shelf = await ctx.db
+          .query("storeStock")
+          .withIndex("by_product_store", (q) =>
+            q.eq("productDocId", productDocId).eq("storeNum", storeNum),
+          )
+          .unique();
+        const shelfRow = {
+          inStock: raw.inStock,
+          units: raw.units,
+          atLeast: raw.atLeast === true ? true : undefined,
+          // Replaced like every other field here, NOT carried like the price
+          // above, and the difference is what the two numbers cost when wrong.
+          // The row is a snapshot under one `observedAt`; holding a count from
+          // an earlier reading while stamping it `now` would make it lie about
+          // its own age, which is the one thing this table is not allowed to
+          // do. Nothing alerts on a count and nothing accumulates it, so an
+          // unobserved one costs a missing figure until the next legible card —
+          // whereas an unobserved open-box PRICE, cleared, fires every watcher.
+          openBoxUnits: raw.openBoxUnits,
+          observedAt: now,
+        };
+        if (shelf === null) {
+          await ctx.db.insert("storeStock", { productDocId, storeNum, ...shelfRow });
+        } else {
+          // replace, not merge: this row is a snapshot, and a shelf that no
+          // longer shows a number must not keep yesterday's.
+          await ctx.db.patch(shelf._id, shelfRow);
+        }
       }
 
       accepted++;
@@ -769,6 +828,23 @@ export const reportBatch = mutation({
       if (newPricePoints > 0) await bump(ctx, "pricepoints:total", newPricePoints);
     }
 
-    return { ok: true, accepted, skipped, throttled: false, rateLimited: false, reason: null };
+    // Outside the `accepted > 0` guard on purpose: a batch that accepted
+    // nothing is the batch whose health numbers matter most.
+    const selectorsOk = await recordSelectorHealth(
+      ctx,
+      args.selectors,
+      CATALOG_MAX_ITEMS,
+      now,
+    );
+
+    return {
+      ok: true,
+      accepted,
+      skipped,
+      throttled: false,
+      rateLimited: false,
+      selectorsRejected: !selectorsOk,
+      reason: null,
+    };
   },
 });

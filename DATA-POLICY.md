@@ -65,6 +65,17 @@ appear nowhere in the extension, the site, or the store listing.
 Sent with an observation: the product's own identifiers and price, the store number the
 page had selected, stock status, and an anonymous per-install device ID.
 
+Sent alongside it, and only alongside it: a small tally of whether the extension's own
+readers found the elements they look for — "96 cards on this page, 92 produced a reading;
+the discount block was present on 34 of them." It describes Jackdaw's code, not the
+shopper and not the page: no identifiers, no address, no text, nothing that varies with
+who is browsing. It exists because a reader whose selector stops matching keeps working
+silently, reporting nothing and raising no error, which has happened four times; these
+counts are the only way that becomes visible. A result page that produced no readable card
+is reported with zero items so the tally still arrives — otherwise a broken reader and an
+afternoon with no shoppers look identical. The tally rides the same switch as the
+sightings, so turning contributing off stops it too.
+
 Not sent, from either surface:
 
 - **The URL.** Products are identified by product ID, not by address. Search and category

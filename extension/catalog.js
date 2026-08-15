@@ -74,6 +74,29 @@
   }
 
   /**
+   * Selector health for ONE harvest, filled in as the cards are read.
+   *
+   * Three numbers per reader — see `recordSelectorHealth` in `convex/lib.ts`
+   * for what they mean and why they are only advisory. In short: `found`
+   * collapsing to zero means Micro Center renamed an element, `bad` climbing
+   * means it kept the element and changed the wording. Both are conditions the
+   * three-state reads handle SAFELY and therefore SILENTLY, which is exactly
+   * why they have to be counted somewhere.
+   *
+   * `seen` is not the same denominator for every reader, deliberately. A card
+   * that bails out early (no price attribute, illegible stock) was never in a
+   * position to look at its clearance div, and counting it as a miss would
+   * blame the open-box reader for a failure one selector upstream. So each
+   * reader's `seen` is incremented at the point the reader actually runs, and
+   * `card.found / card.seen` is what catches the upstream break.
+   */
+  function newTally() {
+    const z = () => ({ seen: 0, found: 0, bad: 0 });
+    return { card: z(), price: z(), clearance: z(), discount: z() };
+  }
+  let tally = newTally();
+
+  /**
    * Read one grid card, or null if anything about it is unclear.
    *
    * Null is the common and correct outcome, not a failure: a card we cannot
@@ -178,8 +201,10 @@
     let openBoxSeen;
     let openBoxPrice;
     let openBoxUnits;
+    tally.clearance.seen++;
     const clearance = card.querySelector(".clearance");
     if (clearance) {
+      tally.clearance.found++;
       const clearanceText = (clearance.textContent || "").replace(/\s+/g, " ").trim();
       if (!clearanceText) {
         openBoxSeen = true;
@@ -201,6 +226,12 @@
             openBoxUnits = u;
           }
         }
+        // Non-empty and we still could not read it. `openBoxSeen` is true on
+        // both good paths — empty div, or a parsed-and-sane figure — so its
+        // absence here is exactly the "present but unparseable" third state,
+        // the one that deliberately keeps the old value rather than clear it.
+        // Safe, and silent without this line.
+        if (openBoxSeen !== true) tally.clearance.bad++;
       }
     }
 
@@ -226,8 +257,15 @@
     // fact twice and inviting the two to disagree after a rounding change.
     let listSeen;
     let listPrice;
+    tally.price.seen++;
     const priceEl = card.querySelector(".price_wrapper .price");
     if (priceEl) {
+      // This one carries the whole list-price contract: `listSeen` is licensed
+      // by finding THIS element, so if it ever stops matching, the flag stops
+      // being set and every discount on the site silently becomes uncollected
+      // rather than wrong. Expected ratio is 1.00 — anything else is the alarm.
+      tally.price.found++;
+      tally.discount.seen++;
       // Descendant, not `:scope >`. Every block surveyed was a direct child,
       // but the failure directions are not symmetric: if the markup ever nests
       // one level deeper, a direct-child selector reads "no discount" and
@@ -238,6 +276,11 @@
       if (!sd) {
         listSeen = true;
       } else {
+        // NOT a fault: about a third of cards carry a discount, so `found` is
+        // expected around 0.35 here and only a hard zero across a large sample
+        // means the element moved. The panel labels this reader accordingly so
+        // the low ratio is never read as a break.
+        tally.discount.found++;
         // `strike.textContent` carries a screen-reader prefix, so it reads
         // "Original price $799.99" — match the money rather than parsing the
         // whole string, and require exactly one figure so a markup change that
@@ -254,6 +297,11 @@
             listPrice = v;
           }
         }
+        // The discount block was there and yielded nothing usable — a second
+        // money figure inside the strike, a missing strike, or a value that
+        // failed the "must exceed the shelf price" test. Kept as unknown, which
+        // is correct and invisible; counted here so it stops being invisible.
+        if (listSeen !== true) tally.discount.bad++;
       }
     }
 
@@ -286,18 +334,37 @@
    */
   function harvest() {
     const cards = document.querySelectorAll("li.product_wrapper");
+    // Fresh per pass. The tally describes THIS reading of the grid; carrying it
+    // across passes would double-count a re-render and make every number a sum
+    // over an unknown number of harvests.
+    tally = newTally();
     const seen = new Set();
     const items = [];
     const els = [];
     for (const card of cards) {
       if (items.length >= MAX_ITEMS) break;
+      // Counted before the read, so a card that bails out on any of readCard's
+      // early returns lands in `seen` without landing in `found`. That gap IS
+      // the container-level health signal.
+      tally.card.seen++;
       const item = readCard(card);
       if (!item || seen.has(item.productId)) continue;
+      tally.card.found++;
       seen.add(item.productId);
       items.push(item);
       els.push(card);
     }
-    return { items, els };
+    // Clamped to what the server will accept, so a page that somehow rendered
+    // more than the cap is reported as the cap rather than being refused
+    // wholesale — a rejected tally tells us nothing, and this is the one number
+    // we most want to survive an unexpected page.
+    for (const k of Object.keys(tally)) {
+      const t = tally[k];
+      t.seen = Math.min(t.seen, MAX_ITEMS);
+      t.found = Math.min(t.found, t.seen);
+      t.bad = Math.min(t.bad, t.found);
+    }
+    return { items, els, tally };
   }
 
   // ---------------------------------------------------------------------------
@@ -383,7 +450,7 @@
   // Submission
   // ---------------------------------------------------------------------------
 
-  async function submit(storeNum, shown) {
+  async function submit(storeNum, shown, tally) {
     const now = Date.now();
     const sent = prune(await readSent(), now);
     // The store is part of the key. Price is national but the shelf is not, so
@@ -394,7 +461,20 @@
     // Every card on this page was already reported at these prices, minutes
     // ago. Nothing to add, so nothing is sent — which also leaves the device's
     // rate-limit budget for a page that does carry something new.
-    if (items.length === 0) return;
+    //
+    // ONE EXCEPTION, and it is the case the tally exists for: a page where not
+    // a single card produced a reading. That is what a break in
+    // `li.product_wrapper` — or in any of readCard's gates — looks like from
+    // in here, and it is indistinguishable from "nobody browsed" unless
+    // something is sent. So an empty batch goes out carrying only the health
+    // numbers. Genuine no-result searches take this path too and cannot be
+    // separated from a break at this level; the ratio over many pages is what
+    // carries the signal, and the panel says so rather than pretending.
+    //
+    // A page whose cards were merely SUPPRESSED as recent stays silent: the
+    // readers demonstrably worked, so there is no question to raise, and
+    // spending a rate-limit token to say "all fine" is the wrong trade.
+    if (items.length === 0 && tally.card.found > 0) return;
 
     // Fire and forget, exactly like the product-page report: the backend
     // refuses in band (throttled, rate limited, no store) and there is nothing
@@ -402,40 +482,46 @@
     // only to decide what may be forgotten.
     if (!alive()) return;
     try {
-      chrome.runtime.sendMessage({ type: "catalog:batch", storeNum, items }, (reply) => {
-        void chrome.runtime.lastError;
-        // background.js answers in an envelope — `{result}` on success,
-        // `{error}` on failure — so the backend's own verdict is one level down.
-        // Reading `reply.ok` here instead found `undefined`, took the early
-        // return every single time, and left `jdSent` permanently empty: the
-        // suppression above existed but never suppressed anything.
-        const res = reply && reply.result;
-        // Remember only what the backend actually took. A throttled or
-        // rate-limited batch wrote nothing, and recording it would suppress the
-        // retry that should carry it. Cards the server SKIPPED are recorded
-        // deliberately: a reading it clamped as implausible at this price will be
-        // clamped again at the same price, and re-offering it every page is the
-        // behaviour this whole block exists to stop.
-        if (!res || res.ok !== true || res.throttled === true) return;
-        const stamp = Date.now();
-        for (const item of items) {
-          sent[keyOf(item)] = [
-            stamp,
-            item.price,
-            item.inStock ? 1 : 0,
-            slot(item.openBoxPrice),
-            slot(item.listPrice),
-          ];
-        }
-        // The reply can land after the extension was reloaded, so this write
-        // needs its own guard even though the send above passed one.
-        if (!alive()) return;
-        try {
-          chrome.storage.local.set({ [SENT_KEY]: prune(sent, stamp) });
-        } catch {
-          /* orphaned between send and reply — the next page load re-reports */
-        }
-      });
+      chrome.runtime.sendMessage(
+        { type: "catalog:batch", storeNum, items, selectors: tally },
+        (reply) => {
+          void chrome.runtime.lastError;
+          // background.js answers in an envelope — `{result}` on success,
+          // `{error}` on failure — so the backend's own verdict is one level
+          // down. Reading `reply.ok` here instead found `undefined`, took the
+          // early return every single time, and left `jdSent` permanently
+          // empty: the suppression above existed but never suppressed anything.
+          const res = reply && reply.result;
+          // Remember only what the backend actually took. A throttled or
+          // rate-limited batch wrote nothing, and recording it would suppress
+          // the retry that should carry it. Cards the server SKIPPED are
+          // recorded deliberately: a reading it clamped as implausible at this
+          // price will be clamped again at the same price, and re-offering it
+          // every page is the behaviour this whole block exists to stop.
+          if (!res || res.ok !== true || res.throttled === true) return;
+          const stamp = Date.now();
+          for (const item of items) {
+            sent[keyOf(item)] = [
+              stamp,
+              item.price,
+              item.inStock ? 1 : 0,
+              slot(item.openBoxPrice),
+              slot(item.listPrice),
+            ];
+          }
+          // Nothing to write for a health-only batch, and `prune` on an
+          // unchanged object would rewrite storage for no reason.
+          if (items.length === 0) return;
+          // The reply can land after the extension was reloaded, so this write
+          // needs its own guard even though the send above passed one.
+          if (!alive()) return;
+          try {
+            chrome.storage.local.set({ [SENT_KEY]: prune(sent, stamp) });
+          } catch {
+            /* orphaned between send and reply — the next page load re-reports */
+          }
+        },
+      );
     } catch {
       /* orphaned; nothing to report and nothing to say about it */
     }
@@ -809,8 +895,13 @@
     ran = true;
 
     // One read of the grid, shared by both halves — see harvest().
-    const { items, els } = harvest();
-    if (items.length === 0) return;
+    const { items, els, tally } = harvest();
+
+    // There is deliberately no `items.length === 0` bail here any more. A page
+    // that produced no readings is the one page whose selector tally matters,
+    // and `submit` decides whether it is worth sending — see the note there.
+    // The badge half below still skips an empty grid, because there is nothing
+    // to paint on.
 
     // Both switches default to on when absent, so an orphaned context must not
     // fall through to `{}` here the way the other reads do — that would run both
@@ -823,12 +914,16 @@
       return;
     }
     // Absent means on, for both: an install that predates either switch keeps
-    // the behaviour it already had.
-    if (settings[CATALOG_OFF_KEY] !== false) await submit(storeNum, items);
+    // the behaviour it already had. The tally rides this switch with the
+    // sightings — telemetry about our own readers is still data leaving the
+    // browser, and "Share what I browse" off has to mean nothing leaves.
+    if (settings[CATALOG_OFF_KEY] !== false) await submit(storeNum, items, tally);
     // Independent of contributing. That switch governs what leaves this browser
     // as an observation; withholding price history from somebody who turned it
     // off would make reading a toll rather than a choice.
-    if (settings[BADGES_OFF_KEY] !== false) await paintBadges(items, els);
+    if (items.length > 0 && settings[BADGES_OFF_KEY] !== false) {
+      await paintBadges(items, els);
+    }
   }
 
   window.addEventListener(

@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { bump, requireLength, resolveSession } from "./lib";
+import { bump, isPhysicalStore, requireLength, resolveSession } from "./lib";
 
 // Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
@@ -44,19 +44,6 @@ const STORE_SIGNAL_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 // Small because it is per-watch inside a 50-watch loop, and because a restock
 // older than a few state changes is not news.
 const STORE_HISTORY_WINDOW = 5;
-
-// Store numbers that cannot carry a per-store trigger.
-//   "029" — Micro Center's "Shippable Items" pseudo-store, and the default for
-//           anyone who has never picked a location. It has no shelves, so it
-//           has no open-box unit and no local stock.
-//   "000" — page-world.js's fallback when the dataLayer offers neither
-//           storeNum nor closestStoreId. It means "we don't know".
-const NON_PHYSICAL_STORES = new Set(["029", "000"]);
-
-/** Can this store number back an open-box or restock trigger? */
-function isPhysicalStore(storeNum: string | undefined): storeNum is string {
-  return storeNum !== undefined && !NON_PHYSICAL_STORES.has(storeNum);
-}
 
 /** Evenly sample `values` down to at most `max`, keeping first and last. */
 function downsample(values: number[], max: number): number[] {

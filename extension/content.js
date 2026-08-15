@@ -1071,22 +1071,46 @@
       // listPrice here means a grid card actually saw no discount.
       const newest = history.points.reduce((a, b) => (a.lastSeenAt >= b.lastSeenAt ? a : b));
       if (newest.listPrice != null) {
-        // How long this same figure has been standing. A FLOOR, like
-        // "Community-tracked since" below it: the walk stops at the first point
-        // that advertised something else OR nothing at all, so rows written
-        // before this field existed end it early and understate the run. The
-        // useful thing it exposes is the perpetual "sale" — a discount that has
-        // been the price for a month is the price.
+        // How long this same figure has been standing, and the single most
+        // useful thing Jackdaw can say about a discount: a "sale" price that
+        // has not moved in two months is not a sale, it is the price. Nothing
+        // else in the product can make that claim — it needs the retailer's own
+        // advertised figure timestamped across visits, which is exactly what
+        // `listPrice` on the price series is.
+        //
+        // Walk back from the newest point while the advertised figure is the
+        // same, and remember WHY the walk ended, because that decides whether
+        // the number is exact or a floor:
+        //
+        //   a different figure    the promotion demonstrably started after that
+        //                         point. The run is exact.
+        //   a null figure         either a card that saw no discount, or a row
+        //                         written before this field existed — and from
+        //                         here those are indistinguishable. Floor.
+        //   ran out of points     the run reaches the oldest reading we hold and
+        //                         may well predate it. Floor.
+        //
+        // A floor is marked "63+ days", the same idiom the shelf uses for "25+".
+        // Without it a product first seen last Tuesday would read "unchanged 6
+        // days" and quietly imply we looked on the seventh.
         const desc = history.points.slice().sort((a, b) => b.lastSeenAt - a.lastSeenAt);
         let since = newest.firstSeenAt;
+        let atLeast = true;
         for (const p of desc) {
-          if (p.listPrice == null || Math.abs(p.listPrice - newest.listPrice) > 0.01) break;
+          if (p.listPrice != null && Math.abs(p.listPrice - newest.listPrice) > 0.01) {
+            atLeast = false;
+            break;
+          }
+          if (p.listPrice == null) break;
           since = Math.min(since, p.firstSeenAt);
         }
-        // A run shorter than a day says nothing a date could convey — every
-        // reading is from today — so the date is simply left off rather than
-        // printed as a same-day "since".
-        const run = newest.lastSeenAt - since >= 86_400_000 ? ` · since ${fmtDate(since)}` : "";
+        const days = Math.floor((newest.lastSeenAt - since) / 86_400_000);
+        // Under a day there is nothing to report: every reading is from today,
+        // and "unchanged 0 days" is noise dressed as information.
+        const run =
+          days >= 1
+            ? ` · unchanged ${days}${atLeast ? "+" : ""} ${days === 1 && !atLeast ? "day" : "days"}`
+            : "";
         chips.append(
           el("span", "jd-chip", `Advertised list: ${fmtPrice(newest.listPrice)}${run}`),
         );

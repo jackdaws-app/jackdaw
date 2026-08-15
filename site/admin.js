@@ -404,6 +404,134 @@
     }
   }
 
+  // Selector health. What each reader looks for, and — the part that decides
+  // whether a number is alarming — what its healthy ratio actually IS.
+  //
+  // `expect` is not decoration. `.clearance` sits on every card and should read
+  // ~1.00; `.standardDiscount` is absent whenever there is no discount and
+  // reads ~0.35 on a normal page. Without that distinction the discount row
+  // looks permanently broken and the real break, when it comes, is invisible
+  // inside the noise. `null` means "no expected rate" — judge it against its
+  // own lifetime figure instead.
+  const SELECTORS = {
+    card: [
+      "Grid card",
+      "li.product_wrapper",
+      // NOT 1. Measured at 92 of 96 on a live page: four cards rendered no
+      // price at all — `data-price` said $549.99 and nothing in the card's
+      // visible text did — so the corroboration gate refused them, which is
+      // the gate working. A few percent unread is the healthy state here, and
+      // an expectation of 1.00 would have flagged a normal page forever.
+      0.95,
+      "the container. If this breaks, every reader below reports nothing",
+    ],
+    price: [
+      "Card price",
+      ".price_wrapper .price",
+      1,
+      "anchors the list-price read — if it stops matching, discounts go uncollected",
+    ],
+    clearance: [
+      "Open box (grid)",
+      ".clearance",
+      1,
+      "on every card, empty when there is no unit",
+    ],
+    discount: [
+      "Advertised list",
+      "div.standardDiscount",
+      null,
+      "absent when nothing is discounted, so a low rate is normal — only zero is a signal",
+    ],
+    openBox: [
+      "Open box (product)",
+      "#opCostNew",
+      null,
+      "absent on most products; this reader matched nothing for its entire life once",
+    ],
+  };
+
+  function renderSelectors(selectors, rejected, recentDays) {
+    const card = $("selectorsCard");
+    const wrap = $("selectors");
+    const note = $("selectorsNote");
+    const foot = $("selectorsFoot");
+    if (!selectors || !selectors.length) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    wrap.textContent = "";
+
+    const by = Object.fromEntries(selectors.map((s) => [s.name, s]));
+    const anyData = selectors.some((s) => s.seen > 0);
+    note.textContent = anyData
+      ? `last ${recentDays} days vs. all time`
+      : "no readings reported yet";
+
+    for (const [name, [label, selector, expect, meaning]] of Object.entries(SELECTORS)) {
+      const s = by[name] || {
+        seen: 0, found: 0, bad: 0, recentSeen: 0, recentFound: 0, recentBad: 0,
+      };
+      const row = el("div", "health-row signal-row");
+
+      // The recent ratio is the number being judged; the lifetime one is the
+      // yardstick. A reader with no recent readings is not broken — nobody
+      // browsed — so it reads "—" rather than 0%, which would be a claim.
+      const recentRate = s.recentSeen > 0 ? s.recentFound / s.recentSeen : null;
+      const lifeRate = s.seen > 0 ? s.found / s.seen : null;
+
+      // Judged against the expected rate where there is one, and otherwise
+      // against this reader's own history — a reader that used to find
+      // something and now finds nothing is the alarm regardless of what the
+      // absolute rate was.
+      //
+      // NO YARDSTICK MEANS NO VERDICT. A reader with no expected rate that has
+      // also never found anything (`lifeRate` 0) leaves the value untinted
+      // rather than green. Measured against dev, the earlier version painted
+      // "Open box (product) — 0%" as GOOD, on a single reading, which is the
+      // one colour it must never be: the whole point of this table is that a
+      // reader finding nothing is the failure it cannot otherwise announce.
+      // Untinted says "not enough to judge", which is the truth at n=1.
+      let tone = "";
+      if (recentRate !== null) {
+        const target = expect !== null ? expect : lifeRate;
+        const judgeable = target !== null && target > 0;
+        if (s.recentBad > 0) tone = "bad";
+        else if (!judgeable) tone = "";
+        else if (recentRate < target * 0.5) tone = "bad";
+        else if (recentRate < target * 0.9) tone = "warn";
+        else tone = "good";
+      }
+
+      const pct = (r) => (r === null ? "—" : (r * 100).toFixed(0) + "%");
+      const life =
+        lifeRate === null
+          ? "nothing recorded"
+          : `${pct(lifeRate)} of ${fmt(s.seen)} all time`;
+      const bad = s.bad > 0 ? ` · ${fmt(s.bad)} unreadable` : "";
+      row.append(
+        el("div", "health-label", label),
+        el("div", "health-value " + tone, `${pct(recentRate)} · ${recentDays}d`),
+        el("div", "health-sub", `${life}${bad} — ${selector}, ${meaning}`),
+      );
+      wrap.append(row);
+    }
+
+    // Everything this table cannot support, stated in place rather than left
+    // for someone to infer from a number that looks authoritative.
+    foot.textContent =
+      "Found = the element was on the page; unreadable = it was there and could not be parsed, " +
+      "which the readers treat as unknown and keep the last value for. These counts come from the " +
+      "extension describing its own behaviour, so they are advisory, not evidence — they raise a " +
+      "question, and the answer always comes from driving a real page. A grid page that rendered " +
+      "no readable card is reported with zero items so it is visible here; genuine no-result " +
+      "searches land in that same number and cannot be separated from a broken selector." +
+      (rejected > 0
+        ? ` ${fmt(rejected)} tallies were refused as internally inconsistent — a client is sending numbers it cannot have measured, so read the whole table with that in mind.`
+        : "");
+  }
+
   function renderStores(stores) {
     const wrap = $("stores");
     wrap.textContent = "";
@@ -655,6 +783,11 @@
       renderCategories(stats.categories);
       renderPriceIndex(index);
       renderSignals(stats.errors);
+      renderSelectors(
+        stats.selectors,
+        stats.selectorsRejected ?? 0,
+        stats.selectorRecentDays ?? 7,
+      );
       renderHealth(stats.health);
       renderTrend(stats.daily, stats.gridSplitFrom ?? null);
       renderFlagged(flagged);

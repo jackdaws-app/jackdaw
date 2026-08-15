@@ -99,6 +99,23 @@
         <div id="signals"></div>
       </section>
 
+      <!--
+        Can the readers still find what they look for on Micro Center's pages?
+        Sibling of Health signals above, and a different question: that card
+        reports things that went visibly wrong, this one reports a reader that
+        went quietly right-looking while finding nothing. Four fields have
+        failed that way; none of them raised a signal, because a selector that
+        matches nothing throws no error.
+      -->
+      <section class="admin-card" id="selectorsCard" hidden>
+        <div class="admin-card-head">
+          <h2>Selector health</h2>
+          <span class="admin-note" id="selectorsNote"></span>
+        </div>
+        <div id="selectors"></div>
+        <p class="admin-fine" id="selectorsFoot"></p>
+      </section>
+
       <div class="admin-cols">
         <section class="admin-card">
           <div class="admin-card-head">

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   EVENT_NAMES,
+  SELECTOR_NAMES,
   checkAdminRateLimit,
   enforceAdminRateLimit,
   flaggedComments,
@@ -115,6 +116,30 @@ export const stats = query({
         last7: v.number(),
       }),
     ),
+    // Selector health — can the readers still find what they look for on Micro
+    // Center's pages? Always all five readers, zero-filled, for the same reason
+    // `errors` is. `name` is one of SELECTOR_NAMES; v.string() here because the
+    // panel treats it as a label and the write path keeps the set closed.
+    //
+    // Two windows per reader on purpose: the lifetime ratio says what healthy
+    // looked like, the recent one says whether it still does. Neither is
+    // readable alone.
+    selectors: v.array(
+      v.object({
+        name: v.string(),
+        seen: v.number(),
+        found: v.number(),
+        bad: v.number(),
+        recentSeen: v.number(),
+        recentFound: v.number(),
+        recentBad: v.number(),
+      }),
+    ),
+    // Tallies refused as internally inconsistent (found > seen, and friends).
+    // Should be 0; anything else means a client is sending numbers it cannot
+    // have measured, and the whole table above should be read with that in mind.
+    selectorsRejected: v.number(),
+    selectorRecentDays: v.number(),
   }),
   handler: async (ctx, args) => {
     await checkAdminRateLimit(ctx);
@@ -278,6 +303,51 @@ export const stats = query({
     // arbitrary one.
     errors.sort((a, b) => b.last7 - a.last7 || b.total - a.total);
 
+    // Can the readers still find what they look for? See recordSelectorHealth
+    // in lib.ts for what the three numbers mean.
+    //
+    // BOTH WINDOWS, and the pair is the point. A lifetime ratio moves far too
+    // slowly to show a break: a selector that worked for ten thousand cards and
+    // died yesterday still reads 10,000/10,300 and will look healthy for weeks.
+    // The recent window is what falls off a cliff the day it happens, and the
+    // lifetime figure is what tells you what the healthy value used to be. One
+    // without the other is unreadable — 0 of 500 means nothing if you don't
+    // know the reader has ever found anything.
+    //
+    // Same explicit-key-list shape as `errors` above: every reader every time,
+    // missing keys as 0, so the table doesn't reshuffle the first time a new
+    // reader reports.
+    const selectorDays = Array.from({ length: ERROR_DAYS }, (_unused, i) =>
+      utcDay(todayUtc - i * DAY_MS),
+    );
+    const selectors = await Promise.all(
+      SELECTOR_NAMES.map(async (name) => {
+        const fields = ["seen", "found", "bad"] as const;
+        const [lifetime, recent] = await Promise.all([
+          Promise.all(fields.map((f) => readCounter(ctx, `sel:${name}:${f}`))),
+          Promise.all(
+            fields.map(async (f) =>
+              (
+                await Promise.all(
+                  selectorDays.map((d) => readCounter(ctx, `sel:day:${d}:${name}:${f}`)),
+                )
+              ).reduce((sum, n) => sum + n, 0),
+            ),
+          ),
+        ]);
+        return {
+          name: name as string,
+          seen: lifetime[0],
+          found: lifetime[1],
+          bad: lifetime[2],
+          recentSeen: recent[0],
+          recentFound: recent[1],
+          recentBad: recent[2],
+        };
+      }),
+    );
+    const selectorsRejected = await readCounter(ctx, "sel:rejected");
+
     return {
       totals: {
         observations,
@@ -301,6 +371,11 @@ export const stats = query({
       daily,
       gridSplitFrom: gridSplitAt > 0 ? gridSplitAt : null,
       errors,
+      selectors,
+      selectorsRejected,
+      // The recent window's length, so the panel can label the column instead
+      // of hard-coding a number that would silently drift from this one.
+      selectorRecentDays: ERROR_DAYS,
     };
   },
 });

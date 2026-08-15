@@ -298,6 +298,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           deviceId,
           storeNum: msg.storeNum,
           items: msg.items,
+          // Behind `contributing()` with everything else, and that is not an
+          // accident of placement: a selector tally is data leaving this
+          // browser, so "Share what I browse" being off must mean the
+          // telemetry stops too, not just the sightings.
+          selectors: msg.selectors,
         });
       // The read half of the catalog surface: what have shoppers seen these
       // products cost? Deliberately NOT behind `contributing()` — that switch

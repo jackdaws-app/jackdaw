@@ -105,6 +105,11 @@ Each of these cost real debugging time. They look like bugs in your code and are
 - **`requestAnimationFrame` never fires in a backgrounded tab.** Anything rAF-gated reads
   as never applied, and CSS transitions are suspended too — you will measure a frozen
   intermediate value and conclude the code is broken. Front the tab before measuring.
+  The same trap has a second form: a surface that is not laid out at all reports
+  `clientWidth: 0`, and every width, height and overflow read off it is fiction — rows
+  measured 280px tall and the page "overflowed by 320px", both of which vanished at a real
+  viewport. Check `document.documentElement.clientWidth` before believing a layout number.
+  Computed *colours* survive this, so contrast readings taken there are still good.
 - **Measure alignment between separately-positioned SVGs; don't nudge.** Contact points
   need viewBox-scale arithmetic against the actual geometry underneath, which may not be
   flat.
@@ -143,6 +148,17 @@ when you're writing code.
   - **Every carried field joins the "is this the same reading?" test.** A field that is
     carried forward but left out of the comparison changes silently: the write takes the
     unchanged branch, which by definition does not store it, and the new figure is lost.
+  - **A reader that stops matching must be able to say so.** A selector that finds nothing
+    throws no error and writes no wrong value — it just goes quiet, and four fields have
+    failed that way, one of them for the entire life of the file. So the readers count what
+    they looked at, what they found, and what they found but could not parse, and those
+    counts ride along with the sighting. Fixtures cannot cover this: a fixture is markup
+    you wrote to match the selector you just wrote. Only the live site is authority, and
+    only a counter notices when it changes.
+- **A rule that only exists in the client is one caller away from being violated.** If a
+  value must never be stored, the refusal belongs at the write boundary, not in the code
+  that happens to read it back. A shelf row for a store with no shelves was unreachable for
+  exactly as long as the one caller kept not asking for it.
 - **The URL is never sent.** Products are identified by ID. Search and category pages send
   no URL, which is what keeps search terms and filters out of the database.
 - **Validate and clamp what arrives, then count what you dropped.** Readings outside a

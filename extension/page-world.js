@@ -38,17 +38,38 @@
     const obNodes = [
       document.querySelector("#opCostNew"),
       ...document.querySelectorAll(".openBoxModal .pricing"),
-    ];
+    ].filter(Boolean);
     for (const n of obNodes) {
-      const m = (n?.textContent || "").match(/\$\s*([\d,]+\.?\d*)/);
+      const m = (n.textContent || "").match(/\$\s*([\d,]+\.?\d*)/);
       const v = m ? parseFloat(m[1].replace(/,/g, "")) : NaN;
       // Below list is the sanity check that this is a used-unit price and not
       // an accessory, bundle, or financing figure sharing the selector.
       if (!isFinite(v) || v <= 0 || v >= price) continue;
       if (openBoxPrice === undefined || v < openBoxPrice) openBoxPrice = v;
     }
+    // Selector health for the reader that failed silently for its entire life.
+    //
+    //   seen   always 1 — this is one product page.
+    //   found  an open-box node was on the page at all. Legitimately 0 on most
+    //          products, so a low ratio here is normal and only a hard zero
+    //          across a large sample is a signal.
+    //   bad    a node WAS present and nothing usable came out of it. This is
+    //          the exact signature the original bug would have shown: the
+    //          anchor sitting right there while the extractor returned nothing,
+    //          on every page, forever. Nothing else would ever have said so.
+    //
+    // Shape matches convex/lib.ts SELECTOR_NAMES; the isolated world forwards
+    // it untouched and the server clamps it.
+    const selectors = {
+      openBox: {
+        seen: 1,
+        found: obNodes.length > 0 ? 1 : 0,
+        bad: obNodes.length > 0 && openBoxPrice === undefined ? 1 : 0,
+      },
+    };
     return {
       openBoxPrice,
+      selectors,
       productId: String(e.productID),
       sku: String(e.SKU),
       name: name || String(e.mpn || e.SKU),
