@@ -185,6 +185,26 @@ export const backfillCounters = internalMutation({
     await initCounter(ctx, "alerts:fired", 0);
     await initCounter(ctx, "alerts:clicked", 0);
 
+    // The catalog split belongs here rather than in `derived`, because it
+    // cannot be reconstructed from rows at all. `pricePoints.source` records
+    // which path OPENED a row, but `reportCount` accumulates sightings from
+    // both onto that one row — a point opened by a product page and then
+    // confirmed forty times by grid readings is `source: "product"` with
+    // reportCount 41, and nothing stored says where the other forty came from.
+    // So obs:catalog is only knowable at write time, like alerts:clicked.
+    //
+    // This matters more than it looks: `derived` above recomputes obs:total
+    // from reportCount, so setCounter-ing these to a derivable-looking value
+    // would move one half of the split and not the other, and the panel would
+    // render a plausible, wrong ratio with nothing to flag it.
+    await initCounter(ctx, "obs:catalog", 0);
+    await initCounter(ctx, "obs:batches", 0);
+    // `obs:gridday:*` and `obs:gridday:from` are deliberately NOT seeded here.
+    // Zeroing the per-day keys would assert "no grid sightings that day" for
+    // days that predate the counter, and stamping `from` would date the split
+    // to whenever someone happened to run a backfill. Only `reportBatch` may
+    // write either, so an unsplit day stays legibly unsplit.
+
     return {
       products: products.length,
       pricePoints: pricePoints.length,

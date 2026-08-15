@@ -11,7 +11,56 @@ export default defineSchema({
     mpn: v.optional(v.string()),
     ean: v.optional(v.string()),
     urlPath: v.string(),
-  }).index("by_productId", ["productId"]),
+
+    // -----------------------------------------------------------------------
+    // Rolling price summary, maintained on every accepted sighting.
+    //
+    // WHY IT IS DENORMALIZED. A grid page shows up to 96 cards and the badge on
+    // each one needs that product's range. Reading the points would be up to
+    // 96 x 1000 documents against a 16,384-document ceiling, so the badge reads
+    // 96 product rows instead. Same rule as `counters`: a stats read is never
+    // allowed to scan.
+    //
+    // WHY TWO PAIRS. products.history only lets a price be NAMED a record when
+    // it is corroborated — seen twice, or read from a product page rather than
+    // matched out of card text. The CORROB pair is that extreme; the ANY pair
+    // includes lone catalog sightings and is the fallback for a product that
+    // has never been seen any other way. Keeping both means `provisional` is
+    // derivable here exactly as the read path derives it, so a badge and the
+    // panel behind it cannot disagree about whether a number is a record.
+    //
+    // These only ever widen. Nothing deletes a pricePoint today; anything that
+    // ever does must recompute the summary, because a low that outlives its own
+    // evidence is a number with nothing behind it. `products:recompute` rebuilds
+    // it from the points and is also the consistency check — it reports how many
+    // rows it had to change, and that number is expected to be zero.
+    lowCorrob: v.optional(v.number()),
+    highCorrob: v.optional(v.number()),
+    lowAny: v.optional(v.number()),
+    highAny: v.optional(v.number()),
+    // The newest sighting whatever its provenance, matching how history derives
+    // `currentPrice`, and carried with its age for the same reason: it is the
+    // most recent SIGHTING, not a live feed.
+    lastPrice: v.optional(v.number()),
+    lastSeenAt: v.optional(v.number()),
+
+    // The normalized twin of `category`, kept so a category can be looked UP as
+    // well as displayed.
+    //
+    // WHY NOT INDEX `category` ITSELF. The admin panel names categories from
+    // the `obs:cat:` counter keys, which `categoryKey()` has already lowercased
+    // and trimmed. An index on the raw string could not be queried with one of
+    // those names, so the category list and the products behind it would be
+    // addressing two different spellings and every lookup would come back
+    // empty. Same normalizer on both sides or neither.
+    //
+    // Derived, so `products:recompute` owns it the way it owns the summary
+    // above: the write paths maintain it, and the one pass that sees every row
+    // is what backfills rows written before it existed and repairs any drift.
+    categoryKey: v.optional(v.string()),
+  })
+    .index("by_productId", ["productId"])
+    .index("by_categoryKey", ["categoryKey"]),
 
   pricePoints: defineTable({
     productDocId: v.id("products"),
@@ -23,9 +72,39 @@ export default defineSchema({
     firstSeenAt: v.number(),
     lastSeenAt: v.number(),
     reportCount: v.number(),
+    // Where the sighting came from. Absent means a product page, which is every
+    // row written before catalog collection existed. A catalog card carries less
+    // than a product page does (no open-box price, no MPN/EAN, stock as a
+    // bucket), so the reader has to be able to tell the two apart — see the
+    // carry-forward rule in observations.reportBatch.
+    source: v.optional(v.literal("catalog")),
   })
     .index("by_product", ["productDocId"])
     .index("by_product_store", ["productDocId", "storeNum"]),
+
+  // What the last shopper saw on one shelf, at one store. ONE ROW PER
+  // (product, store), OVERWRITTEN IN PLACE — there is deliberately no history
+  // here and no index that could reconstruct one.
+  //
+  // That constraint is the whole point of the table existing. A unit count is
+  // fine as an answer to "what was on the shelf when somebody last looked";
+  // the same number appended once an hour for a year is a per-store depth and
+  // sell-through series, which is a materially different and more sensitive
+  // artefact than a price history and not something a price tracker needs. The
+  // *history* stays boolean (pricePoints.inStock); the *number* lives here and
+  // only ever describes now. Making it a single mutable row means no future
+  // change can quietly turn it into a series without changing the schema.
+  storeStock: defineTable({
+    productDocId: v.id("products"),
+    storeNum: v.string(),
+    inStock: v.boolean(),
+    // Absent when the page said "IN STOCK" with no number beside it.
+    units: v.optional(v.number()),
+    // "25+ IN STOCK" — Micro Center caps the display, so the reading is a
+    // floor, not a count, and the UI has to say so.
+    atLeast: v.optional(v.boolean()),
+    observedAt: v.number(),
+  }).index("by_product_store", ["productDocId", "storeNum"]),
 
   comments: defineTable({
     productDocId: v.id("products"),
@@ -166,6 +245,17 @@ export default defineSchema({
     deviceId: v.string(),
     lastReportKey: v.optional(v.string()),
     lastReportAt: v.optional(v.number()),
+    // Same idea one level up, for catalog batches. The key identifies a grid
+    // page WITHOUT storing anything about it that a person typed: store number,
+    // item count, and a 32-bit fold of the SORTED product ids on the page. Two
+    // loads of the same grid inside a minute collapse to one write; a genuinely
+    // different page differs in the fold, while a re-render that only reorders
+    // the same cards does not. An earlier version keyed on the FIRST product id
+    // instead of the fold, and silently dropped a whole page whenever a filter
+    // change left the leading card and the card count alone. The search terms
+    // that produced the page are never sent here.
+    lastBatchKey: v.optional(v.string()),
+    lastBatchAt: v.optional(v.number()),
   }).index("by_deviceId", ["deviceId"]),
 
   // -------------------------------------------------------------------------

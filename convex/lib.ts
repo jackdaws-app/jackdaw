@@ -36,6 +36,24 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   commentVote: { kind: "token bucket", rate: 30, period: MINUTE },
   commentReport: { kind: "token bucket", rate: 10, period: HOUR },
   priceReport: { kind: "token bucket", rate: 120, period: HOUR },
+  // Catalog batches, keyed per device. ONE TOKEN PER PAGE, not per item — the
+  // whole reason a batch exists is that a grid page is a single thing a person
+  // looked at, and charging it 96 tokens would make the honest heavy browser
+  // indistinguishable from an attacker. The per-item ceiling is CATALOG_MAX_ITEMS
+  // in observations.ts, which is what actually bounds the write cost.
+  //
+  // 60/hour is one grid page a minute sustained, well above real browsing (a
+  // person reading a category page spends far longer than a minute on it) and
+  // still a hard cap of 60 x 96 = 5,760 rows an hour from one device. Note this
+  // is a much better forgery target than priceReport: one accepted call moves 96
+  // products at once. What bounds the damage today is the plausibility clamp in
+  // observations.reportBatch (0.2x-5x the last known price for that product and
+  // store), which kills the crude forgery and the common misparse but still
+  // admits a lone batch as low as one fifth of the last price — and
+  // products.stats takes lowestPrice as a plain minimum over every row, so that
+  // lone batch WOULD open an all-time low. `pricePoints.source: "catalog"` is
+  // recorded so a corroboration rule can be added there later; none exists yet.
+  catalogBatch: { kind: "token bucket", rate: 60, period: HOUR },
   // Global (not per-device) ceiling on admin traffic. Read the note above
   // enforceAdminRateLimit before treating this as anti-guessing protection.
   adminAuth: { kind: "token bucket", rate: 20, period: MINUTE },
@@ -86,7 +104,8 @@ export type RateLimitName =
   | "commentAdd"
   | "commentVote"
   | "commentReport"
-  | "priceReport";
+  | "priceReport"
+  | "catalogBatch";
 
 /**
  * Consume one token from the named per-device bucket and report whether the
@@ -378,6 +397,111 @@ export function categoryKey(raw: string | undefined): string | null {
   if (raw === undefined) return null;
   const cleaned = sanitize(raw).toLowerCase().slice(0, 60).trim();
   return cleaned.length === 0 ? null : cleaned;
+}
+
+/**
+ * One spelling of a SKU, because the two readers were reading two.
+ *
+ * Micro Center PRINTS a six-digit zero-padded SKU on both surfaces
+ * ("SKU: 044594"), and its dataLayer carries the same number unpadded
+ * ("44594"). The catalog reader takes the printed form off the card; the
+ * product-page reader takes the dataLayer's. So the two surfaces disagreed
+ * about the identity of the same product, and each alternating visit patched
+ * `sku` back to whichever surface was seen last: a wasted write every time,
+ * and a stored value that matches what the retailer prints only half the time
+ * — for the one field a shopper would paste into Micro Center's own search.
+ *
+ * Found by driving the real extension (2026-08-15): product 711665 read
+ * "044594" from its grid card and "44594" from its product page, and the row
+ * flipped between them. 164 of 1,471 products on dev held a stripped form.
+ *
+ * Normalizing at the WRITE BOUNDARY rather than inside either reader settles
+ * it for every client version at once, including installs that never update.
+ * Digits only and shorter than six: pad. Everything else is passed through
+ * untouched — padding a shape we have never seen would be inventing an
+ * identifier rather than repairing one.
+ */
+export function normalizeSku(raw: string): string {
+  return /^\d{1,5}$/.test(raw) ? raw.padStart(6, "0") : raw;
+}
+
+// ---------------------------------------------------------------------------
+// Product price summary
+// ---------------------------------------------------------------------------
+
+/** The four extremes plus the newest sighting. All optional; absent = unknown. */
+export type PriceSummary = {
+  lowCorrob?: number;
+  highCorrob?: number;
+  lowAny?: number;
+  highAny?: number;
+  lastPrice?: number;
+  lastSeenAt?: number;
+};
+
+/**
+ * Widen `cur` to admit one sighting, returning ONLY the fields that changed, or
+ * null when the sighting told us nothing new.
+ *
+ * Pure, and shared by all three callers — the two write paths and the recompute
+ * — because the one thing this must never do is disagree with itself. The
+ * summary's whole job is to let a grid badge quote a range without reading the
+ * points; the moment the badge's number and the panel's number are produced by
+ * two different pieces of arithmetic, one of them is lying on somebody's
+ * screen.
+ *
+ * `corroborated` is the write-time form of the read-path predicate in
+ * products.history (`reportCount > 1 || source !== "catalog"`): a product-page
+ * reading is corroborated on arrival, and any reading whose row now carries a
+ * reportCount above one has been seen twice. A lone catalog card is not, and so
+ * widens only the ANY pair — it still counts as evidence, it just may not name
+ * a record. That also covers promotion: when a catalog row is re-seen its count
+ * crosses two, the caller passes true, and the price it has been holding all
+ * along joins the corroborated extremes.
+ */
+export function widenSummary(
+  cur: PriceSummary,
+  price: number,
+  seenAt: number,
+  corroborated: boolean,
+): PriceSummary | null {
+  const patch: PriceSummary = {};
+  if (cur.lowAny === undefined || price < cur.lowAny) patch.lowAny = price;
+  if (cur.highAny === undefined || price > cur.highAny) patch.highAny = price;
+  if (corroborated) {
+    if (cur.lowCorrob === undefined || price < cur.lowCorrob) patch.lowCorrob = price;
+    if (cur.highCorrob === undefined || price > cur.highCorrob) patch.highCorrob = price;
+  }
+  // `>=` deliberately: two sightings inside the same millisecond should leave
+  // the later caller's price standing, which is the order the points are read
+  // back in.
+  if (cur.lastSeenAt === undefined || seenAt >= cur.lastSeenAt) {
+    if (cur.lastPrice !== price) patch.lastPrice = price;
+    if (cur.lastSeenAt !== seenAt) patch.lastSeenAt = seenAt;
+  }
+  return Object.keys(patch).length === 0 ? null : patch;
+}
+
+/**
+ * What the badge may claim, derived from a summary exactly as products.history
+ * derives it from the points: the corroborated extremes when they exist, the
+ * uncorroborated ones as a flagged fallback when they do not.
+ */
+export function readSummary(cur: PriceSummary): {
+  low: number | null;
+  high: number | null;
+  provisional: boolean;
+  lastPrice: number | null;
+  observedAt: number | null;
+} {
+  const provisional = cur.lowCorrob === undefined && cur.lowAny !== undefined;
+  return {
+    low: cur.lowCorrob ?? cur.lowAny ?? null,
+    high: cur.highCorrob ?? cur.highAny ?? null,
+    provisional,
+    lastPrice: cur.lastPrice ?? null,
+    observedAt: cur.lastSeenAt ?? null,
+  };
 }
 
 /**

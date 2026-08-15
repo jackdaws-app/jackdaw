@@ -28,12 +28,13 @@
     </nav>
     <main class="doc" id="doc">
       <h1>Privacy Policy</h1>
-      <p class="doc-meta">Last updated: August 14, 2026. Draft; review before store submission.</p>
+      <p class="doc-meta">Last updated: August 15, 2026. Draft; review before store submission.</p>
       <p>This Privacy Policy describes how the Jackdaw browser extension (&quot;Jackdaw,&quot; &quot;we,&quot; &quot;our&quot;) collects, uses, and shares information. <strong>Jackdaw does not require an account.</strong> All features work anonymously; an optional account may be created to sync alerts across browsers and to claim a handle, and is described in Section 2.</p>
       <h2>1. Information We Collect (all users)</h2>
       <ul>
       <li><strong>Device identifier.</strong> A randomly generated identifier (UUID) created by your browser when the extension is installed. It is not derived from your name or email address, and for users without an account it is not linked to any identity.</li>
-      <li><strong>Price observations.</strong> When you visit a Micro Center product page, the extension reads product information already displayed on that page (product ID, SKU, price, stock status, and your selected store number) and submits it to the shared community database.</li>
+      <li><strong>Price observations.</strong> When you visit a Micro Center product page, the extension reads product information already displayed on that page (product ID, SKU, price, stock status, and your selected store number) and submits it to the shared community database. On Micro Center search and category pages it does the same for the product listings already displayed on the page you are viewing, submitting them together as one batch. In both cases it reads only what your browser has already loaded: it does not open pages, load products in the background, follow links, or request anything from Micro Center on your behalf. You can stop all of this at any time from the extension&#x27;s toolbar popup, under &quot;Contributing&quot;; the rest of the extension continues to work.</li>
+      <li><strong>Price-history requests.</strong> To display price history on a page you are already viewing, the extension asks our servers for the recorded history of the products shown on that page. Such a request contains the product identifiers and nothing else: no device identifier, no account, no page address, no search terms, and no filters. These requests only read the database; no record of them is written to it. On search and category pages, this display can be turned off from the extension&#x27;s toolbar popup, under &quot;Showing.&quot; That setting is separate from &quot;Contributing,&quot; because it governs what the extension shows you rather than what it submits.</li>
       <li><strong>User content.</strong> Comments, votes, reports, price-alert targets, and the name displayed on your comments. Without an account, that name is self-selected text and is not verified. With an account, it is the handle you claim under Section 2.</li>
       <li><strong>Anonymous diagnostic counts.</strong> Aggregate tallies of events such as &quot;price report failed&quot; or &quot;product data not found,&quot; used to detect outages. These are counts only: they contain no identifier, no page address, and no content.</li>
       </ul>
@@ -50,7 +51,7 @@
       <ul>
       <li>No name, postal address, or password (sign-in uses a one-time emailed code).</li>
       <li>No email address unless you choose to create an account.</li>
-      <li>No browsing history. The extension runs only on <code>microcenter.com</code> product pages and collects nothing elsewhere.</li>
+      <li>No browsing history. The extension runs only on <code>microcenter.com</code> product, search, and category pages, and collects nothing elsewhere. On search and category pages it records the products that were displayed; it does not record the address of the page, the search terms you typed, or the filters you applied.</li>
       <li>No purchase, payment, or cart information. The extension does not run on checkout pages.</li>
       <li>No advertising identifiers and no third-party analytics.</li>
       </ul>
@@ -58,6 +59,7 @@
       <p>Information is used solely to operate the service: displaying community price history, discussion, and price alerts. We do not sell or rent any information, and we do not use it for advertising.</p>
       <h2>5. Data Storage and Sharing</h2>
       <p>Data is stored with our backend provider, Convex (United States). Aggregate price history is public by design: it is displayed to all users and may be published in open formats. Comments, the names displayed on them, and handles are visible to all users. Device identifiers, email addresses, and alert targets are not publicly displayed.</p>
+      <p>Some information is held only in your browser and is never transmitted to us: your extension settings, and a short list of the products the extension has recently reported, which it keeps so that revisiting or re-filtering the same listings does not report the same item repeatedly. That list contains product and store identifiers only, expires automatically after a few minutes, and is removed when you uninstall the extension.</p>
       <h2>6. Data Retention and Deletion</h2>
       <p>Uninstalling the extension deletes the device identifier from your browser. If you created an account, deleting it removes your email address and sessions immediately. Previously contributed price observations and comments remain in the community database, unlinked from any identifying information. Comments posted under a handle continue to display that handle as written at the time of posting, without the verified marker. Retired handles are retained indefinitely, as described in Section 2, so that a handle cannot be reassigned to another user. To request removal of specific content you posted, open an issue in the project&#x27;s GitHub repository.</p>
       <h2>7. Children</h2>

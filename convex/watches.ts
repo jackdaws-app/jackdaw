@@ -749,6 +749,10 @@ const dashboardRowValidator = v.object({
   target: v.number(),
   currentPrice: v.number(),
   inStock: v.boolean(),
+  // When that price was last actually seen by somebody. The popup shows it
+  // beside every row: these numbers age, and a watchlist that renders a
+  // month-old price identically to a five-minute-old one is lying by layout.
+  observedAt: v.union(v.number(), v.null()),
   lowest: v.number(),
   trend: v.array(v.number()),
   met: v.boolean(),
@@ -770,6 +774,7 @@ type DashboardRow = {
   target: number;
   currentPrice: number;
   inStock: boolean;
+  observedAt: number | null;
   lowest: number;
   trend: number[];
   met: boolean;
@@ -845,6 +850,7 @@ export const dashboard = query({
         target: watch.priceAtWatch,
         currentPrice,
         inStock: latest === null ? false : latest.inStock,
+        observedAt: latest === null ? null : latest.lastSeenAt,
         lowest: lowestSoFar ?? 0,
         trend: downsample(chronological, MAX_TREND_POINTS),
         // "met" is a statement about the price trigger, so a watch whose price

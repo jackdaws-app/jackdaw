@@ -46,15 +46,68 @@
   let commentSort = "top"; // "top" | "new"
   const collapsedThreads = new Set(); // comment _ids collapsed reddit-style
 
+  // A content script outlives the extension that injected it. Reloading Jackdaw
+  // at chrome://extensions — or Chrome auto-updating it under a shopper with
+  // this tab already open — orphans this instance: the DOM stays, the closures
+  // keep running, and every `chrome.*` call from that moment throws
+  // "Extension context invalidated". The panel is drawn from data already in
+  // memory, so it goes on LOOKING alive while nothing it does can reach the
+  // service worker. `send` was already guarded; storage was not, which is how a
+  // click on the comment box threw an uncaught error into Micro Center's own
+  // console. Guard the whole boundary, and say so once, honestly.
+  let contextLost = false;
+  const alive = () => {
+    try {
+      return !!chrome.runtime?.id;
+    } catch {
+      return false;
+    }
+  };
+  function orphaned() {
+    contextLost = true;
+    showOrphanNotice();
+  }
+  // Never throws and never rejects: a dead context yields {} / a no-op, so every
+  // caller reads it as "nothing stored" and carries on with its defaults.
+  const store = {
+    async get(keys) {
+      if (!alive()) return orphaned(), {};
+      try {
+        return await chrome.storage.local.get(keys);
+      } catch {
+        return orphaned(), {};
+      }
+    },
+    async set(obj) {
+      if (!alive()) return orphaned();
+      try {
+        await chrome.storage.local.set(obj);
+      } catch {
+        orphaned();
+      }
+    },
+  };
+
   const send = (msg) =>
     new Promise((resolve) => {
+      if (!alive()) {
+        orphaned();
+        resolve({ error: "Extension context invalidated.", code: "ORPHANED" });
+        return;
+      }
       try {
         chrome.runtime.sendMessage(msg, (res) => {
-          if (chrome.runtime.lastError) resolve({ error: chrome.runtime.lastError.message });
-          else resolve(res || { error: "no response" });
+          if (chrome.runtime.lastError) {
+            const m = chrome.runtime.lastError.message || "";
+            // Only the explicit wording means orphaned. "Receiving end does not
+            // exist" is an asleep service worker, which the next call wakes.
+            if (/context invalidated/i.test(m)) orphaned();
+            resolve(contextLost ? { error: m, code: "ORPHANED" } : { error: m });
+          } else resolve(res || { error: "no response" });
         });
       } catch (e) {
-        resolve({ error: String(e) });
+        orphaned();
+        resolve({ error: String(e), code: "ORPHANED" });
       }
     });
 
@@ -78,17 +131,17 @@
     if (!product) return;
     try {
       await ensureRoot();
-      await chrome.storage.local.get(["jdTheme", "jdChartH"]).then((v) => {
+      await store.get(["jdTheme", "jdChartH"]).then((v) => {
         if (v.jdTheme === "dark") theme = "dark";
         if (v.jdChartH) chartHeight = v.jdChartH;
       });
       buildTab();
       // The bird flies in, becomes the banner, and only then does the
       // coach mark speak — one thing at a time.
-      chrome.storage.local.get("jdFlightDone").then(async ({ jdFlightDone }) => {
+      store.get("jdFlightDone").then(async ({ jdFlightDone }) => {
         try {
           await flightEntrance(!jdFlightDone);
-          if (!jdFlightDone) chrome.storage.local.set({ jdFlightDone: true });
+          if (!jdFlightDone) store.set({ jdFlightDone: true });
           tabEl.classList.remove("jd-preflight");
           tabEl.classList.add("jd-tab-reveal");
           maybeCoachMark();
@@ -115,7 +168,7 @@
 
   // First contact: a small coach mark pointing at the tab.
   async function maybeCoachMark() {
-    const { jdCoachDone } = await chrome.storage.local.get("jdCoachDone");
+    const { jdCoachDone } = await store.get("jdCoachDone");
     if (jdCoachDone || !tabEl) return;
     const mark = el("div", "jd-coach");
     mark.append(
@@ -135,7 +188,7 @@
     const dismiss = () => {
       mark.classList.add("jd-coach-out");
       setTimeout(() => mark.remove(), 250);
-      chrome.storage.local.set({ jdCoachDone: true });
+      store.set({ jdCoachDone: true });
     };
     ok.addEventListener("click", dismiss);
     tabEl.addEventListener("click", dismiss, { once: true });
@@ -143,7 +196,7 @@
 
   // First open: a three-step spotlight tour, built in our own shadow world.
   async function maybeTour() {
-    const { jdTourDone } = await chrome.storage.local.get("jdTourDone");
+    const { jdTourDone } = await store.get("jdTourDone");
     if (jdTourDone) return;
     const steps = [
       {
@@ -171,7 +224,7 @@
     const finish = () => {
       overlay.classList.add("jd-coach-out");
       setTimeout(() => overlay.remove(), 250);
-      chrome.storage.local.set({ jdTourDone: true });
+      store.set({ jdTourDone: true });
     };
 
     const show = () => {
@@ -215,7 +268,9 @@
 
   async function refreshAll() {
     const [h, c, a] = await Promise.all([
-      send({ type: "history", productId: product.productId }),
+      // shelfStore scopes only the shelf snapshot, never the price series:
+      // prices are national, the shelf is the one thing that isn't.
+      send({ type: "history", productId: product.productId, shelfStore: product.storeNum }),
       send({ type: "comments:list", productId: product.productId }),
       send({ type: "auth:state" }),
     ]);
@@ -462,7 +517,7 @@
     themeBtn.classList.add("jd-ib-theme");
     themeBtn.addEventListener("click", () => {
       theme = theme === "dark" ? "light" : "dark";
-      chrome.storage.local.set({ jdTheme: theme });
+      store.set({ jdTheme: theme });
       drawerEl.classList.toggle("jd-dark", theme === "dark");
       themeBtn.innerHTML = theme === "dark" ? ICONS.sun : ICONS.moon;
       themeBtn.title = theme === "dark" ? "Light mode" : "Dark mode";
@@ -850,6 +905,7 @@
     requestAnimationFrame(() => positionIndicator(false));
     if (firstOpen) setTimeout(maybeTour, 700); // after the drawer settles
     requestAnimationFrame(() => requestAnimationFrame(() => drawerEl.classList.add("jd-open")));
+    showOrphanNotice(); // no-op unless the context died before this drawer existed
   }
 
   function closeDrawer() {
@@ -868,7 +924,23 @@
     }, 300);
   }
 
+  // The orphan notice is not a toast. A toast times out, and this condition
+  // never does — it lasts until the page is refreshed. It is also deliberately
+  // idempotent and re-checked on every drawer open, because the context can die
+  // before the drawer exists: firing once into a null drawer and setting the
+  // flag would consume the only warning the shopper was going to get.
+  function showOrphanNotice() {
+    if (!contextLost || !drawerEl) return;
+    if (drawerEl.querySelector(".jd-toast-orphan")) return;
+    const t = el("div", "jd-toast jd-toast-orphan", "Jackdaw updated — refresh the page to reconnect");
+    drawerEl.append(t);
+    requestAnimationFrame(() => t.classList.add("jd-toast-in"));
+  }
+
   function toast(msg) {
+    // Once the context is gone the notice above is on screen and every other
+    // message is advice that cannot work — "try again" can only ever fail.
+    if (!drawerEl || contextLost) return;
     const t = el("div", "jd-toast", msg);
     drawerEl.append(t);
     requestAnimationFrame(() => t.classList.add("jd-toast-in"));
@@ -887,8 +959,11 @@
     return n;
   }
 
+  // Micro Center prints "$15,299.99"; every price string in Jackdaw matches it.
+  // Note this is display only — the target input at the top of the panel keeps
+  // toFixed, because a comma in a `type=number` field is not a valid value.
   function fmtPrice(p) {
-    return "$" + p.toFixed(2);
+    return "$" + p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   function fmtDate(ms) {
@@ -920,7 +995,10 @@
 
     if (history && history.points.length) {
       const stats = computeStats(history.points);
-      const atLow = product.price <= stats.lowest;
+      // The sparkle and the "all-time low" chip are the product's loudest
+      // claim, so they wait for corroboration. A provisional low still shows
+      // as a number — it just doesn't get celebrated.
+      const atLow = product.price <= stats.lowest && !stats.provisional;
       const sightings = history.points.reduce((n, p) => n + (p.reportCount || 1), 0);
 
       const s = el("div", "mk-stats");
@@ -929,8 +1007,12 @@
       if (atLow) current.classList.add("jd-at-low");
       s.append(
         current,
-        stat("Lowest seen", stats.lowest, fmtDate(stats.lowestAt), animateNums),
-        stat("Highest seen", stats.highest, fmtDate(stats.highestAt), animateNums),
+        // "seen once" rather than a date, when that is the whole of the
+        // evidence — the date would read as a record established on that day.
+        stat("Lowest seen", stats.lowest,
+          stats.provisional ? "seen once" : fmtDate(stats.lowestAt), animateNums),
+        stat("Highest seen", stats.highest,
+          stats.provisional ? "seen once" : fmtDate(stats.highestAt), animateNums),
       );
       leftCol.append(s);
 
@@ -974,6 +1056,19 @@
         const cheapest = obPoints.reduce((a, b) => (a.openBoxPrice <= b.openBoxPrice ? a : b));
         chips.append(el("span", "jd-chip jd-chip-ob", `Open-box seen from ${fmtPrice(cheapest.openBoxPrice)} (${fmtDate(cheapest.lastSeenAt)})`));
       }
+      // What was on the shelf at this store the last time anyone's screen
+      // showed it — the count comes off a catalog card, so it is a sighting
+      // with an age, never a live inventory read. "Last seen" is the whole
+      // wording: Micro Center's own page is the authority on what is there
+      // now, and this says what somebody saw and when, which is a different
+      // and honestly answerable question. "25+" stays a floor, not a count.
+      if (history.shelf && history.shelf.inStock && history.shelf.units != null) {
+        const where = storeNameFor(history.shelf.storeNum) || `store #${history.shelf.storeNum}`;
+        const n = history.shelf.units + (history.shelf.atLeast ? "+" : "");
+        chips.append(
+          el("span", "jd-chip", `Last seen: ${n} at ${where} · ${fmtRel(history.shelf.observedAt)}`),
+        );
+      }
       leftCol.append(chips);
 
       leftCol.append(
@@ -983,7 +1078,7 @@
           height: chartHeight,
           onHeightChange: (h) => {
             chartHeight = h;
-            chrome.storage.local.set({ jdChartH: h });
+            store.set({ jdChartH: h });
           },
         }),
       );
@@ -1052,13 +1147,43 @@
     requestAnimationFrame(tick);
   }
 
+  // Mirrors the corroboration rule in convex/products.ts. It has to live here
+  // too because this panel computes its own stats from `points` rather than
+  // reading the ones the query returns — and this is the copy that decides
+  // whether the all-time-low sparkle fires, which is the loudest claim the
+  // product makes about a number.
+  //
+  // A price seen once, on one grid card, is the thinnest evidence we hold: the
+  // card also shows a member price, a bundle total and a $x/mo financing
+  // figure, and the write-path clamp admits anything down to 0.2x. So it never
+  // NAMES the record — it still plots, it just waits to be confirmed by a
+  // second sighting (reportCount > 1) or a product-page reading. When there is
+  // nothing corroborated at all, its own evidence stands and `provisional`
+  // marks it, because reporting no low for a product we have genuinely seen
+  // would be its own kind of wrong.
   function computeStats(points) {
     let lowest = Infinity, highest = -Infinity, lowestAt = 0, highestAt = 0;
+    let anyLowest = Infinity, anyHighest = -Infinity, anyLowestAt = 0, anyHighestAt = 0;
     for (const p of points) {
-      if (p.price < lowest) { lowest = p.price; lowestAt = p.firstSeenAt; }
-      if (p.price > highest) { highest = p.price; highestAt = p.firstSeenAt; }
+      if (p.price < anyLowest) { anyLowest = p.price; anyLowestAt = p.firstSeenAt; }
+      if (p.price > anyHighest) { anyHighest = p.price; anyHighestAt = p.firstSeenAt; }
+      // `source` is absent on responses from a backend older than the
+      // corroboration change; treating absent as "not catalog" keeps those
+      // deployments behaving exactly as they did instead of silently
+      // discarding every point.
+      if (p.reportCount > 1 || p.source !== "catalog") {
+        if (p.price < lowest) { lowest = p.price; lowestAt = p.firstSeenAt; }
+        if (p.price > highest) { highest = p.price; highestAt = p.firstSeenAt; }
+      }
     }
-    return { lowest, highest, lowestAt, highestAt };
+    const provisional = lowest === Infinity && anyLowest !== Infinity;
+    if (provisional) {
+      return {
+        lowest: anyLowest, highest: anyHighest,
+        lowestAt: anyLowestAt, highestAt: anyHighestAt, provisional: true,
+      };
+    }
+    return { lowest, highest, lowestAt, highestAt, provisional: false };
   }
 
   // Compose chart + verdict into a PNG; copy to clipboard, download as fallback.
@@ -1318,6 +1443,7 @@
       case "NAME_CLAIMED": return "Someone has claimed that name — pick another";
       case "NAME_RESERVED": return "That name is reserved — pick another";
       case "NEED_HANDLE": return "Pick a handle first";
+      case "ORPHANED": return "Jackdaw updated — refresh the page to reconnect";
       default: return fallback;
     }
   }
@@ -1359,7 +1485,7 @@
       nameInput = el("input", "mk-input");
       nameInput.placeholder = "Display name";
       nameInput.maxLength = 40;
-      chrome.storage.local.get("displayName").then((v) => { if (v.displayName) nameInput.value = v.displayName; });
+      store.get("displayName").then((v) => { if (v.displayName) nameInput.value = v.displayName; });
       form.append(nameInput, errEl);
     }
 
@@ -1409,7 +1535,7 @@
         }
 
         const displayName = nameInput ? nameInput.value.trim() : account.handle;
-        if (nameInput) await chrome.storage.local.set({ displayName });
+        if (nameInput) await store.set({ displayName });
         const args = { type: "comments:add", productId: product.productId, displayName, body };
         if (parentId) args.parentId = parentId;
         const res = await send(args);

@@ -20,6 +20,23 @@
       "matches": ["https://www.microcenter.com/product/*"],
       "js": ["chart.js", "content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.microcenter.com/search/*",
+        "https://www.microcenter.com/category/*"
+      ],
+      "js": ["catalog-world.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.microcenter.com/search/*",
+        "https://www.microcenter.com/category/*"
+      ],
+      "js": ["catalog.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

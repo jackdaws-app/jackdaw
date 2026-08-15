@@ -8,12 +8,27 @@
   --jd-muted: #6b7280;
   --jd-hairline: #e6e4e0;
   --jd-paper: #fcfbf9;
+  /* Amber, not red: an old reading is not an error, it's a reading nobody has
+     refreshed. Measured against the card background in both themes. */
+  --jd-stale: #8a5a09;
+  /* The contributing notice's green tint costs --jd-muted about 0.4 of its
+     contrast ratio (4.83 on white → 4.43 on the tint, under AA at 11px). This
+     is that same grey re-measured against the tint, not a new colour: 4.9:1. */
+  --jd-notice-text: #646b78;
+  /* The header sits a shade off --jd-paper in both themes, and the sliders
+     icon's knobs are cut out of the line behind them — so they need the
+     header's own fill, not the body's. */
+  --jd-header: #fff;
 }
 body.dark {
   --jd-ink: #e6eaf2;
   --jd-muted: #8b94a8;
   --jd-hairline: #253049;
   --jd-paper: #0f1726;
+  --jd-stale: #e0a83c;
+  /* Dark's tint is subtractive, so the plain muted already clears AA (5.3:1). */
+  --jd-notice-text: var(--jd-muted);
+  --jd-header: #131e30;
 }
 
 * { box-sizing: border-box; }
@@ -155,8 +170,10 @@ body.dark .pop-wordmark { color: #cdd6e4; }
 .pop-icon:hover { color: var(--jd-ink); background: rgba(22, 35, 58, 0.06); }
 body.dark .pop-icon:hover { background: rgba(203, 213, 225, 0.08); }
 .pop-icon:active { transform: scale(0.9); }
-/* idle: the moon tilts once every 16s */
-.pop-icon svg { animation: pop-tilt 16s var(--ease-in-out) 4s infinite; }
+.pop-tools { display: flex; align-items: center; gap: 2px; }
+/* idle: the moon tilts once every 16s. Scoped to the theme button by id —
+   never two idle animations at once, so the sliders beside it stay still. */
+#theme.pop-icon svg { animation: pop-tilt 16s var(--ease-in-out) 4s infinite; }
 @keyframes pop-tilt {
   0%, 7%, 100% { transform: rotate(0deg); }
   3.5% { transform: rotate(-16deg); }
@@ -168,10 +185,17 @@ body.dark .pop-icon:hover { background: rgba(203, 213, 225, 0.08); }
 .pop-body::-webkit-scrollbar-track { background: transparent; }
 .pop-body::-webkit-scrollbar-thumb { background: rgba(120, 130, 145, 0.3); border-radius: 8px; }
 
+/* A <button> does not inherit `color` — the UA sets `buttontext` (black), and
+   the reset above only covers font-family. Body ink therefore never reached the
+   card, so the name and price rendered black on #16213a in dark mode: 1.31:1,
+   on the two most prominent strings in the popup. Light mode hid it, because
+   black on white looks deliberate. Set it here, on the button itself, so the
+   whole subtree inherits one theme-aware token. */
 .pop-card {
   display: block;
   width: 100%;
   text-align: left;
+  color: var(--jd-ink);
   border: 1px solid var(--jd-hairline);
   border-radius: 10px;
   background: #fff;
@@ -207,7 +231,13 @@ body.dark .pop-card.met { background: linear-gradient(180deg, #16213a, #14283a);
   overflow: hidden;
 }
 .pop-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.pop-priceline { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .pop-price { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+/* How old the number beside it is. Quiet by default — a fresh sighting should
+   not compete with the price — and only raised in tone once the reading is old
+   enough that watches.ts would stop trusting it (48h). */
+.pop-age { font-size: 10px; color: var(--jd-muted); font-variant-numeric: tabular-nums; }
+.pop-age.stale { color: var(--jd-stale); font-weight: 600; }
 .pop-card.met .pop-price { color: var(--jd-green-deep); }
 body.dark .pop-card.met .pop-price { color: #4ade80; }
 .pop-sub { font-size: 10.5px; color: var(--jd-muted); font-variant-numeric: tabular-nums; }
@@ -526,8 +556,141 @@ body.dark .pop-done-mark { color: #4ade80; }
 @keyframes pop-done-in { from { transform: scale(0.7); opacity: 0; } }
 @keyframes pop-tick { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
 
+/* ---------- Contributing: the one-time notice, and the switch behind it ----------
+   The notice is not a watch row and must not look like one: no hover lift, no
+   pointer, a recessed fill instead of the cards' raised white. */
+.pop-notice {
+  display: grid;
+  grid-template-rows: 1fr; /* collapses to 0fr on dismissal — see pop-notice-out */
+}
+.pop-notice-inner {
+  overflow: hidden;
+  min-height: 0;
+  margin-bottom: 8px;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 10px;
+  background: rgba(22, 163, 74, 0.05);
+  padding: 10px 11px;
+  animation: pop-in 0.28s var(--ease-out) backwards;
+}
+body.dark .pop-notice-inner { background: rgba(34, 165, 89, 0.09); border-color: #24413a; }
+.pop-notice-title { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+.pop-notice-body { font-size: 11px; line-height: 1.5; color: var(--jd-notice-text); }
+.pop-notice-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 9px; }
+.pop-notice-btn {
+  border: 1px solid var(--jd-hairline);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--jd-notice-text);
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-out), background-color 0.15s ease, color 0.15s ease;
+}
+.pop-notice-btn:active { transform: scale(0.96); }
+/* One fill in both themes. Green light enough to read as a *brightening* on
+   hover drops white text to ~3.3:1, so the green pill darkens instead —
+   5.5:1 at rest, 6.6:1 hovered, in light and dark alike. */
+.pop-notice-btn.primary { border-color: transparent; background: var(--jd-green-deep); color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .pop-notice-btn:hover { background: rgba(120, 130, 145, 0.12); color: var(--jd-ink); }
+  .pop-notice-btn.primary:hover { background: #0b6b30; color: #fff; }
+}
+/* Dismissal closes the space it occupied, so the watch list rises into it —
+   the neighbours react rather than the card just fading in place. The margin
+   travels with it: it lives on the clipped inner, so a 0fr track takes it too. */
+.pop-notice.going { animation: pop-notice-out 0.3s var(--ease-in-out) forwards; }
+.pop-notice.going .pop-notice-inner { animation: pop-notice-fade 0.2s ease forwards; }
+@keyframes pop-notice-out {
+  from { grid-template-rows: 1fr; }
+  to { grid-template-rows: 0fr; }
+}
+@keyframes pop-notice-fade { to { opacity: 0; } }
+
+.pop-set-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0 12px;
+  cursor: pointer;
+}
+/* Second section of the settings sheet. The rule above the head is what makes
+   "Showing" read as a different question from "Contributing" rather than a
+   sub-heading of it — they are separate consents and the sheet has to look it. */
+.pop-set-head { margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--jd-hairline); }
+.pop-set-text { flex: 1 1 auto; min-width: 0; }
+.pop-set-label { font-size: 12.5px; font-weight: 600; color: var(--jd-ink); }
+.pop-set-hint { font-size: 11px; line-height: 1.45; color: var(--jd-muted); margin-top: 1px; }
+/* Real checkbox, kept in the layout so it stays focusable; the track is
+   painted over it. Same 30×18 / 14px geometry as the panel's switches. */
+.pop-set-input {
+  position: absolute;
+  right: 0;
+  top: 12px;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+/* The OFF track is a 14%-black wash — 1.32:1 on the sheet card, measured, which
+   is the platform norm (iOS and Material both sit near 1.1) and still leaves the
+   control barely findable: an off switch has to be visible as a switch, or the
+   setting reads as absent rather than off. So the boundary is drawn as an inset
+   ring at 3.32:1 instead of darkening the fill, which is Material 3's answer and
+   keeps the familiar light-off-track look. The CHECKED track needs none — green
+   already scores 3.19:1 here — and the ring composes with the focus ring through
+   two custom properties, so no state has to restate the other's shadow. */
+.pop-set-track {
+  --ring: inset 0 0 0 1px #868b92;
+  --focus: 0 0 0 0 transparent;
+  flex: 0 0 auto;
+  position: relative;
+  width: 30px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 9px;
+  background: rgba(28, 30, 33, 0.14);
+  box-shadow: var(--ring), var(--focus);
+  transition: background 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+  pointer-events: none;
+}
+body.dark .pop-set-track { background: rgba(140, 152, 175, 0.22); --ring: inset 0 0 0 1px #667492; }
+.pop-set-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s var(--ease-out);
+}
+.pop-set-input:checked ~ .pop-set-track { background: var(--jd-green); --ring: inset 0 0 0 0 transparent; }
+body.dark .pop-set-input:checked ~ .pop-set-track { background: #22a559; --ring: inset 0 0 0 0 transparent; }
+.pop-set-input:checked ~ .pop-set-track .pop-set-thumb { transform: translateX(12px); }
+.pop-set-input:focus-visible ~ .pop-set-track { --focus: 0 0 0 2px rgba(22, 163, 74, 0.45); }
+body.dark .pop-set-input:focus-visible ~ .pop-set-track { --focus: 0 0 0 2px rgba(74, 222, 128, 0.45); }
+@media (hover: hover) and (pointer: fine) {
+  .pop-set-row:hover .pop-set-track { background: rgba(28, 30, 33, 0.22); }
+  body.dark .pop-set-row:hover .pop-set-track { background: rgba(140, 152, 175, 0.34); }
+  .pop-set-row:hover .pop-set-input:checked ~ .pop-set-track { background: var(--jd-green-deep); }
+  body.dark .pop-set-row:hover .pop-set-input:checked ~ .pop-set-track { background: #1c8f4b; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pop-live, .pop-live::after, .pop-wordmark i, .pop-icon svg, .pop-empty-bird, .pop-sk-row, .pop-link-arrow { animation: none; }
+  /* The dismissal must still *finish*: popup.js removes the card on
+     animationend and falls back to an immediate remove only when the computed
+     animation-name is "none". Keep a name, drop the movement. */
+  .pop-notice-inner { animation: none; }
+  .pop-notice.going { animation: pop-notice-out 0.01s linear forwards; }
+  .pop-notice.going .pop-notice-inner { animation: pop-notice-fade 0.01s linear forwards; }
+  .pop-set-thumb, .pop-set-track { transition: none; }
+  .pop-notice-btn:active { transform: none; }
   .pop-sheet-card, .pop-scrim, .pop-sheet.closing .pop-sheet-card, .pop-sheet.closing .pop-scrim { animation: none; transform: none; opacity: 1; }
   .pop-step { transition: none; }
   .pop-err, .pop-done-mark, .pop-done-mark svg path { animation: none; }

@@ -209,6 +209,17 @@ async function authState() {
   }
 }
 
+// The contribution switch, read at the one place every observation has to pass
+// through. The popup's label says "Share what I browse", so it has to govern
+// BOTH sighting paths — gating only the catalog collector would leave product
+// pages reporting under a switch that reads as off. Absent means on; only an
+// explicit false opts out, so an install that predates the switch keeps
+// contributing exactly as it did.
+async function contributing() {
+  const { jdCatalog } = await chrome.storage.local.get("jdCatalog");
+  return jdCatalog !== false;
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     // client-side signal, no backend round trip of its own
@@ -276,9 +287,37 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return { ok: true };
       }
       case "report":
+        if (!(await contributing())) return { ok: false, reason: "CONTRIBUTION_OFF" };
         return convexMutation("observations:report", { deviceId, ...msg.data });
+      // One grid page the shopper was already looking at. Nothing was fetched
+      // to produce it — see the header of catalog.js. Refused in band by the
+      // backend, and the caller discards the result either way.
+      case "catalog:batch":
+        if (!(await contributing())) return { ok: false, reason: "CONTRIBUTION_OFF" };
+        return convexMutation("observations:reportBatch", {
+          deviceId,
+          storeNum: msg.storeNum,
+          items: msg.items,
+        });
+      // The read half of the catalog surface: what have shoppers seen these
+      // products cost? Deliberately NOT behind `contributing()` — that switch
+      // governs what leaves this browser as an OBSERVATION, and withholding
+      // price history from somebody who opted out of contributing would make it
+      // a toll rather than a privacy control. Badges have their own switch.
+      //
+      // It carries product ids and nothing else. Not the URL, not the search
+      // terms, not the filters — the same rule the batch write follows, for the
+      // same reason (PRIVACY.md §3).
+      case "catalog:summaries":
+        return convexQuery("products:summaries", { productIds: msg.productIds });
       case "history":
-        return convexQuery("products:history", { productId: msg.productId });
+        return convexQuery("products:history", {
+          productId: msg.productId,
+          // Prices are national; shelves are not. The chart keeps every
+          // store's points, and only the shelf snapshot is scoped to wherever
+          // the shopper is browsing.
+          ...(msg.shelfStore ? { shelfStore: msg.shelfStore } : {}),
+        });
       case "comments:list":
         return convexQuery("comments:list", { productId: msg.productId, deviceId });
       // The session decides the author: signed in with a claimed handle, the
@@ -348,7 +387,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .then((result) => sendResponse({ result }))
     .catch((e) => {
       // a failed data call is exactly what telemetry exists to surface
-      const map = { report: "report_failed", history: "history_failed", "comments:list": "comments_failed" };
+      const map = {
+        report: "report_failed",
+        // Same counter as the single report: both are "a sighting didn't land",
+        // and splitting them would add a name to the fixed telemetry list for a
+        // distinction nothing acts on.
+        "catalog:batch": "report_failed",
+        history: "history_failed",
+        // Same counter as the product-page lookup: both are "we couldn't tell
+        // the shopper what this has cost", which is the one thing the name
+        // means. A separate name would add an entry to the fixed telemetry list
+        // for a distinction nothing acts on.
+        "catalog:summaries": "history_failed",
+        "comments:list": "comments_failed",
+      };
       if (map[msg.type]) recordEvent(map[msg.type]);
       sendResponse({ error: String(e && e.message ? e.message : e), code: e && e.code });
     });
@@ -356,6 +408,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 // ---------- Alerts ----------
+
+// Micro Center prints "$15,299.99"; every price string in Jackdaw matches it.
+const money = (p) =>
+  "$" + p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
  * What a firing watch says, per reason.
@@ -376,11 +432,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 async function notificationFor(d) {
   const where = await storeLabel(d.storeNum);
   const seen = ageLabel(d.observedAt);
-  const price = `$${d.currentPrice.toFixed(2)}`;
+  const price = money(d.currentPrice);
 
   if (d.reason === "openBox" && d.openBoxPrice !== undefined) {
     return {
-      title: `Open box at ${where}: $${d.openBoxPrice.toFixed(2)}`,
+      title: `Open box at ${where}: ${money(d.openBoxPrice)}`,
       message: `${d.name}\nNew ${price} · one unit seen ${seen} — it may already be gone`,
     };
   }
@@ -392,7 +448,7 @@ async function notificationFor(d) {
   }
   return {
     title: `Price drop: ${price}`,
-    message: `${d.name}\nYour target $${d.priceAtWatch.toFixed(2)} · seen at ${where} ${seen}`,
+    message: `${d.name}\nYour target ${money(d.priceAtWatch)} · seen at ${where} ${seen}`,
   };
 }
 

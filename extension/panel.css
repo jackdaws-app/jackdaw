@@ -412,7 +412,15 @@
   opacity: 0;
   cursor: inherit;
 }
+/* Inset boundary ring on the OFF track — see the note on .pop-set-track in
+   popup.css. The fill alone measures 1.32:1 on the card, which makes an off
+   switch read as no switch. 3.43:1 here (the panel's card is pure white, the
+   popup's is #fcfbf9, so the same ink scores marginally higher). The disabled
+   row fades the whole track, ring included, which is right: 1.4.11 exempts
+   inactive controls, and a disabled switch SHOULD recede. */
 .jd-switch-track {
+  --ring: inset 0 0 0 1px #868b92;
+  --focus: 0 0 0 0 transparent;
   flex: 0 0 auto;
   position: relative;
   width: 30px;
@@ -420,7 +428,8 @@
   margin-top: 2px;
   border-radius: 9px;
   background: rgba(28, 30, 33, 0.14);
-  transition: background 0.2s var(--ease-out);
+  box-shadow: var(--ring), var(--focus);
+  transition: background 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
   pointer-events: none;
 }
 .jd-switch-thumb {
@@ -434,11 +443,11 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
   transition: transform 0.2s var(--ease-out);
 }
-.jd-switch-input:checked ~ .jd-switch-track { background: var(--jd-green); }
+.jd-switch-input:checked ~ .jd-switch-track { background: var(--jd-green); --ring: inset 0 0 0 0 transparent; }
 .jd-switch-input:checked ~ .jd-switch-track .jd-switch-thumb { transform: translateX(12px); }
 .jd-switch-row:has(.jd-switch-input:checked) .jd-switch-icon { color: var(--jd-green-deep); }
 .jd-switch-input:focus-visible ~ .jd-switch-track {
-  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.45);
+  --focus: 0 0 0 2px rgba(22, 163, 74, 0.45);
 }
 @media (hover: hover) and (pointer: fine) {
   .jd-switch-row:not(.jd-switch-off):hover .jd-switch-icon { color: var(--jd-ink); }
@@ -1099,12 +1108,12 @@
 #jackdaw-drawer.jd-dark .jd-switch-off .jd-switch-label { color: #8b94a8; }
 #jackdaw-drawer.jd-dark .jd-switch-hint { color: #7c8598; }
 #jackdaw-drawer.jd-dark .jd-switch-icon { color: #7c8598; }
-#jackdaw-drawer.jd-dark .jd-switch-track { background: rgba(140, 152, 175, 0.22); }
+#jackdaw-drawer.jd-dark .jd-switch-track { background: rgba(140, 152, 175, 0.22); --ring: inset 0 0 0 1px #667492; }
 #jackdaw-drawer.jd-dark .jd-switch-thumb { background: #cdd6e4; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
-#jackdaw-drawer.jd-dark .jd-switch-input:checked ~ .jd-switch-track { background: #22a559; }
+#jackdaw-drawer.jd-dark .jd-switch-input:checked ~ .jd-switch-track { background: #22a559; --ring: inset 0 0 0 0 transparent; }
 #jackdaw-drawer.jd-dark .jd-switch-input:checked ~ .jd-switch-track .jd-switch-thumb { background: #fff; }
 #jackdaw-drawer.jd-dark .jd-switch-row:has(.jd-switch-input:checked) .jd-switch-icon { color: #4ade80; }
-#jackdaw-drawer.jd-dark .jd-switch-input:focus-visible ~ .jd-switch-track { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45); }
+#jackdaw-drawer.jd-dark .jd-switch-input:focus-visible ~ .jd-switch-track { --focus: 0 0 0 2px rgba(74, 222, 128, 0.45); }
 @media (hover: hover) and (pointer: fine) {
   #jackdaw-drawer.jd-dark .jd-switch-row:not(.jd-switch-off):hover .jd-switch-icon { color: #e6eaf2; }
   #jackdaw-drawer.jd-dark .jd-switch-row:not(.jd-switch-off):hover .jd-switch-track { background: rgba(140, 152, 175, 0.34); }

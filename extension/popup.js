@@ -8,6 +8,7 @@
   const ICONS = {
     sun: `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
     moon: `<svg viewBox="0 0 16 16" fill="none"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
+    sliders: `<svg viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5h11M2.5 11.5h11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="4.5" r="1.9" fill="var(--jd-header)" stroke="currentColor" stroke-width="1.3"/><circle cx="10.5" cy="11.5" r="1.9" fill="var(--jd-header)" stroke="currentColor" stroke-width="1.3"/></svg>`,
   };
 
   // The overhead silhouette, reused from the arrival — one bird, one brand.
@@ -19,7 +20,28 @@
     `<path d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"/>` +
     `</svg>`;
 
-  const fmt = (p) => "$" + p.toFixed(2);
+  // Micro Center prints "$15,299.99"; every price string in Jackdaw matches it.
+  const fmt = (p) =>
+    "$" + p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // ---------- How old the number is ----------
+  // Every price here came out of the database, which means it came from the
+  // last time a person happened to look at that product. There is no feed. A
+  // watchlist that renders a three-week-old price identically to a five-minute-
+  // old one isn't neutral, it's a claim — so the age sits beside the number and
+  // the wording says "seen", not "is".
+  //
+  // 48h is the same threshold watches.ts uses to stop treating a store signal
+  // as evidence at all. One number, one meaning, on both sides.
+  const STALE_MS = 48 * 3600_000;
+  const ago = (ms) => {
+    const d = Date.now() - ms;
+    if (d < 90_000) return "just now";
+    if (d < 3_600_000) return Math.round(d / 60_000) + "m ago";
+    if (d < 86_400_000) return Math.round(d / 3_600_000) + "h ago";
+    if (d < 7 * 86_400_000) return Math.round(d / 86_400_000) + "d ago";
+    return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -126,7 +148,18 @@
 
       const row = el("div", "pop-row");
       const left = el("div");
-      left.append(el("div", "pop-price", r.currentPrice > 0 ? fmt(r.currentPrice) : "—"));
+      // The price and its age are one statement, on one baseline: "$169.99,
+      // seen 18m ago". Split across two lines the age reads as a footnote to
+      // the price; on the same line it's part of it.
+      const priceLine = el("div", "pop-priceline");
+      priceLine.append(el("span", "pop-price", r.currentPrice > 0 ? fmt(r.currentPrice) : "—"));
+      if (r.currentPrice > 0 && r.observedAt) {
+        const stale = Date.now() - r.observedAt > STALE_MS;
+        priceLine.append(
+          el("span", "pop-age" + (stale ? " stale" : ""), "seen " + ago(r.observedAt)),
+        );
+      }
+      left.append(priceLine);
       left.append(el("div", "pop-sub", subFor(r)));
       row.append(left, sparkline(r.trend));
       card.append(row);
@@ -181,14 +214,177 @@
     // "store #045" and then swaps to "Westmont" is a visible correction.
     return Promise.all([
       send({ type: "watch:dashboard" }),
-      chrome.storage.local.get(STORE_NAMES_KEY),
+      chrome.storage.local.get([STORE_NAMES_KEY, CATALOG_KEY, NOTICE_KEY, BADGES_KEY]),
     ]).then(([res, stored]) => {
       storeNames = stored[STORE_NAMES_KEY] || {};
+      catalogOn = stored[CATALOG_KEY] !== false;
+      badgesOn = stored[BADGES_KEY] !== false;
       if (res.error) return renderError();
       const rows = Array.isArray(res.result) ? res.result : [];
-      if (!rows.length) return renderEmpty();
-      renderList(rows);
+      if (!rows.length) renderEmpty();
+      else renderList(rows);
+      if (!stored[NOTICE_KEY]) bodyEl.prepend(noticeCard());
     });
+  }
+
+  // ---------- Contributing ----------
+  // Jackdaw's history is other people's screens. Somebody browsing a category
+  // page already has 24 current prices in front of them, and reading what is
+  // there costs Micro Center nothing — no page is opened, nothing is fetched,
+  // the byte count of the visit is identical either way.
+  //
+  // That is a good deal only if the person knows about it, which is why the
+  // notice is shown once on its own and not buried in a settings screen, and
+  // why turning it off is one click from where the notice appears. Absent
+  // means on; only an explicit `false` is off.
+
+  const CATALOG_KEY = "jdCatalog";
+  const NOTICE_KEY = "jdCatalogNotice";
+  let catalogOn = true;
+
+  function setCatalog(on) {
+    catalogOn = on;
+    return chrome.storage.local.set({ [CATALOG_KEY]: on });
+  }
+
+  // The other half of the same surface, and a separate consent: this one
+  // governs what Jackdaw DRAWS on a category page, not what it sends. They are
+  // deliberately not one switch — somebody who wants the history without
+  // contributing to it should get it, and somebody who is happy to contribute
+  // may still want Micro Center's pages left alone. Absent means on.
+  const BADGES_KEY = "jdBadges";
+  let badgesOn = true;
+
+  function setBadges(on) {
+    badgesOn = on;
+    return chrome.storage.local.set({ [BADGES_KEY]: on });
+  }
+
+  function dismissNotice() {
+    return chrome.storage.local.set({ [NOTICE_KEY]: true });
+  }
+
+  /** Shown once. Says what happens, in the words a person would use. */
+  function noticeCard() {
+    // Two elements, not one: the outer is a grid that collapses its own row on
+    // dismissal (so the watch list rises into the gap), the inner is the card.
+    const card = el("div", "pop-notice");
+    const inner = el("div", "pop-notice-inner");
+    card.append(inner);
+    inner.append(
+      el("div", "pop-notice-title", "You're helping build the price history"),
+      el(
+        "div",
+        "pop-notice-body",
+        "As you browse Micro Center, Jackdaw reads the prices already on your " +
+          "screen and adds them to the shared history — anonymously. It never " +
+          "opens pages or loads products on its own.",
+      ),
+    );
+    const actions = el("div", "pop-notice-actions");
+    const off = el("button", "pop-notice-btn", "Turn off");
+    const ok = el("button", "pop-notice-btn primary", "Got it");
+    const close = () => {
+      dismissNotice();
+      card.classList.add("going");
+      // The inner's own fade ends first and animationend BUBBLES — without the
+      // target check it would remove the card mid-collapse.
+      const done = (e) => {
+        if (e && e.target !== card) return;
+        card.removeEventListener("animationend", done);
+        card.remove();
+      };
+      if (getComputedStyle(card).animationName === "none") done();
+      else card.addEventListener("animationend", done);
+    };
+    off.addEventListener("click", () => {
+      setCatalog(false);
+      close();
+    });
+    ok.addEventListener("click", close);
+    actions.append(off, ok);
+    // Into the inner card — the outer is a one-row grid, and a second child
+    // would take an implicit row that the collapse can't close.
+    inner.append(actions);
+    return card;
+  }
+
+  /** One switch row: label, live hint, and the painted track over a real input. */
+  function settingRow({ on, label, hint, onChange }) {
+    const row = el("label", "pop-set-row");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "pop-set-input";
+    input.checked = on;
+    const track = el("span", "pop-set-track");
+    track.append(el("span", "pop-set-thumb"));
+
+    const text = el("div", "pop-set-text");
+    const hintEl = el("div", "pop-set-hint");
+    const paint = () => {
+      hintEl.textContent = hint(input.checked);
+    };
+    paint();
+    text.append(el("div", "pop-set-label", label), hintEl);
+
+    input.addEventListener("change", async () => {
+      await onChange(input.checked);
+      paint();
+    });
+
+    row.append(text, input, track);
+    return row;
+  }
+
+  /** The permanent controls, behind the header's settings button. */
+  function renderSettings() {
+    sheetBody.textContent = "";
+    sheetBody.append(
+      sheetHead(
+        "Contributing",
+        "Jackdaw's price history is built from what people already have on " +
+          "screen. Nothing is requested on your behalf — no extra pages, no " +
+          "products opened in the background, no images.",
+      ),
+      settingRow({
+        on: catalogOn,
+        label: "Share what I browse",
+        hint: (on) =>
+          on
+            ? "Prices and stock from the Micro Center pages you visit, with no account and nothing that identifies you."
+            : "Jackdaw still shows you the history. You just won't be adding to it.",
+        onChange: async (on) => {
+          await setCatalog(on);
+          // Someone who found this screen has seen the disclosure by definition.
+          await dismissNotice();
+        },
+      }),
+    );
+
+    // Second head, built by hand rather than through sheetHead(): that one
+    // stamps the id the sheet is labelled by, and a page cannot have two.
+    sheetBody.append(
+      el("div", "pop-sheet-title pop-set-head", "Showing"),
+      el(
+        "div",
+        "pop-sheet-body",
+        "What Jackdaw draws on Micro Center's own pages. Separate from the " +
+          "switch above — this one is about reading, not contributing.",
+      ),
+      settingRow({
+        on: badgesOn,
+        label: "Price range on category pages",
+        hint: (on) =>
+          on
+            ? "A small range under each card, showing where today's price sits. Looking them up sends the products on the page — never what you searched for."
+            : "Category and search pages stay exactly as Micro Center draws them.",
+        onChange: setBadges,
+      }),
+    );
+
+    const done = el("button", "pop-btn", "Done");
+    done.addEventListener("click", closeSheet);
+    sheetBody.append(done);
   }
 
   // ---------- Account ----------
@@ -239,7 +435,13 @@
 
   // ---------- Sheet ----------
 
-  function openSheet(render) {
+  // Whichever control opened the sheet gets the focus back when it closes —
+  // two surfaces open this now, and returning focus to the footer pill after
+  // the header button opened it loses the user's place in the tab order.
+  let sheetOpener = acctBtn;
+
+  function openSheet(render, opener) {
+    sheetOpener = opener || acctBtn;
     sheetEl.hidden = false;
     sheetEl.classList.remove("closing");
     render();
@@ -250,7 +452,7 @@
     const done = () => {
       sheetEl.hidden = true;
       sheetBody.textContent = "";
-      acctBtn.focus();
+      if (sheetOpener && !sheetOpener.hidden) sheetOpener.focus();
     };
     // The class drives an exit animation; under reduced motion there isn't
     // one to wait for, so don't hang on an animationend that never fires.
@@ -486,7 +688,13 @@
   }
 
   acctBtn.addEventListener("click", () => {
-    openSheet(auth.signedIn ? renderAccount : renderSignIn);
+    openSheet(auth.signedIn ? renderAccount : renderSignIn, acctBtn);
+  });
+
+  const settingsBtn = document.getElementById("settings");
+  settingsBtn.innerHTML = ICONS.sliders;
+  settingsBtn.addEventListener("click", () => {
+    openSheet(renderSettings, settingsBtn);
   });
 
   loadList();
