@@ -1,48 +1,130 @@
 # Contributing to Jackdaw
 
-Thanks for wanting to help! Jackdaw is a community price-tracking Chrome extension, and it only works because people like you spot bugs, add store support, and improve the data. All kinds of contributions are welcome — code, bug reports, docs fixes, and ideas.
+Jackdaw is maintained by one person (David) and is likely to stay that way. That shapes
+what's realistic here, so this document is direct about it rather than promising a review
+pipeline that doesn't exist.
 
-## How to contribute
+**Bug reports and observations are genuinely valuable and always welcome.** Pull requests
+are accepted selectively, and the section below is honest about which ones.
 
-### Issues
+## What helps most
 
-- **Bugs**: open an issue with the store URL, what you expected, what actually happened, and (if relevant) a screenshot. Extension version and browser version help a lot.
-- **Feature requests**: describe the problem you're trying to solve, not just the solution — it helps us find the simplest fix.
-- Before opening a new issue, do a quick search to see if it already exists.
+- **Bug reports.** The product page URL, what you expected, what happened, extension and
+  browser versions, and a screenshot if it's visual. Reports of a price or stock reading
+  that looks wrong are especially useful — they're hard to find from the inside.
+- **Reports that a page stopped parsing.** Micro Center changes its markup periodically.
+  If the panel goes blank or a figure disappears, that's the highest-priority class of bug
+  in the project.
+- **Testing on setups I don't have** — different stores, different Chrome versions, other
+  Chromium browsers.
+- **Documentation fixes.** Anything inaccurate, unclear, or out of date.
 
-### Pull requests
+None of these require signing anything.
 
-1. Fork the repo and create a branch from `main`.
-2. Make your change, keeping it focused — one fix or feature per PR.
-3. Test it locally (see the [README](README.md) for how to load the extension unpacked and run the Convex backend).
-4. Open a PR with a short description of what changed and why.
+## Pull requests
 
-Small PRs get reviewed faster. If you're planning something big, open an issue first so we can talk it through before you invest the time.
+**Open an issue first and wait for a reply.** This isn't bureaucracy — it's the only way to
+avoid someone spending an evening on a patch that was never going to be merged. An
+unsolicited PR may sit for a long time or be closed without a detailed review, and that's
+a worse outcome for you than a two-line issue would have been.
 
-### Code style
+**Scope, plainly:**
 
-- **Extension**: plain, no-build vanilla JavaScript. No bundlers, no transpilers, no frameworks — what you write is what ships. Keep it that way: prefer small, readable functions over clever abstractions, and don't add dependencies without discussing it first.
-- **Backend**: [Convex](https://convex.dev) functions live in the `convex/` directory. Follow the existing patterns for queries, mutations, and schema.
-- Match the style of the surrounding code. When in doubt, boring and consistent beats novel.
+| Usually welcome | Maintainer-only |
+|---|---|
+| Bug fixes with a clear reproduction | Design, layout, motion, and copy |
+| Parser repairs when the site's markup changes | Anything touching data collection |
+| Documentation corrections | The metrics, counters, and admin surfaces |
+| Compatibility fixes | Schema changes and new backend features |
 
-### Running the project
+The second column isn't gatekeeping for its own sake. Data collection carries legal
+constraints that aren't obvious from the code — the collector is forbidden from making any
+network request the user's own browsing didn't already make, and a well-meaning
+optimization that fetches one missing field would undo the project's entire posture. See
+[DATA-POLICY.md](DATA-POLICY.md). Design is maintainer-only because the bar is specific and
+easier to demonstrate than to specify; [CONVENTIONS.md](CONVENTIONS.md) is the attempt to
+write it down anyway.
 
-See the [README](README.md) for setup and run instructions (loading the extension, starting the Convex dev backend).
+**Read [CONVENTIONS.md](CONVENTIONS.md) before writing code.** It's the house style — code
+shape, visual and motion rules, the collection constraints, and a list of gotchas that each
+cost a day to discover. A patch that works but violates it will be asked to change.
+
+**Then:** fork, branch from `main`, keep it to one fix per PR, and describe what you
+verified and how.
+
+## On AI-assisted contributions
+
+Use whatever tools you like. The requirement is about you, not the tool:
+
+- **Disclose it** in the PR description. A one-liner is fine. It changes how the patch gets
+  reviewed, not whether it's welcome.
+- **You are the author.** You need to understand every line well enough to explain why it's
+  there, what it changes, and what else it touches. If a review question can't be answered,
+  the PR gets closed — not as a judgment about tooling, but because unexplainable code
+  can't be maintained.
+- **Verify it on a real page before submitting.** Generated patches for this project tend
+  to fail in a specific way: they look correct, follow the surrounding style, and are wrong
+  about something only visible when the extension is loaded and driven. See the checklist
+  at the end of [CONVENTIONS.md](CONVENTIONS.md).
+- **Don't open a PR you haven't run.** This is the actual line. It's the same line that has
+  always applied; it just gets crossed more often now.
+
+## Checks
+
+Run these before opening a PR:
+
+```bash
+npx tsc --noEmit
+```
+
+```bash
+cp extension/content.js /tmp/x.mjs && node --check /tmp/x.mjs
+```
+
+(Extension files are ES modules, hence the copy — repeat for each file you touched.) Then
+load the extension unpacked and drive the change on a real page.
+
+These will move into a CI workflow before the first tagged release. Until then they're
+manual, and a PR that hasn't had them run isn't ready.
+
+## Running the project
+
+See the [README](README.md) for setup — loading the extension unpacked and starting the
+Convex dev backend.
+
+One thing that will otherwise cost you an hour: **after editing a content script or the
+manifest, click the reload icon on the Jackdaw card at `chrome://extensions`, and then
+refresh the page.** Chrome silently keeps a stale in-memory copy if you skip either step,
+so your change appears not to have taken effect. If behaviour looks impossibly old, that's
+why.
 
 ## Why a CLA?
 
-When you open your first pull request, a bot will comment asking you to sign our [Contributor License Agreement](CLA.md). Signing is a one-time thing — you just reply to the bot's comment, and it remembers you for all future PRs. Here's the honest explanation of why we ask.
+When you open your first pull request, a bot will comment asking you to sign the
+[Contributor License Agreement](CLA.md). It's a one-time thing — reply to the bot's
+comment and it remembers you for future PRs. Here's the honest explanation.
 
-Jackdaw is licensed under **AGPL-3.0**. That's a deliberately strong copyleft license: it guarantees that the community's work stays open — anyone who distributes Jackdaw or runs a modified version as a service has to share their changes under the same terms.
+Jackdaw is licensed under **AGPL-3.0**, a deliberately strong copyleft license: anyone who
+distributes Jackdaw or runs a modified version as a service has to share their changes
+under the same terms.
 
-The CLA exists for one reason: **it lets the project owner (David) keep the option of relicensing or dual-licensing parts of the project in the future** — for example, offering the backend under different terms — without having to track down and get permission from every person who ever contributed a line of code. Without a CLA, relicensing an AGPL project requires the agreement of all past contributors, which in practice becomes impossible as a project grows.
+The CLA exists for one reason: **it keeps open the option of relicensing or dual-licensing
+the project in future** — for example, offering the backend under different terms — without
+having to track down every past contributor. Without a CLA, relicensing an AGPL project
+requires the agreement of everyone who ever contributed a line.
 
-To be fully transparent about what this means: **by signing, you're trusting the project owner with relicensing rights over your contributions.** Your code in the AGPL version stays AGPL forever — that can't be taken back from anyone who received it — but the owner could also offer your contribution under other terms, including proprietary ones, without asking you again or paying you. You keep ownership of your code and can do anything you like with it elsewhere; the CLA is a license grant, not a copyright transfer.
+To be fully transparent about what that means: **by signing, you're trusting the project
+owner with relicensing rights over your contributions.** Your code in the AGPL version
+stays AGPL forever — that can't be taken back from anyone who received it — but the owner
+could also offer your contribution under other terms, including proprietary ones, without
+asking again or paying you. You keep ownership of your code and can do anything you like
+with it elsewhere; the CLA is a license grant, not a copyright transfer.
 
-If that trade-off doesn't sit right with you, that's a completely legitimate position — you can still help enormously through bug reports, testing, and feedback, none of which require signing anything.
+If that trade-off doesn't sit right, that's a legitimate position. Bug reports, testing,
+and feedback require signing nothing and are worth a great deal.
 
-The full text is in [CLA.md](CLA.md). Please read it — it's short.
+The full text is in [CLA.md](CLA.md). It's short — please read it.
 
-## Questions?
+## Questions
 
-Open an issue or start a discussion. We're friendly.
+Open an issue. A slow reply is likely; no reply isn't intended.

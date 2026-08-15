@@ -15,6 +15,7 @@ Community price tracking for Micro Center. Chrome extension + Convex backend, fr
   - `config.js` — `CONVEX_URL`: dev (seeded demo data) vs prod, one-line swap.
 - `convex/` — backend: observations (dedupe + throttle), products.history, threaded comments with votes/reports/auto-hide, watches (price targets), rate limiting, content filters, internal moderation tools, `seed:demo` for dev.
 - `DATA-POLICY.md` — where every reading comes from, the zero-additional-requests rule, and what is deliberately never sent.
+- `CONVENTIONS.md` — the house style: code shape, visual and motion rules, and the gotchas worth not rediscovering. `CONTRIBUTING.md` covers scope and process.
 - `PRIVACY.md` / `TERMS.md` — Web Store policy drafts. `CLA.md` + cla-assistant workflow — contributions require signing.
 
 ## Run it
