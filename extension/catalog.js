@@ -154,6 +154,109 @@
       return null;
     }
 
+    // Open box, from `.clearance` inside `.price_wrapper`. EVERY card carries
+    // the div — 96 of 96 on the page this was verified against, 83 of them
+    // empty — and that is what makes the field reportable from a grid at all:
+    // an empty div is the store saying "no open-box unit here", not the reader
+    // failing to find one. That distinction is the entire safety property, so
+    // it is encoded as three states rather than two:
+    //
+    //   div absent            unknown. Report nothing; the server keeps
+    //                         whatever the last reading held.
+    //   div present, empty    observed absent. Reported, and it CLEARS a stale
+    //                         open-box price for this store.
+    //   div present, unparsed unknown, deliberately. A phrasing we don't
+    //                         recognise must not be read as "none" — that
+    //                         would clear a real price on markup we simply
+    //                         don't understand yet.
+    //
+    // Store-scoped, verified 2026-08-15 by re-reading the same seven products
+    // under two store selections: four present at 065 and absent at 045, and
+    // one showing 1 unit at 065 against 2 at 045 at the same price. A national
+    // pooled figure would have been unusable here — it would arm open-box
+    // alerts against units sitting in another state.
+    let openBoxSeen;
+    let openBoxPrice;
+    let openBoxUnits;
+    const clearance = card.querySelector(".clearance");
+    if (clearance) {
+      const clearanceText = (clearance.textContent || "").replace(/\s+/g, " ").trim();
+      if (!clearanceText) {
+        openBoxSeen = true;
+      } else {
+        const ob = clearanceText.match(/^(\d{1,4}) open box from \$([\d,]+\.\d{2})$/i);
+        if (ob) {
+          const u = parseInt(ob[1], 10);
+          const p = parseFloat(ob[2].replace(/,/g, ""));
+          // An open-box unit is a used unit, so it has to undercut the new
+          // price — the same sanity test the product-page reader applies to
+          // `#opCostNew`, and what keeps a bundle total or a financing figure
+          // out of this field.
+          if (
+            Number.isInteger(u) && u > 0 && u <= 1000 &&
+            isFinite(p) && p > 0 && p < price
+          ) {
+            openBoxSeen = true;
+            openBoxPrice = p;
+            openBoxUnits = u;
+          }
+        }
+      }
+    }
+
+    // List price, from `div.standardDiscount` — the retailer's own struck-out
+    // "Original price $799.99" beside a "Save $120.00". Same three states as
+    // open box, and one structural difference that decides where the flag comes
+    // from: `.clearance` is on every card and merely EMPTY when there is no
+    // open-box unit, but `.standardDiscount` is ABSENT when there is no
+    // discount — 118 present and 0 empty across a category page and a search
+    // page. So its own absence cannot be the observability signal; it would be
+    // indistinguishable from "this reader never looked".
+    //
+    // The anchor is therefore the card's own `.price` block, present on 96 of
+    // 96 cards. Finding it is what licenses `listSeen`, and only then does a
+    // missing discount div mean "none advertised" rather than "unknown".
+    //
+    //   .price absent          unknown. The server keeps the last reading.
+    //   .price, no discount    observed absent. CLEARS a stale list price.
+    //   .price, unparsed       unknown, deliberately — same reasoning as above.
+    //
+    // Only the struck figure is sent. "Save $120.00" is exactly `strike − price`
+    // on all 118 blocks surveyed, so storing it too would be storing the same
+    // fact twice and inviting the two to disagree after a rounding change.
+    let listSeen;
+    let listPrice;
+    const priceEl = card.querySelector(".price_wrapper .price");
+    if (priceEl) {
+      // Descendant, not `:scope >`. Every block surveyed was a direct child,
+      // but the failure directions are not symmetric: if the markup ever nests
+      // one level deeper, a direct-child selector reads "no discount" and
+      // CLEARS a real list price, while a descendant selector keeps working.
+      // Scoping to `.price` rather than `.price_wrapper` is what keeps a
+      // discount line nested inside `.clearance` out of this field.
+      const sd = priceEl.querySelector(".standardDiscount");
+      if (!sd) {
+        listSeen = true;
+      } else {
+        // `strike.textContent` carries a screen-reader prefix, so it reads
+        // "Original price $799.99" — match the money rather than parsing the
+        // whole string, and require exactly one figure so a markup change that
+        // puts two prices in there is unparsed rather than guessed at.
+        const strike = sd.querySelector("strike");
+        const money = ((strike && strike.textContent) || "").match(/\$[\d,]+\.\d{2}/g);
+        if (money && money.length === 1) {
+          const v = parseFloat(money[0].slice(1).replace(/,/g, ""));
+          // A list price is the figure the shelf price is discounted FROM, so
+          // it must exceed it. Equal is not a discount, it is a misread of the
+          // price itself; the server applies the same test.
+          if (isFinite(v) && v > price && v < 1000000) {
+            listSeen = true;
+            listPrice = v;
+          }
+        }
+      }
+    }
+
     return {
       productId,
       sku,
@@ -163,6 +266,11 @@
       inStock,
       ...(units !== undefined ? { units } : {}),
       ...(atLeast ? { atLeast: true } : {}),
+      ...(listSeen ? { listSeen: true } : {}),
+      ...(listPrice !== undefined ? { listPrice } : {}),
+      ...(openBoxSeen ? { openBoxSeen: true } : {}),
+      ...(openBoxPrice !== undefined ? { openBoxPrice } : {}),
+      ...(openBoxUnits !== undefined ? { openBoxUnits } : {}),
       ...(attr("data-brand") ? { brand: attr("data-brand").slice(0, 100) } : {}),
       ...(attr("data-category") ? { category: attr("data-category").slice(0, 200) } : {}),
     };
@@ -210,11 +318,12 @@
   // agreeing. This is what keeps that number meaning what the read path says it
   // means.
   //
-  // It suppresses a REPEAT, never a CHANGE. The remembered entry carries the
-  // price and stock state that were sent, and any difference in either
-  // re-reports at once — a price move is the one thing on the page worth
-  // reporting, and a cache that sat on it would trade a late alert for a saved
-  // row.
+  // It suppresses a REPEAT, never a CHANGE. The remembered entry carries every
+  // reading that was sent — shelf price, stock, open-box price, list price — and
+  // a difference in any one of them re-reports at once. The rule for what
+  // belongs in that tuple is the server's: whatever can open a new price point
+  // has to be able to defeat this cache, or the cache would suppress the very
+  // change an alert is waiting on.
 
   async function readSent() {
     if (!alive()) return {};
@@ -226,12 +335,31 @@
     }
   }
 
+  // The remembered entry has to carry EVERY field that can move on its own, not
+  // just the shelf price — otherwise the paragraph above is false. An open-box
+  // unit arriving, repricing or selling, and a promotion starting or ending,
+  // all change the reading while `price` and `inStock` sit still, and the
+  // server would open a new row for each of them. Suppressing those here would
+  // hold back exactly the events the open-box alert exists to catch.
+  //
+  // Both sides are folded through `?? null` for two reasons that happen to want
+  // the same thing. chrome.storage is JSON-serialized, so an `undefined` written
+  // into an array comes back as `null` and a raw `===` would never match — every
+  // product would re-report on every page, silently undoing the suppression.
+  // And an entry written before this change has nothing at [3] and [4] at all,
+  // which folds to `null` too, so it still matches a product with neither field:
+  // the only cards that re-report once after an upgrade are those that actually
+  // carry an open-box or list price.
+  const slot = (v) => v ?? null;
+
   function isRepeat(entry, item, now) {
     return (
       Array.isArray(entry) &&
       now - entry[0] < SENT_WINDOW_MS &&
       entry[1] === item.price &&
-      entry[2] === (item.inStock ? 1 : 0)
+      entry[2] === (item.inStock ? 1 : 0) &&
+      slot(entry[3]) === slot(item.openBoxPrice) &&
+      slot(entry[4]) === slot(item.listPrice)
     );
   }
 
@@ -291,7 +419,13 @@
         if (!res || res.ok !== true || res.throttled === true) return;
         const stamp = Date.now();
         for (const item of items) {
-          sent[keyOf(item)] = [stamp, item.price, item.inStock ? 1 : 0];
+          sent[keyOf(item)] = [
+            stamp,
+            item.price,
+            item.inStock ? 1 : 0,
+            slot(item.openBoxPrice),
+            slot(item.listPrice),
+          ];
         }
         // The reply can land after the extension was reloaded, so this write
         // needs its own guard even though the send above passed one.

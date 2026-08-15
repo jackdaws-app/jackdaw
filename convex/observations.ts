@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import {
   bump,
   categoryKey,
+  conditionFromName,
   initCounter,
   normalizeSku,
   requireLength,
@@ -137,6 +138,7 @@ export const report = mutation({
         brand,
         category,
         categoryKey: categoryKey(category) ?? undefined,
+        condition: conditionFromName(name),
         mpn,
         ean,
         urlPath,
@@ -144,9 +146,19 @@ export const report = mutation({
       await bump(ctx, "products:total");
     } else {
       productDocId = existing._id;
-      const patch: Record<string, string> = {};
+      // `undefined` in the value type because `condition` is the one member
+      // that can be REMOVED: a product renamed out of "(Refurbished)" must lose
+      // the flag, and `ctx.db.patch` deletes a field set to undefined.
+      const patch: Record<string, string | undefined> = {};
       if (existing.sku !== sku) patch.sku = sku;
-      if (existing.name !== name) patch.name = name;
+      if (existing.name !== name) {
+        patch.name = name;
+        // Derived from the name, so it moves with the name and only with it —
+        // recomputed on every rename rather than compared field-by-field,
+        // because the two are the same fact and cannot be allowed to disagree.
+        const nextCondition = conditionFromName(name);
+        if (existing.condition !== nextCondition) patch.condition = nextCondition;
+      }
       if (existing.urlPath !== urlPath) patch.urlPath = urlPath;
       if (brand !== undefined && existing.brand !== brand) patch.brand = brand;
       if (category !== undefined && existing.category !== category) {
@@ -203,6 +215,15 @@ export const report = mutation({
         inStock: args.inStock,
         availability,
         openBoxPrice: args.openBoxPrice,
+        // Carried, never observed. A product page states no "Original price",
+        // so this path has nothing to say about the field — and writing what it
+        // has (nothing) would CLEAR a figure the grid learned, which is the
+        // manufactured-disappearance failure one surface over. Carrying it also
+        // makes the value's absence from the corroboration test above safe: the
+        // resolved value equals `latest`'s by construction, exactly as with an
+        // unobserved open-box price, so it can never be the thing that decides
+        // whether a row is new.
+        listPrice: latest?.listPrice,
         firstSeenAt: now,
         lastSeenAt: now,
         reportCount: 1,
@@ -272,6 +293,13 @@ const CATALOG_MAX_ITEMS = 96; // Micro Center's largest "items per page"
 const CATALOG_MIN_RATIO = 0.2;
 const CATALOG_MAX_RATIO = 5;
 
+// A list price is bounded on one side by the shelf price it must exceed, and on
+// the other by nothing at all — so it gets its own ceiling rather than reusing
+// CATALOG_MAX_RATIO. 5x would refuse a real 80%-off clearance; 20x refuses the
+// misread that put a shelf full of digits in the strike. The two clamps answer
+// different questions and are deliberately not the same number.
+const CATALOG_MAX_LIST_RATIO = 20;
+
 /**
  * Throttle key for one rendered grid: the store plus a 32-bit FNV-1a fold of
  * the product IDs, sorted so card order doesn't matter. Not a security hash —
@@ -311,6 +339,46 @@ export const reportBatch = mutation({
         units: v.optional(v.number()),
         // "25+ IN STOCK" -> units 25, atLeast true.
         atLeast: v.optional(v.boolean()),
+        // Open box, and the reason these are three fields rather than one.
+        //
+        // `openBoxSeen` says the reader COULD read the field on this card, and
+        // only a true here lets a reading assert absence. Without it, "no
+        // open-box price in the payload" would mean two different things —
+        // "this store has none" and "this client can't tell" — and the server
+        // would have to guess which. That is the same distinction the batch
+        // shape used to make structurally, by having no key at all; the field
+        // is representable now because a grid card genuinely can observe it,
+        // and the flag is what keeps the old client, the changed markup and the
+        // unrecognised phrasing on the safe side of the line.
+        //
+        // So: `openBoxSeen` absent -> carry the last row forward, unchanged.
+        // `openBoxSeen` true with no price -> observed absent, and it CLEARS.
+        openBoxSeen: v.optional(v.boolean()),
+        // "2 open box from $339.96" -> 339.96. Only meaningful with the flag.
+        openBoxPrice: v.optional(v.number()),
+        // …and the 2. Shelf depth at one store, so it lands in storeStock and
+        // never in the price series — see the note on that table.
+        openBoxUnits: v.optional(v.number()),
+        // The retailer's own "Original price", and the same three-state shape
+        // as open box for the same reason — with ONE structural difference that
+        // is worth stating because it changes what the flag has to be driven by.
+        //
+        // `.clearance` is present on every card and merely EMPTY when there is
+        // no open-box unit, so its own presence can carry the "I could see this"
+        // signal. `div.standardDiscount` is ABSENT when there is no discount —
+        // 118 present and 0 empty across two page templates — so its absence is
+        // ambiguous between "no discount here" and "this reader/markup can't
+        // tell", which is precisely the distinction that must not be guessed.
+        //
+        // So `listSeen` is anchored on a DIFFERENT element: the card's own
+        // `.price` block, present on 96 of 96 cards. The reader sets the flag
+        // when it found that block, which is what makes a missing discount div
+        // inside it mean "none advertised" rather than "unknown". Same contract
+        // as openBoxSeen at this boundary: absent -> carry forward, true with no
+        // price -> observed absent, and it CLEARS.
+        listSeen: v.optional(v.boolean()),
+        // "Original price $799.99" -> 799.99. Only meaningful with the flag.
+        listPrice: v.optional(v.number()),
         brand: v.optional(v.string()),
         category: v.optional(v.string()),
       }),
@@ -443,6 +511,49 @@ export const reportBatch = mutation({
         skipped++;
         continue;
       }
+      // An open-box price is a used unit's price, so it has to undercut the new
+      // one — that is what keeps a member price, a bundle total or a financing
+      // figure out of the field. A price arriving WITHOUT the seen flag is not
+      // clamped, it is refused: the payload is incoherent, and the safe reading
+      // of an incoherent payload is no reading.
+      if (
+        raw.openBoxPrice !== undefined &&
+        (raw.openBoxSeen !== true ||
+          !Number.isFinite(raw.openBoxPrice) ||
+          raw.openBoxPrice <= 0 ||
+          raw.openBoxPrice >= raw.price)
+      ) {
+        skipped++;
+        continue;
+      }
+      // A count with no price beside it cannot have come from the one string
+      // that carries either ("2 open box from $339.96"), so it is refused for
+      // the same reason.
+      if (
+        raw.openBoxUnits !== undefined &&
+        (raw.openBoxPrice === undefined ||
+          !Number.isInteger(raw.openBoxUnits) ||
+          raw.openBoxUnits <= 0 ||
+          raw.openBoxUnits > 1_000)
+      ) {
+        skipped++;
+        continue;
+      }
+      // A list price is the figure the shelf price is discounted FROM, so it
+      // has to exceed it — the mirror of open box, and the same refusal for a
+      // price arriving without its flag. `>` and not `>=`: a strike equal to the
+      // price is not a discount, it is a misread of the price itself. The upper
+      // bound catches the strike that swallowed a neighbouring figure.
+      if (
+        raw.listPrice !== undefined &&
+        (raw.listSeen !== true ||
+          !Number.isFinite(raw.listPrice) ||
+          raw.listPrice <= raw.price ||
+          raw.listPrice > raw.price * CATALOG_MAX_LIST_RATIO)
+      ) {
+        skipped++;
+        continue;
+      }
 
       const name = raw.name.slice(0, 300);
       // Already the printed six-digit form on this path; normalized anyway so
@@ -466,14 +577,20 @@ export const reportBatch = mutation({
           brand,
           category,
           categoryKey: categoryKey(category) ?? undefined,
+          condition: conditionFromName(name),
           urlPath: raw.urlPath,
         });
         newProducts++;
       } else {
         productDocId = existing._id;
-        const patch: Record<string, string> = {};
+        // See the twin in `report` for why the value type admits `undefined`.
+        const patch: Record<string, string | undefined> = {};
         if (existing.sku !== sku) patch.sku = sku;
-        if (existing.name !== name) patch.name = name;
+        if (existing.name !== name) {
+          patch.name = name;
+          const nextCondition = conditionFromName(name);
+          if (existing.condition !== nextCondition) patch.condition = nextCondition;
+        }
         if (existing.urlPath !== raw.urlPath) patch.urlPath = raw.urlPath;
         if (brand !== undefined && existing.brand !== brand) patch.brand = brand;
         if (category !== undefined && existing.category !== category) {
@@ -505,31 +622,76 @@ export const reportBatch = mutation({
         continue;
       }
 
+      // What this card says about open box, if anything. The carry-forward is
+      // now conditional: a card that could read `.clearance` speaks for this
+      // store and its silence means "none here", while a card that could not
+      // inherits the last row and asserts nothing. Note what falls out of it —
+      // when the field was NOT observed, `openBoxPrice` equals `latest`'s by
+      // construction, so `openBoxSame` below is necessarily true and a
+      // non-observation can never be the thing that opens a new row. The
+      // manufactured-disappearance failure is unreachable rather than merely
+      // avoided.
+      const openBoxPrice = raw.openBoxSeen === true ? raw.openBoxPrice : latest?.openBoxPrice;
+
+      // Same test as the product-page path: same when both absent or within a
+      // cent. It has to be part of the dedupe or an open-box unit arriving,
+      // repricing or selling at an unchanged shelf price would never open a
+      // row — invisible in the series, and invisible to the open-box trigger,
+      // which reads consecutive rows.
+      const openBoxSame =
+        latest !== null &&
+        (latest.openBoxPrice === undefined
+          ? openBoxPrice === undefined
+          : openBoxPrice !== undefined &&
+            Math.abs(latest.openBoxPrice - openBoxPrice) <= 0.01);
+
+      // The list price rides on the same three states and the same inversion,
+      // for the same reason: only a card that could see the discount line may
+      // say there isn't one. `listSeen` is set from the card's `.price` block
+      // rather than from the discount div, because that div is ABSENT when the
+      // discount is — see the item validator.
+      const listPrice = raw.listSeen === true ? raw.listPrice : latest?.listPrice;
+
+      // And it has to join the dedupe test for a reason the open-box comment
+      // states generally but which bites harder here: a promotion's list price
+      // moves while the shelf price sits still (an "Original price" appearing,
+      // changing, or ending). Without this the patch branch would win, and the
+      // patch branch writes neither field — so the new figure would be dropped
+      // and the stored one left stale for as long as the price held.
+      const listSame =
+        latest !== null &&
+        (latest.listPrice === undefined
+          ? listPrice === undefined
+          : listPrice !== undefined && Math.abs(latest.listPrice - listPrice) <= 0.01);
+
       // A re-sighting carries the row's reportCount past one, which is exactly
       // the read path's corroboration test — so the price this row has been
       // holding is now allowed to name a record, even though both sightings
       // came off grid cards. A first sighting widens the ANY pair only.
       let corroborated: boolean;
-      if (latest !== null && latest.price === raw.price && latest.inStock === raw.inStock) {
+      if (
+        latest !== null &&
+        latest.price === raw.price &&
+        latest.inStock === raw.inStock &&
+        openBoxSame &&
+        listSame
+      ) {
         await ctx.db.patch(latest._id, {
           lastSeenAt: now,
           reportCount: latest.reportCount + 1,
         });
         corroborated = true;
       } else {
-        // CARRY-FORWARD. openBoxPrice and availability are not observable from
-        // a grid card, so the new row inherits whatever the last row held
-        // rather than asserting their absence. Writing `undefined` here would
-        // manufacture an open-box DISAPPEARANCE out of a non-observation, and
-        // the next product-page visit would then read as an open-box arrival
-        // and fire everyone's open-box alerts on a unit that never moved.
+        // `availability` is still carried unconditionally — no grid card shows
+        // it, so the batch has no key for it and the old rule stands untouched.
         await ctx.db.insert("pricePoints", {
           productDocId,
           storeNum,
           price: raw.price,
           inStock: raw.inStock,
           availability: latest?.availability,
-          openBoxPrice: latest?.openBoxPrice,
+          openBoxPrice,
+          listPrice,
           firstSeenAt: now,
           lastSeenAt: now,
           reportCount: 1,
@@ -555,6 +717,15 @@ export const reportBatch = mutation({
         inStock: raw.inStock,
         units: raw.units,
         atLeast: raw.atLeast === true ? true : undefined,
+        // Replaced like every other field here, NOT carried like the price
+        // above, and the difference is what the two numbers cost when wrong.
+        // The row is a snapshot under one `observedAt`; holding a count from an
+        // earlier reading while stamping it `now` would make it lie about its
+        // own age, which is the one thing this table is not allowed to do.
+        // Nothing alerts on a count and nothing accumulates it, so an
+        // unobserved one costs a missing figure until the next legible card —
+        // whereas an unobserved open-box PRICE, cleared, fires every watcher.
+        openBoxUnits: raw.openBoxUnits,
         observedAt: now,
       };
       if (shelf === null) {

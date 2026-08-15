@@ -58,6 +58,23 @@ export default defineSchema({
     // above: the write paths maintain it, and the one pass that sees every row
     // is what backfills rows written before it existed and repairs any drift.
     categoryKey: v.optional(v.string()),
+
+    // Refurbished or not, read off a parenthesised "(Refurbished)" anywhere in
+    // `name` — lib.ts conditionFromName, whose comment carries the survey and
+    // the reason it is not anchored to the end of the string. Derived from a
+    // field we already store, so it costs no request and no payload field, and
+    // `products:recompute` owns the backfill for the same reason it owns
+    // `categoryKey`.
+    //
+    // A LITERAL rather than a string union, deliberately. Exactly one condition
+    // is recognisable today: "Open Box" is not a product record at all (it is a
+    // per-store shelf state on an ordinary listing, already carried by
+    // storeStock.openBoxUnits), and "(Certified Refurbished)" is the same
+    // physical claim under a manufacturer's programme name, so it folds into
+    // this value rather than earning a second one.
+    // Widening this later should require editing the schema and thinking about
+    // it, not slipping a new string in through a write path.
+    condition: v.optional(v.literal("refurbished")),
   })
     .index("by_productId", ["productId"])
     .index("by_categoryKey", ["categoryKey"]),
@@ -69,14 +86,38 @@ export default defineSchema({
     inStock: v.boolean(),
     availability: v.optional(v.string()),
     openBoxPrice: v.optional(v.number()),
+    // The retailer's OWN "Original price" — the struck-through figure beside a
+    // "Save $120.00" on a grid card (`div.standardDiscount` inside the card's
+    // `.price` block). Absent when no discount was advertised, and absent on
+    // every row written before this field existed.
+    //
+    // It is here rather than on `products` because it is a price, it moves, and
+    // it belongs to the same reading as the price beside it — a "was $799.99"
+    // is only meaningful next to the "now" it was printed with. That also makes
+    // it the one field Jackdaw holds that dates a promotion from the retailer's
+    // own words rather than from inference, which is what a lone reading of a
+    // brand-new product can otherwise never have: a card that has been seen
+    // exactly once still carries a reference price.
+    //
+    // ONE NUMBER, not two. The card also prints "Save $120.00", and across 180
+    // discount blocks on two page templates `strike - price === savings` held
+    // every single time with zero exceptions. Storing the savings as well would
+    // be a derived duplicate that can only ever disagree with its own inputs.
+    //
+    // Written by the catalog path when the card was legible, and CARRIED
+    // FORWARD by both paths otherwise — see the carry-forward rule in
+    // observations.reportBatch, and the note in observations.report, which
+    // never observes this field at all and so must never be able to clear it.
+    listPrice: v.optional(v.number()),
     firstSeenAt: v.number(),
     lastSeenAt: v.number(),
     reportCount: v.number(),
     // Where the sighting came from. Absent means a product page, which is every
     // row written before catalog collection existed. A catalog card carries less
-    // than a product page does (no open-box price, no MPN/EAN, stock as a
-    // bucket), so the reader has to be able to tell the two apart — see the
-    // carry-forward rule in observations.reportBatch.
+    // than a product page does (no MPN/EAN, stock as a bucket, and an open-box
+    // price only when the card's `.clearance` div is legible), so the reader has
+    // to be able to tell the two apart — see the carry-forward rule in
+    // observations.reportBatch.
     source: v.optional(v.literal("catalog")),
   })
     .index("by_product", ["productDocId"])
@@ -103,6 +144,13 @@ export default defineSchema({
     // "25+ IN STOCK" — Micro Center caps the display, so the reading is a
     // floor, not a count, and the UI has to say so.
     atLeast: v.optional(v.boolean()),
+    // How many open-box units this store had ("2 open box from $339.96"). It is
+    // here rather than on pricePoints for exactly the reason the table exists:
+    // the open-box *price* is a price and belongs in the series, the *count* is
+    // shelf depth for one store and must not accumulate into one. Only a grid
+    // card carries it — a product page shows the open-box price with no count —
+    // so it is absent on rows only a product page has ever touched.
+    openBoxUnits: v.optional(v.number()),
     observedAt: v.number(),
   }).index("by_product_store", ["productDocId", "storeNum"]),
 

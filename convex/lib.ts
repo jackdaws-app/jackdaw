@@ -425,6 +425,57 @@ export function normalizeSku(raw: string): string {
   return /^\d{1,5}$/.test(raw) ? raw.padStart(6, "0") : raw;
 }
 
+/**
+ * The product's condition, read off the one place Micro Center states it: a
+ * trailing "(Refurbished)" on the product NAME.
+ *
+ * Derived rather than collected. Nothing new is read from any page — the name
+ * is already stored on every product from both surfaces — so this costs no
+ * request, no field in the payload, and works retroactively on rows collected
+ * before it existed (see `products:recompute`).
+ *
+ * ONE VALUE, and that is an empirical finding rather than a placeholder.
+ * "Open Box" looked like the obvious second one and is not: the Open Box facet
+ * on a category page returns ordinary products whose names carry no suffix at
+ * all, because open box is a per-store SHELF state on a normal listing — which
+ * is exactly what `storeStock.openBoxUnits` and the open-box price already
+ * record. There is no open-box product record to label. Refurbished is
+ * different: it is a distinct listing with its own productId, its own price
+ * history, and its own name.
+ *
+ * PARENTHESISED, AND THE GROUP MUST END WITH THE WORD. Those are the two
+ * conditions, and the first draft of this function added a third — that the
+ * marker be TRAILING — which was wrong and would have matched nothing.
+ * Surveyed against the live refurbished laptop grid: 25 of 25 cards carry the
+ * marker, 0 of 25 carry it at the end of the string. The real shape is
+ *
+ *   IdeaPad Slim 3i 15.6" Laptop Computer (Refurbished) - Abyss Blue; Intel...
+ *
+ * — the marker terminates the TITLE, and a colour and a semicolon-delimited
+ * spec blob follow it (" - " on 23 of 24, ";" on the 24th). It was always in
+ * the first segment, and the bare word never appeared outside the parentheses.
+ *
+ * So parentheses do the work the trailing anchor was supposed to do: they are
+ * what makes this a condition label rather than prose about what a machine can
+ * do. Requiring the word to END the group is the second half of that — a
+ * hypothetical "(Refurbished Battery Included)" is a description of a part, not
+ * of this unit — while an optional prefix inside the group admits the variant
+ * family rather than one spelling of it. That matters: the 25th card read
+ * "(Certified Refurbished)", so an enumeration of exact strings would already
+ * have been one short on the first page it met.
+ *
+ * Every variant collapses to ONE value. The chip's job is to warn that this
+ * unit's price history is not comparable to a new one's, which is equally true
+ * of "certified" and plain refurbished; recording the retailer's marketing tier
+ * would mean displaying a claim ("certified by whom?") we have no way to check.
+ *
+ * Anything unrecognised returns undefined, so the failure direction is a
+ * missing badge and never a wrong one.
+ */
+export function conditionFromName(name: string): "refurbished" | undefined {
+  return /\((?:[^()]*\s)?refurbished\s*\)/i.test(name) ? "refurbished" : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Product price summary
 // ---------------------------------------------------------------------------

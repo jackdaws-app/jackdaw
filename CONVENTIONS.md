@@ -125,11 +125,24 @@ when you're writing code.
 - **Never trigger `/quickViewConfigurator`** — the Quick View button on grid cards, and
   the one path `robots.txt` genuinely disallows.
 - **No product images** stored, copied, hotlinked, or re-served, anywhere.
-- **A field a source cannot observe must be structurally unrepresentable in its payload,
-  not merely left unset.** A catalog card can't see the open-box price, so the batch item
-  shape has no `openBoxPrice` key at all. Sending `undefined` would manufacture a
-  disappearance, and the next product-page visit would read as an open-box *arrival* and
-  fire every watcher's alert. Any new partial-observation source inherits this.
+- **A source must never be able to assert a field it did not observe.** The failure this
+  prevents: a reading that silently omits the open-box price would be stored as an open-box
+  *disappearance*, and the next visit that did see one would read as an *arrival* and fire
+  every watcher's alert over a unit that never moved. So absence has to be distinguishable
+  from ignorance, structurally, in the payload — either by leaving the field out of the
+  shape entirely (the batch has no `availability` key, because nothing on a grid card shows
+  it) or by pairing it with a flag that says the reader could see it (`openBoxSeen`, which
+  is what lets an empty open-box line count as a real "none here"). What is never
+  acceptable is one shape where "absent" means both. Any new partial-observation source
+  inherits this.
+  - **The flag has to be anchored on something that is always there.** An empty open-box
+    line proves the reader looked, so that field can vouch for itself; a "was $799.99"
+    block is simply *absent* when there is no discount, so it cannot. Anchor the flag on
+    the nearest element that renders unconditionally (for grid cards, the price block),
+    and set it from *that* element's presence, never from the field's own.
+  - **Every carried field joins the "is this the same reading?" test.** A field that is
+    carried forward but left out of the comparison changes silently: the write takes the
+    unchanged branch, which by definition does not store it, and the new figure is lost.
 - **The URL is never sent.** Products are identified by ID. Search and category pages send
   no URL, which is what keeps search terms and filters out of the database.
 - **Validate and clamp what arrives, then count what you dropped.** Readings outside a

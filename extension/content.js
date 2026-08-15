@@ -1020,6 +1020,13 @@
       // judged against the duration-weighted typical price.
       const typical = window.__jackdawChart.typicalPrice(history.points);
       const chips = el("div", "jd-chips");
+      // Condition leads, because it changes what every number after it means: a
+      // used unit's history is not comparable to a new one's, and a verdict read
+      // before that qualifier has already been read wrong. It costs nothing in
+      // the common case — almost no product carries it.
+      if (history.product && history.product.condition === "refurbished") {
+        chips.append(el("span", "jd-chip", "Refurbished"));
+      }
       const chip = el("span", "jd-chip");
       if (atLow) {
         chip.classList.add("jd-chip-low");
@@ -1051,10 +1058,68 @@
       if (sightings < 5) {
         chips.append(el("span", "jd-chip jd-chip-early", `Early data — ${sightings} sighting${sightings === 1 ? "" : "s"}`));
       }
+      // The retailer's own "Original price", relayed as theirs. "Advertised" is
+      // load-bearing: we never observed a shelf price of $799.99, we saw a
+      // struck-out figure beside a discount, and a chip reading "Was $799.99"
+      // would claim a measurement we do not hold.
+      //
+      // Live only — read off the NEWEST point rather than the cheapest or the
+      // most common, because a promotion that ended is not a fact about the
+      // price today, and the chart is where an ended one belongs. The
+      // carry-forward on both write paths is what makes the newest point a fair
+      // test: a product-page visit cannot blank the field, so an absent
+      // listPrice here means a grid card actually saw no discount.
+      const newest = history.points.reduce((a, b) => (a.lastSeenAt >= b.lastSeenAt ? a : b));
+      if (newest.listPrice != null) {
+        // How long this same figure has been standing. A FLOOR, like
+        // "Community-tracked since" below it: the walk stops at the first point
+        // that advertised something else OR nothing at all, so rows written
+        // before this field existed end it early and understate the run. The
+        // useful thing it exposes is the perpetual "sale" — a discount that has
+        // been the price for a month is the price.
+        const desc = history.points.slice().sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+        let since = newest.firstSeenAt;
+        for (const p of desc) {
+          if (p.listPrice == null || Math.abs(p.listPrice - newest.listPrice) > 0.01) break;
+          since = Math.min(since, p.firstSeenAt);
+        }
+        // A run shorter than a day says nothing a date could convey — every
+        // reading is from today — so the date is simply left off rather than
+        // printed as a same-day "since".
+        const run = newest.lastSeenAt - since >= 86_400_000 ? ` · since ${fmtDate(since)}` : "";
+        chips.append(
+          el("span", "jd-chip", `Advertised list: ${fmtPrice(newest.listPrice)}${run}`),
+        );
+      }
+      // This store's open-box reading, resolved BEFORE the historical chip
+      // below so that chip can stand down when it would only repeat the number.
+      // The count comes off a grid card and the price off the same card in the
+      // same write, so the store's newest open-box point is the price that
+      // count was standing beside. Taken by max lastSeenAt rather than by
+      // position, because `points` is not ordered by contract.
+      let shelfOb = null;
+      if (history.shelf && history.shelf.openBoxUnits != null) {
+        const here = history.points.filter(
+          (p) => p.storeNum === history.shelf.storeNum && p.openBoxPrice != null,
+        );
+        if (here.length) shelfOb = here.reduce((a, b) => (a.lastSeenAt >= b.lastSeenAt ? a : b));
+      }
+
       const obPoints = history.points.filter((p) => p.openBoxPrice != null);
       if (obPoints.length) {
         const cheapest = obPoints.reduce((a, b) => (a.openBoxPrice <= b.openBoxPrice ? a : b));
-        chips.append(el("span", "jd-chip jd-chip-ob", `Open-box seen from ${fmtPrice(cheapest.openBoxPrice)} (${fmtDate(cheapest.lastSeenAt)})`));
+        // Two amber chips carrying the same figure is noise, and on sparse data
+        // it is the DEFAULT rather than an edge case: the first open-box price a
+        // product ever gets is simultaneously the cheapest ever seen and the one
+        // sitting on the shelf right now. Where they agree the store chip
+        // strictly dominates — same price, plus where, how many, and how fresh —
+        // so the historical one stands down and speaks only when it has a
+        // genuinely different number. It can only ever be the LOWER of the two
+        // (`cheapest` is a minimum over every point including this store's own),
+        // so what survives the test always reads as "it has been cheaper".
+        if (!shelfOb || Math.abs(shelfOb.openBoxPrice - cheapest.openBoxPrice) > 0.01) {
+          chips.append(el("span", "jd-chip jd-chip-ob", `Open-box seen from ${fmtPrice(cheapest.openBoxPrice)} (${fmtDate(cheapest.lastSeenAt)})`));
+        }
       }
       // What was on the shelf at this store the last time anyone's screen
       // showed it — the count comes off a catalog card, so it is a sighting
@@ -1067,6 +1132,20 @@
         const n = history.shelf.units + (history.shelf.atLeast ? "+" : "");
         chips.append(
           el("span", "jd-chip", `Last seen: ${n} at ${where} · ${fmtRel(history.shelf.observedAt)}`),
+        );
+      }
+      // How many used units one store had and what the cheapest of them cost —
+      // the actionable open-box fact, where the chip above is a historical one.
+      // It carries its own age because a shelf reading is a sighting, not a
+      // live count, exactly like the "Last seen" chip beside it.
+      if (shelfOb) {
+        const where = storeNameFor(history.shelf.storeNum) || `store #${history.shelf.storeNum}`;
+        chips.append(
+          el(
+            "span",
+            "jd-chip jd-chip-ob",
+            `Open box at ${where}: ${history.shelf.openBoxUnits} from ${fmtPrice(shelfOb.openBoxPrice)} · ${fmtRel(history.shelf.observedAt)}`,
+          ),
         );
       }
       leftCol.append(chips);

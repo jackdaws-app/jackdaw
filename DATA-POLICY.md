@@ -19,9 +19,11 @@ Two surfaces produce readings:
   the selected store number, and stock status — plus the open-box price rendered in the
   page's own pricing block. One observation per visit.
 - **Search and category pages.** The extension reads the result cards already rendered on
-  screen (`li.product_wrapper`: id, price, name, brand, category, the printed SKU, and a
-  stock string) and submits them as a single bounded batch, capped at 96 items — the
-  largest page of results Micro Center itself offers.
+  screen (`li.product_wrapper`: id, price, name, brand, category, the printed SKU, a stock
+  string, the card's own open-box line where it has one — "2 open box from $339.96" — and
+  the struck-out original price where the card advertises a discount) and submits them as a
+  single bounded batch, capped at 96 items — the largest page of results Micro Center
+  itself offers.
 
 Everything collected is text the retailer had already painted onto the user's screen.
 

@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
-import { categoryKey, normalizeSku, readSummary, widenSummary } from "./lib";
+import {
+  categoryKey,
+  conditionFromName,
+  normalizeSku,
+  readSummary,
+  widenSummary,
+} from "./lib";
 import type { PriceSummary } from "./lib";
 
 const pointValidator = v.object({
@@ -9,6 +15,10 @@ const pointValidator = v.object({
   inStock: v.boolean(),
   availability: v.union(v.string(), v.null()),
   openBoxPrice: v.union(v.number(), v.null()),
+  // The retailer's own "Original price" at the time of this reading, when a
+  // grid card advertised one. Per-point rather than per-product because a
+  // promotion starts and ends, so it belongs to the reading that saw it.
+  listPrice: v.union(v.number(), v.null()),
   firstSeenAt: v.number(),
   lastSeenAt: v.number(),
   reportCount: v.number(),
@@ -123,7 +133,11 @@ export const recompute = internalMutation({
         );
         if (widen !== null) fresh = { ...fresh, ...widen };
       }
-      const patch: PriceSummary & { categoryKey?: string; sku?: string } = {};
+      const patch: PriceSummary & {
+        categoryKey?: string;
+        sku?: string;
+        condition?: "refurbished";
+      } = {};
       const keys = [
         "lowCorrob",
         "highCorrob",
@@ -149,6 +163,14 @@ export const recompute = internalMutation({
       // Same class of backfill as categoryKey, so it lives on the same pass.
       const freshSku = normalizeSku(product.sku);
       if (product.sku !== freshSku) patch.sku = freshSku;
+      // And the third of the same class. The write paths re-derive `condition`
+      // only when the NAME changes, which is right — it is the sole input — but
+      // it leaves every product last seen before the field existed unflagged.
+      // This pass is the backfill, and it stays correct afterwards for free:
+      // re-deriving from the stored name can only ever agree with the write
+      // paths, which is what makes a second pass change nothing.
+      const freshCondition = conditionFromName(product.name);
+      if (product.condition !== freshCondition) patch.condition = freshCondition;
       if (Object.keys(patch).length > 0) {
         await ctx.db.patch(product._id, patch);
         changed++;
@@ -187,6 +209,10 @@ export const history = query({
         mpn: v.union(v.string(), v.null()),
         ean: v.union(v.string(), v.null()),
         urlPath: v.string(),
+        // Refurbished or not. It qualifies every number on the panel — a used
+        // unit's history is not comparable to a new one's — so it travels with
+        // the product rather than being left for the reader to spot in `name`.
+        condition: v.union(v.literal("refurbished"), v.null()),
       }),
       points: v.array(pointValidator),
       stats: v.object({
@@ -207,7 +233,10 @@ export const history = query({
       }),
       // Present only when `shelfStore` was asked for and that store has been
       // seen. `units` is what one shopper's screen said; `atLeast` marks Micro
-      // Center's own capped display ("25+").
+      // Center's own capped display ("25+"). `openBoxUnits` is how many used
+      // units that store had — null on a product this store has only ever been
+      // seen through a product page, which shows the open-box price with no
+      // count beside it.
       shelf: v.union(
         v.null(),
         v.object({
@@ -215,6 +244,7 @@ export const history = query({
           inStock: v.boolean(),
           units: v.union(v.number(), v.null()),
           atLeast: v.boolean(),
+          openBoxUnits: v.union(v.number(), v.null()),
           observedAt: v.number(),
         }),
       ),
@@ -249,6 +279,7 @@ export const history = query({
       inStock: r.inStock,
       availability: r.availability ?? null,
       openBoxPrice: r.openBoxPrice ?? null,
+      listPrice: r.listPrice ?? null,
       firstSeenAt: r.firstSeenAt,
       lastSeenAt: r.lastSeenAt,
       reportCount: r.reportCount,
@@ -331,6 +362,13 @@ export const history = query({
         mpn: product.mpn ?? null,
         ean: product.ean ?? null,
         urlPath: product.urlPath,
+        // The STORED value, not `conditionFromName(product.name)` re-run here.
+        // Deriving on read would paper over a missing backfill and make
+        // `recompute`'s change count worthless as evidence — the same reason
+        // `categoryKey` is read from the row rather than recomputed. Until that
+        // pass runs, an old row reads null and the panel simply shows no chip,
+        // which is the safe direction.
+        condition: product.condition ?? null,
       },
       points,
       stats: {
@@ -349,6 +387,7 @@ export const history = query({
               inStock: shelfRow.inStock,
               units: shelfRow.units ?? null,
               atLeast: shelfRow.atLeast === true,
+              openBoxUnits: shelfRow.openBoxUnits ?? null,
               observedAt: shelfRow.observedAt,
             },
     };
