@@ -85,6 +85,7 @@
 .kpi:nth-child(6) { animation-delay: 200ms; }
 .kpi:nth-child(7) { animation-delay: 240ms; }
 .kpi:nth-child(8) { animation-delay: 280ms; }
+.kpi:nth-child(9) { animation-delay: 320ms; }
 @keyframes kpi-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -185,6 +186,123 @@
 @media (max-width: 620px) { .signal-row { grid-template-columns: 1fr; gap: 2px; } }
 .health-sub { font-size: 11.5px; color: var(--muted); }
 
+/* ── Category price movement ──
+   A diverging bar, not a filled one: the quantity has a sign, and the reader
+   has to see which side of nothing a category sits on before reading how far.
+   Colour follows the price-tracking convention (Keepa, CamelCamelCamel) rather
+   than the market one — a price going DOWN is the good news here. */
+.idx-head { display: flex; align-items: center; gap: 12px; }
+/* This is the only card head carrying three things, and `.admin-card-head` does
+   not wrap — so below ~560px the segments squeeze the h2 down to a 73px column
+   and "Category price movement" sets on three lines. Let the head break instead,
+   and give the note and the segments the full width they then have. */
+@media (max-width: 560px) {
+  .admin-card-head:has(.idx-head) { flex-wrap: wrap; row-gap: 8px; }
+  .idx-head { width: 100%; justify-content: space-between; }
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+.seg-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 11px;
+  border: 0;
+  background: transparent;
+  /* --ink-soft, not --muted: an unselected segment is still a control. */
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out);
+}
+.seg-btn + .seg-btn { border-left: 1px solid var(--hairline); }
+/* --green-deep, not --green: white on #16a34a is 3.30:1 and this text is 11px,
+   which is not large text under 1.4.3. #0e7a37 measures 5.45:1. */
+.seg-btn.is-on { background: var(--green-deep); color: #fff; }
+.seg-btn:focus-visible { outline: 2px solid var(--green-deep); outline-offset: -2px; }
+@media (hover: hover) and (pointer: fine) {
+  .seg-btn:not(.is-on):hover { background: rgba(22, 163, 74, 0.08); color: var(--ink); }
+}
+
+/* The name column is wider than the store rows' because this card is full
+   width and the bar has track to spare: a category name is the label on a
+   market figure, and truncating it to buy a longer bar is the wrong trade. */
+.idx-row {
+  display: grid;
+  grid-template-columns: 190px minmax(70px, 1fr) 62px 108px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.idx-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: capitalize;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.idx-bar { position: relative; height: 8px; border-radius: 5px; background: rgba(120, 130, 145, 0.14); }
+/* Zero is a drawn line, not an implied middle — without it a short bar is
+   unreadable as "barely moved" versus "measured from the left edge".
+   .56, not the .28 this started at: measured against the TRACK — not the card,
+   which is the easier of the two backgrounds it crosses — it sat at 1.54:1 and
+   was invisible on screen, which made the comment above a lie. .56 measures
+   3.24:1 there, clearing the 1.4.11 floor for a graphic that carries meaning. */
+.idx-bar::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(22, 35, 58, 0.56);
+}
+.idx-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-radius: 5px;
+  transition: width 0.7s var(--ease-out);
+}
+/* Pale at the centre, saturated at the extreme — same reading direction as the
+   store bars, mirrored. */
+.idx-bar i.down { right: 50%; background: linear-gradient(270deg, rgba(22, 163, 74, 0.5), var(--green)); }
+.idx-bar i.up { left: 50%; background: linear-gradient(90deg, rgba(185, 28, 28, 0.45), #b91c1c); }
+.idx-value { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.idx-value.down { color: var(--green-deep); font-weight: 600; }
+.idx-value.up { color: #b91c1c; font-weight: 600; }
+/* The denominator sits beside the number on every row, never in a footnote
+   alone: the figure is a median over the products we happen to have, and the
+   count of those products is the only thing that says how much to trust it. */
+.idx-cover { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Narrow: the bar drops under its own row and the reading line stays intact.
+   Named areas, not auto-flow — `grid-column: 1 / -1` alone made the bar break
+   the row after the name, which pushed the value onto a THIRD line and into
+   the 1fr column, where its right-alignment parked it 400px from its own
+   denominator. The three text cells have to stay one line for the number to be
+   read against its coverage. */
+@media (max-width: 720px) {
+  .idx-row {
+    grid-template-columns: 1fr 62px 100px;
+    grid-template-areas:
+      "name  value cover"
+      "bar   bar   bar";
+    row-gap: 7px;
+  }
+  .idx-name { grid-area: name; }
+  .idx-bar { grid-area: bar; }
+  .idx-value { grid-area: value; }
+  .idx-cover { grid-area: cover; }
+}
+
 .admin-fine { font-size: 11.5px; color: var(--muted); margin-top: 18px; max-width: 68em; line-height: 1.55; }
 
 .toast {
@@ -207,6 +325,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .kpi, .gate-error { animation: none; }
-  .store-bar i { transition: none; }
+  .store-bar i, .idx-bar i { transition: none; }
   .flag-btn:active { transform: none; }
 }

@@ -55,6 +55,13 @@ export const stats = query({
   returns: v.object({
     totals: v.object({
       observations: v.number(),
+      // The catalog share of `observations`, so the panel can state the unit
+      // instead of implying a uniform one. A product-page sighting is one
+      // person on one product; a catalog sighting is one card on a page of up
+      // to 96, so an undifferentiated total is dominated by page size and says
+      // more about results-per-page than about reach.
+      observationsCatalog: v.number(),
+      catalogBatches: v.number(),
       pricePoints: v.number(),
       products: v.number(),
       comments: v.number(),
@@ -82,12 +89,20 @@ export const stats = query({
     daily: v.array(
       v.object({
         date: v.string(),
+        // Both sighting kinds. `grid` is the catalog share OF `observations`,
+        // not a sibling total — the product-page share is the difference.
         observations: v.number(),
+        grid: v.number(),
         comments: v.number(),
         clicked: v.number(),
         rateLimited: v.number(),
       }),
     ),
+    // UTC midnight of the first day the daily split was recorded, or null if it
+    // never has been. Days before it carry grid: 0 because nothing was counting,
+    // which reads identically to a real zero — so the panel draws them as one
+    // undifferentiated bar instead of crediting the whole day to product pages.
+    gridSplitFrom: v.union(v.number(), v.null()),
     // Client health (metrics:events). Always all six names, zero-filled, so the
     // panel renders a stable table and can divide the failure names by
     // panel_ok for an error rate. `name` is one of the six literals in
@@ -109,6 +124,8 @@ export const stats = query({
     // a growing table, so the panel costs the same at 1k rows and at 10M.
     const [
       observations,
+      observationsCatalog,
+      catalogBatches,
       pricePoints,
       products,
       comments,
@@ -118,8 +135,11 @@ export const stats = query({
       alertsFired,
       alertsClicked,
       devices,
+      gridSplitAt,
     ] = await Promise.all([
       readCounter(ctx, "obs:total"),
+      readCounter(ctx, "obs:catalog"),
+      readCounter(ctx, "obs:batches"),
       readCounter(ctx, "pricepoints:total"),
       readCounter(ctx, "products:total"),
       readCounter(ctx, "comments:total"),
@@ -129,6 +149,10 @@ export const stats = query({
       readCounter(ctx, "alerts:fired"),
       readCounter(ctx, "alerts:clicked"),
       readCounter(ctx, "devices:total"),
+      // A timestamp parked in the counters table, not a tally. `readCounter`
+      // answers 0 for a missing row, which here means "no batch has ever been
+      // recorded" rather than "the epoch" — normalised to null below.
+      readCounter(ctx, "obs:gridday:from"),
     ]);
 
     // Bounded indexed range over one key namespace — not a table scan.
@@ -208,9 +232,10 @@ export const stats = query({
     const daily = await Promise.all(
       Array.from({ length: DAILY_DAYS }, async (_unused, i) => {
         const date = utcDay(todayUtc - (DAILY_DAYS - 1 - i) * DAY_MS);
-        const [dayObs, dayComments, dayClicked, dayRateLimited] =
+        const [dayObs, dayGrid, dayComments, dayClicked, dayRateLimited] =
           await Promise.all([
             readCounter(ctx, `obs:day:${date}`),
+            readCounter(ctx, `obs:gridday:${date}`),
             readCounter(ctx, `comments:day:${date}`),
             readCounter(ctx, `alerts:clicked:day:${date}`),
             readCounter(ctx, `abuse:ratelimited:day:${date}`),
@@ -218,6 +243,10 @@ export const stats = query({
         return {
           date,
           observations: dayObs,
+          // Clamped because the two counters are independent rows: a restore, a
+          // backfill or a partial write could leave the share above the total,
+          // and a negative page-sightings bar is a worse failure than a flat one.
+          grid: Math.min(dayGrid, dayObs),
           comments: dayComments,
           clicked: dayClicked,
           rateLimited: dayRateLimited,
@@ -252,6 +281,8 @@ export const stats = query({
     return {
       totals: {
         observations,
+        observationsCatalog,
+        catalogBatches,
         pricePoints,
         products,
         comments,
@@ -268,7 +299,241 @@ export const stats = query({
       watchedValueTruncated,
       health: { chartWorthy, thin, stale, sampleSize: sample.length },
       daily,
+      gridSplitFrom: gridSplitAt > 0 ? gridSplitAt : null,
       errors,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Category price index
+// ---------------------------------------------------------------------------
+
+// The one figure in this panel that is a statement about a MARKET rather than
+// about Jackdaw. "Median price in Networking moved -2.4% over 90 days" is a
+// derived aggregate; the readings behind it are not, and no endpoint here
+// exports them. That distinction is the whole reason this is worth showing a
+// retail partner at all — see LEGAL-NOTES.md on the partnership channel.
+//
+// NOT SCOPED TO A STORE, though the original sketch was ("movement in
+// Networking at Duluth"). Micro Center prices nationally: the same SKU carries
+// the same price at every location, which is why `watches.fireFor` takes the
+// newest point from ANY store. A store-scoped price index would therefore be
+// the same number computed from a fraction of the readings — thinner, not more
+// local. What genuinely varies by store is the open-box price and the shelf,
+// and neither of those is a price movement.
+
+// Read budget, same arithmetic as `health` above: CATEGORIES * (SAMPLE + SAMPLE
+// * POINTS) = 8 * (30 + 900) = 7,440 documents, plus the counter range. That is
+// why this is its own query rather than another section of `stats` — stats has
+// no room for it, and keeping them separate means a category with pathological
+// history can never delay or break the counters.
+const INDEX_CATEGORIES = 8;
+const INDEX_SAMPLE = 30;
+const INDEX_POINTS = 30;
+// Below this the median is withheld rather than printed. Three products is not
+// a market, and a headline percentage resting on two of them is exactly the
+// mistake the rest of this panel's labelling exists to prevent.
+const INDEX_MIN_MEASURED = 4;
+const WINDOW_DEFAULT_DAYS = 90;
+const WINDOW_MIN_DAYS = 7;
+const WINDOW_MAX_DAYS = 365;
+
+/** Median of a sorted, non-empty list. Even lengths average the two middles. */
+function medianOf(sorted: number[]): number {
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export const categoryIndex = query({
+  args: { adminKey: v.string(), days: v.optional(v.number()) },
+  returns: v.object({
+    windowDays: v.number(),
+    from: v.number(),
+    to: v.number(),
+    // The method, returned rather than hardcoded in the panel, so the footnote
+    // cannot drift away from the numbers it is describing.
+    sampleCap: v.number(),
+    pointCap: v.number(),
+    minMeasured: v.number(),
+    categories: v.array(
+      v.object({
+        category: v.string(),
+        // THE COVERAGE DENOMINATORS, and there are two because there are two
+        // different ways this number is thinner than it looks.
+        //   sampled  — products examined in this category
+        //   atCap    — true when there are more of them than we looked at, so
+        //              `sampled` is a floor and not the category's size
+        //   measured — of those, the ones with a price at BOTH ends of the
+        //              window; the median rests on these and nothing else
+        // Neither denominator is the number of products Micro Center sells in
+        // the category. That figure is unknowable from here — we see what our
+        // users happen to browse — so the panel must never imply a census.
+        sampled: v.number(),
+        atCap: v.boolean(),
+        measured: v.number(),
+        // Why the rest dropped out, never pooled into one "excluded" number.
+        // tooNew: no reading old enough, so the product is younger than the
+        // window. dense: the product changed price more than `pointCap` times
+        // inside the window, so the older reading exists but fell off a capped
+        // read — a limitation of this query, not a fact about the product.
+        // noHistory: a product row with no points at all.
+        tooNew: v.number(),
+        dense: v.number(),
+        noHistory: v.number(),
+        // Null when `measured` is under `minMeasured`. The counts above still
+        // come back, so the panel can say why there is no number instead of
+        // printing a confident one from four readings.
+        medianChangePct: v.union(v.number(), v.null()),
+        // Median of the CURRENT prices in the sample — the category's scale, so
+        // a percentage can be read against the kind of money it moves.
+        medianPrice: v.union(v.number(), v.null()),
+        fell: v.number(),
+        rose: v.number(),
+        flat: v.number(),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    await checkAdminRateLimit(ctx);
+    requireAdmin(args.adminKey);
+
+    const requested = Math.round(args.days ?? WINDOW_DEFAULT_DAYS);
+    const windowDays = Number.isFinite(requested)
+      ? Math.min(Math.max(requested, WINDOW_MIN_DAYS), WINDOW_MAX_DAYS)
+      : WINDOW_DEFAULT_DAYS;
+    const to = Date.now();
+    const from = to - windowDays * DAY_MS;
+
+    // Category NAMES come from the counters, not from a scan of products —
+    // same bounded prefix range `stats` uses, so the two cards always agree on
+    // what a category is called and on which ones exist. These keys are the
+    // normalized form, which is what `products.categoryKey` is indexed on.
+    const categoryRows = await ctx.db
+      .query("counters")
+      .withIndex("by_key", (q) =>
+        q.gte("key", CATEGORY_PREFIX).lt("key", CATEGORY_PREFIX_END),
+      )
+      .take(300);
+    const names = categoryRows
+      .map((row) => ({
+        category: row.key.slice(CATEGORY_PREFIX.length),
+        observations: row.value,
+      }))
+      .sort((a, b) => b.observations - a.observations)
+      .slice(0, INDEX_CATEGORIES)
+      .map((c) => c.category);
+
+    const categories = [];
+    for (const category of names) {
+      // Ascending _creationTime, i.e. the products we discovered EARLIEST in
+      // this category. Convex has no random sample, so the bias is chosen
+      // rather than accidental: these are the rows most likely to hold a
+      // reading from before the window opened, and a newest-first sample would
+      // maximise `tooNew` and measure almost nothing. It does mean the index
+      // tracks long-tracked products rather than the category as a whole.
+      const sample = await ctx.db
+        .query("products")
+        .withIndex("by_categoryKey", (q) => q.eq("categoryKey", category))
+        .take(INDEX_SAMPLE);
+
+      const changes: number[] = [];
+      const prices: number[] = [];
+      let tooNew = 0;
+      let dense = 0;
+      let noHistory = 0;
+      let fell = 0;
+      let rose = 0;
+      let flat = 0;
+
+      for (const product of sample) {
+        const points = await ctx.db
+          .query("pricePoints")
+          .withIndex("by_product", (q) => q.eq("productDocId", product._id))
+          .order("desc")
+          .take(INDEX_POINTS);
+        if (points.length === 0) {
+          noHistory++;
+          continue;
+        }
+
+        // The price in effect at an instant is the newest row that had already
+        // been created by then: a row is inserted only when the price CHANGES,
+        // so the last one before the cutoff was still standing at the cutoff.
+        // Scanned rather than read off the array's order — `.order("desc")`
+        // sorts by creation time, and firstSeenAt only usually agrees with it
+        // (seeded rows carry backdated timestamps).
+        let nowAt = -1;
+        let nowPrice = 0;
+        let thenAt = -1;
+        let thenPrice = 0;
+        for (const p of points) {
+          if (p.price <= 0) continue;
+          if (p.firstSeenAt > nowAt) {
+            nowAt = p.firstSeenAt;
+            nowPrice = p.price;
+          }
+          if (p.firstSeenAt <= from && p.firstSeenAt > thenAt) {
+            thenAt = p.firstSeenAt;
+            thenPrice = p.price;
+          }
+        }
+
+        if (nowAt < 0) {
+          noHistory++;
+          continue;
+        }
+        if (thenAt < 0) {
+          // Two different reasons, kept apart. A full read means the reading we
+          // needed may exist and simply fell off the end; a short one means the
+          // product genuinely has nothing that old.
+          if (points.length >= INDEX_POINTS) dense++;
+          else tooNew++;
+          continue;
+        }
+
+        changes.push(((nowPrice - thenPrice) / thenPrice) * 100);
+        prices.push(nowPrice);
+        if (nowPrice < thenPrice) fell++;
+        else if (nowPrice > thenPrice) rose++;
+        else flat++;
+      }
+
+      changes.sort((a, b) => a - b);
+      prices.sort((a, b) => a - b);
+      const measured = changes.length;
+      categories.push({
+        category,
+        sampled: sample.length,
+        atCap: sample.length >= INDEX_SAMPLE,
+        measured,
+        tooNew,
+        dense,
+        noHistory,
+        medianChangePct:
+          measured >= INDEX_MIN_MEASURED
+            ? Math.round(medianOf(changes) * 10) / 10
+            : null,
+        medianPrice:
+          measured >= INDEX_MIN_MEASURED
+            ? Math.round(medianOf(prices) * 100) / 100
+            : null,
+        fell,
+        rose,
+        flat,
+      });
+    }
+
+    return {
+      windowDays,
+      from,
+      to,
+      sampleCap: INDEX_SAMPLE,
+      pointCap: INDEX_POINTS,
+      minMeasured: INDEX_MIN_MEASURED,
+      categories,
     };
   },
 });

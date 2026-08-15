@@ -71,10 +71,25 @@
         </section>
 
         <section class="admin-card">
-          <div class="admin-card-head"><h2>By category</h2><span class="admin-note">What shoppers watch</span></div>
+          <div class="admin-card-head"><h2>By category</h2><span class="admin-note">Sighting mix</span></div>
           <div id="categories" class="stores"></div>
         </section>
       </div>
+
+      <section class="admin-card">
+        <div class="admin-card-head">
+          <h2>Category price movement</h2>
+          <div class="idx-head">
+            <span class="admin-note" id="indexNote"></span>
+            <div class="seg" id="indexWindow" role="group" aria-label="Measurement window">
+              <button type="button" class="seg-btn" data-days="30" aria-pressed="false">30d</button>
+              <button type="button" class="seg-btn is-on" data-days="90" aria-pressed="true">90d</button>
+              <button type="button" class="seg-btn" data-days="180" aria-pressed="false">180d</button>
+            </div>
+          </div>
+        </div>
+        <div id="priceIndex"></div>
+      </section>
 
       <section class="admin-card" id="signalsCard" hidden>
         <div class="admin-card-head">
@@ -108,6 +123,21 @@
         "shoppers sent" counts alert clicks recorded by an anonymous, unauthenticated endpoint, so it is
         rate-capped and represents a floor, not a proven audit; watched value is a live sum of active alert
         targets; data health is a bounded sample; and the rate-limit figure covers price reports only.
+        Sightings are reported split because the two kinds are not interchangeable evidence — a product
+        sighting is one shopper on one product, a catalog sighting is one card on a page of up to 96. The
+        daily chart shows the mix from the day that split began being recorded; earlier days are drawn grey
+        because their composition was never counted and is not recoverable. The store and category series
+        still combine both, so they measure browsing format alongside interest. Quote page sightings,
+        distinct products, or shoppers sent; never a combined sighting total.
+      </p>
+      <p class="admin-fine">
+        Category price movement is a derived aggregate and the one figure here that describes the market
+        rather than describing Jackdaw. Read it with its denominator: it is the median change across the
+        products in that category we have tracked long enough to measure, sampled from the ones we saw
+        earliest, and that sample is what our users happened to browse — never a census of what Micro Center
+        sells. A category showing "—" has too little history for the window, not flat prices. Movements are
+        measured against the last recorded price before the window opened, so a product priced once and never
+        revisited contributes nothing.
       </p>
     </main>
 
