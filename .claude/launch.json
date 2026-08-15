@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8788", "--directory", "site"],
+      "port": 8788
+    },
+    {
+      "name": "extension",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8789", "--directory", "extension"],
+      "port": 8789
+    }
+  ]
+}

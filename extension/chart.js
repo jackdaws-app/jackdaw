@@ -11,7 +11,11 @@
     { key: "All", ms: Infinity },
   ];
 
-  const fmtPrice = (p) => "$" + p.toFixed(2);
+  const AXIS_FONT = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+
+  // Micro Center prints "$15,299.99"; every price string in Jackdaw matches it.
+  const fmtPrice = (p) =>
+    "$" + p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtDate = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtDateFull = (ms) =>
     new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -250,8 +254,9 @@
       canvas.style.height = H + "px";
       const ctx = canvas.getContext("2d");
       ctx.scale(dpr, dpr);
+      ctx.font = AXIS_FONT;
 
-      const padL = 8, padR = 52, padT = 14, padB = 24;
+      const padL = 8, padT = 14, padB = 24;
       const t0 = segs[0].t0;
       const t1 = segs[segs.length - 1].t1;
       const span = Math.max(t1 - t0, 60_000);
@@ -265,21 +270,34 @@
       const pad = Math.max((pMax - pMin) * 0.18, pMax * 0.03, 1);
       const yMin = pMin - pad, yMax = pMax + pad;
 
+      // The right gutter is measured from the labels that will actually be
+      // drawn, not fixed. It was 52px, which gave the text 42px of room —
+      // enough for "$999.99" (42.14px, already 0.14 over) and nothing above it.
+      // Every four-figure price on the site clipped against the canvas edge,
+      // and the thousands separator adds another 6px per comma. A magic number
+      // cannot survive a product costing more than the one it was tuned on.
+      const ticks = [];
+      for (let i = 0; i <= 3; i++) ticks.push(fmtPrice(yMin + ((yMax - yMin) * i) / 3));
+      const labelW = Math.max(...ticks.map((s) => ctx.measureText(s).width));
+      // 10 clears the gridline overhang the label sits beside, 4 keeps it off
+      // the edge; floored at the old value so short-price charts are unchanged.
+      const padR = Math.max(Math.ceil(labelW) + 14, 52);
+
       const x = (t) => padL + ((t - t0) / span) * (W - padL - padR);
       const y = (p) => padT + (1 - (p - yMin) / (yMax - yMin)) * (H - padT - padB);
       geom = { x, y, t0, t1, W, H, padL, padR, padT, padB, segs };
 
       ctx.clearRect(0, 0, W, H);
 
-      // grid + right-axis labels
-      ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+      // grid + right-axis labels — drawn from the same `ticks` the gutter was
+      // measured from, so the width that was reserved is the width that lands.
+      ctx.font = AXIS_FONT;
       ctx.strokeStyle = pal.grid;
       ctx.fillStyle = pal.axis;
       for (let i = 0; i <= 3; i++) {
-        const p = yMin + ((yMax - yMin) * i) / 3;
-        const yy = y(p);
+        const yy = y(yMin + ((yMax - yMin) * i) / 3);
         ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR + 6, yy); ctx.stroke();
-        ctx.fillText(fmtPrice(p), W - padR + 10, yy + 3);
+        ctx.fillText(ticks[i], W - padR + 10, yy + 3);
       }
       // x labels: start, middle, end
       ctx.fillText(fmtDate(t0), padL, H - 8);
