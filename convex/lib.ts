@@ -772,22 +772,26 @@ export function isReservedHandleKey(key: string): boolean {
 }
 
 /**
- * The form of a handle the content filter has to see, with separators turned
- * into spaces.
+ * The second form the content filter has to see, with separators turned into
+ * spaces. Applies to anything a person types: handles, names and comment
+ * bodies alike.
  *
  * PROFANITY_PATTERN is a word-boundary blocklist, and JavaScript's `\b` counts
  * "_" as a word character — so "shit-head" is caught and "shit_head" is not.
- * Underscores are legal inside a handle, which makes that a one-character
- * bypass on the one name in the product that gets a verified marker beside it.
- * Proven on dev before this existed: the claim succeeded.
+ * One underscore anywhere beside a listed word hides it. Proven on dev before
+ * this existed: the claim succeeded.
  *
- * Callers filter the raw handle as well. Nothing here can weaken the link,
- * contact-info or phone patterns (a handle may not contain "." or "@", and
- * PHONE_PATTERN already treats spaces as digit separators), but checking both
- * forms means that stays true without anyone having to re-derive it.
+ * Callers filter the raw text as well, and a violation in EITHER form rejects,
+ * so folding can only ever catch more. It cannot weaken the link, contact-info
+ * or phone patterns: those already treat "-" and spaces as separators, and any
+ * address the fold breaks apart was caught on the raw pass first.
+ *
+ * What no fold reaches is a word split through its middle — "sh_it", "sh1t".
+ * That defeats every blocklist there has ever been, and this one does not
+ * pretend otherwise; reports and auto-hide are what catch the deliberate.
  */
-export function handleFilterForm(handle: string): string {
-  return handle.replace(/[_-]+/g, " ");
+export function separatorFoldedForm(text: string): string {
+  return text.replace(/[_-]+/g, " ");
 }
 
 /** Does this string satisfy the handle format? Call with sanitized text. */

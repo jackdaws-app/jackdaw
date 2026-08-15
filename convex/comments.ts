@@ -5,7 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import {
   bump,
   enforceRateLimit,
-  handleFilterForm,
+  separatorFoldedForm,
   handleKeyOf,
   isReservedHandleKey,
   requireCleanContent,
@@ -96,8 +96,8 @@ async function resolveAuthor(
   const displayName = requireLength("displayName", submittedName, 1, 40);
   requireCleanContent(displayName);
   // Second pass with separators as spaces: "_" is a word character to `\b`, so
-  // the raw form alone lets "shit_head" past the blocklist. See handleFilterForm.
-  requireCleanContent(handleFilterForm(displayName));
+  // the raw form alone lets "shit_head" past the blocklist. See separatorFoldedForm.
+  requireCleanContent(separatorFoldedForm(displayName));
 
   const handleKey = handleKeyOf(displayName);
   if (handleKey.length > 0) {
@@ -235,6 +235,12 @@ export const add = mutation({
     await enforceRateLimit(ctx, "commentAdd", deviceId);
 
     requireCleanContent(body);
+    // Both forms, the same pair of passes a name gets. The body filter used to
+    // check only the raw text, which meant "shit_head" posted and "shit-head"
+    // did not — the underscore is a word character to `\b`, so it hid the word
+    // from the blocklist. A filter the careless can step over by accident is
+    // just an inconsistent one.
+    requireCleanContent(separatorFoldedForm(body));
 
     const { displayName, accountId } = await resolveAuthor(
       ctx,

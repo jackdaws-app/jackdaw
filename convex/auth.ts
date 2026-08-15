@@ -14,7 +14,7 @@ import { internal } from "./_generated/api";
 import {
   SESSION_TTL_MS,
   bump,
-  handleFilterForm,
+  separatorFoldedForm,
   handleKeyOf,
   hashSecret,
   isCleanContent,
@@ -756,9 +756,9 @@ export const claimHandle = mutation({
     // a name it may not have.
     //
     // Both forms, because "_" is a word character to `\b` and would otherwise
-    // walk a slur straight past the blocklist — see handleFilterForm.
+    // walk a slur straight past the blocklist — see separatorFoldedForm.
     if (!isCleanContent(handle)) return refuse("INVALID");
-    if (!isCleanContent(handleFilterForm(handle))) return refuse("INVALID");
+    if (!isCleanContent(separatorFoldedForm(handle))) return refuse("INVALID");
 
     const handleKey = handleKeyOf(handle);
     // Unreachable while the shape test demands alphanumeric ends, and kept
