@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Jackdaw | Every price has history</title>
+    <title>Jackdaw | Every price has a history</title>
     <meta
       name="description"
-      content="Jackdaw shows you every Micro Center price you can't see: what a product used to cost, what it typically costs, and when it hits an all-time low. Gathered by shoppers, for shoppers. Free and open source."
+      content="Jackdaw shows you every Micro Center price you can't see: what a part used to cost, what it typically costs, and whether today is actually a good day to drive over. Gathered by shoppers, for shoppers. Free and open source."
     />
     <meta property="og:title" content="Jackdaw: Micro Center price history" />
     <meta
@@ -30,232 +30,328 @@
   </head>
   <body>
     <a class="skip" href="#how">Skip to content</a>
-    <!-- ══ Nav ══ -->
-    <nav class="nav">
-      <a class="nav-brand" href="#top">
-        <span class="nav-dot"></span>
-        <svg class="brand-flit" viewBox="8 2 76 96" fill="currentColor" aria-hidden="true">
-          <g class="brand-flit-wings">
-            <path
-              d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"
-            />
-            <path
-              d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"
-            />
-          </g>
-          <path
-            d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"
-          />
-          <path
-            d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"
-          />
-        </svg>
-        <span class="nav-word"
-          ><i style="--i: 0">J</i><i style="--i: 1">a</i><i style="--i: 2">c</i><i style="--i: 3">k</i
-          ><i style="--i: 4">d</i><i style="--i: 5">a</i><i style="--i: 6">w</i></span
-        >
-      </a>
-      <div class="nav-links">
-        <a href="#how">How it works</a>
-        <a href="#features">Features</a>
-        <a href="#privacy">Privacy</a>
-        <a class="nav-gh" href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
-      </div>
-      <a class="btn btn-primary nav-cta" href="#install">
-        <span>Add to Chrome</span>
-        <span class="btn-arrow">→</span>
-      </a>
-    </nav>
 
-    <!-- ══ Hero ══ -->
+    <!-- ══ Nav ══════════════════════════════════════════════════════════════
+         A floating pill. The brand mark is a cycle rather than a logo: the dot
+         becomes the bird, flies the width of the word, and lands back as the
+         dot — and the letters duck as it passes over them. -->
+    <div class="nav-rail">
+      <nav class="nav" id="nav">
+        <a class="nav-brand" href="#top" aria-label="Jackdaw, back to top">
+          <span class="nav-dot"></span>
+          <svg class="brand-flit" viewBox="8 2 76 96" fill="currentColor" aria-hidden="true">
+            <g class="brand-flit-wings">
+              <path
+                d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"
+              />
+              <path
+                d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"
+              />
+            </g>
+            <path
+              d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"
+            />
+            <path
+              d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"
+            />
+          </svg>
+          <span class="nav-word" aria-hidden="true"
+            ><i style="--i: 0">J</i><i style="--i: 1">a</i><i style="--i: 2">c</i><i style="--i: 3">k</i
+            ><i style="--i: 4">d</i><i style="--i: 5">a</i><i style="--i: 6">w</i></span
+          >
+        </a>
+        <div class="nav-links">
+          <a href="#how">How it works</a>
+          <a href="#features">What you get</a>
+          <a href="#privacy">Privacy</a>
+          <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">Source</a>
+        </div>
+        <a class="btn btn-primary nav-cta" href="#install">
+          <span class="btn-label">Add to Chrome</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+      </nav>
+    </div>
+
+    <!-- ══ Hero ═════════════════════════════════════════════════════════════
+         The signature moment. The chart line is a wire and every price point is
+         a sighting that flies in and lands on it — the flock assembling the
+         record. The figures are the shape of a real tracked part. -->
     <header class="hero" id="top">
       <div class="hero-copy">
         <h1 class="h-display">
-          <span class="line" data-line="1">Every price</span>
-          <span class="line" data-line="2">has a <em>history</em></span>
+          <span class="line" style="--l: 0"><span>Every price</span></span>
+          <span class="line" style="--l: 1"><span>has a <em>history</em>.</span></span>
         </h1>
-        <p class="hero-sub">
-          Jackdaw shows you Micro Center's: what a part used to cost, what it
-          typically costs, and whether today is actually a good day to drive over.
+        <p class="lede hero-sub">
+          Micro Center shows you today's number. Jackdaw shows you the other
+          fifty&mdash;what a part used to cost, what it typically costs, and
+          whether today is actually a good day to drive over.
         </p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="#install">
+          <a class="btn btn-primary btn-lg" href="#install">
             <span>Add to Chrome</span>
-            <span class="btn-arrow">→</span>
+            <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
-          <a class="btn btn-ghost" href="#how">See how it works</a>
+          <a class="btn btn-ghost btn-lg" href="#how">
+            <span>See how it works</span>
+          </a>
         </div>
-        <p class="hero-note">Free forever · No account needed · Open source</p>
+        <p class="hero-note">
+          <b>Free forever</b><span class="sep" aria-hidden="true"></span>
+          <b>No account needed</b><span class="sep" aria-hidden="true"></span>
+          <b>Open source</b>
+        </p>
       </div>
 
-      <!-- The signature moment: a jackdaw flies in, lands, becomes a dot,
-           and the dot stretches into a real price-history chart. -->
-      <div class="stage" id="stage" aria-hidden="true">
-        <svg class="flier" id="flier" viewBox="8 2 76 96" fill="currentColor">
-          <g class="flier-wings" id="flierWings">
-            <path
-              d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"
-            />
-            <path
-              d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"
-            />
-          </g>
-          <path
-            d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"
-          />
-          <path
-            d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"
-          />
-        </svg>
-        <span class="seed" id="seed"></span>
+      <div class="stage" id="stage">
         <div class="panel" id="panel">
           <div class="panel-head">
-            <span class="panel-dot"></span>
+            <span class="panel-dot" aria-hidden="true"></span>
             <span class="panel-title">ASUS XG-C100C 10G Network Adapter</span>
-            <span class="panel-chip" id="panelChip">All-time low</span>
           </div>
-          <canvas id="chart" class="panel-chart"></canvas>
-          <div class="panel-stats" id="panelStats">
-            <div class="stat"><b>$94.99</b><span>current</span></div>
-            <div class="stat"><b>$109.99</b><span>typical</span></div>
-            <div class="stat"><b>$94.99</b><span>all-time low</span></div>
+          <div class="panel-chips">
+            <span class="chip chip-good">All-time low</span>
+            <span class="chip">Advertised list: <span class="num">$129.99</span></span>
+            <span class="chip">Last seen: 6 at Duluth</span>
           </div>
+          <canvas id="chart" class="panel-chart" aria-hidden="true"></canvas>
+          <p class="sr">
+            A price history chart. This part has ranged from $124.99 down to
+            $94.99 over the tracked period, and is currently at its lowest
+            recorded price.
+          </p>
+          <div class="panel-stats">
+            <div class="stat stat-lead"><b class="num">$94.99</b><span>Current</span></div>
+            <div class="stat"><b class="num">$109.99</b><span>Typical</span></div>
+            <div class="stat"><b class="num">$124.99</b><span>Highest seen</span></div>
+          </div>
+        </div>
+        <div class="stage-caption" id="stageCaption">
+          <span><span class="num" id="sightCount">0</span> sightings on this part</span>
         </div>
       </div>
     </header>
 
-    <!-- ══ How ══ -->
-    <section class="how" id="how">
-      <p class="eyebrow">How it works</p>
-      <h2 class="h-section">The flock does the remembering</h2>
-      <div class="steps">
-        <article class="step reveal">
-          <span class="step-n">01</span>
-          <h3>You browse, as usual</h3>
-          <p>
-            Open any Micro Center product page, or a page of search results. Jackdaw
-            reads the prices already on your screen. Nothing is scraped, nothing is
-            crawled.
-          </p>
-        </article>
-        <article class="step reveal">
-          <span class="step-n">02</span>
-          <h3>Everyone's visits add up</h3>
-          <p>
-            One product page adds one price point; one page of results adds every card
-            on it. Thousands of ordinary shopping trips become a record none of us had
-            alone.
-          </p>
-        </article>
-        <article class="step reveal">
-          <span class="step-n">03</span>
-          <h3>You see the whole story</h3>
-          <p>
-            A chart, a verdict, and notes from people who were just in the aisle,
-            right on the page, before you commit to the drive.
-          </p>
-        </article>
-      </div>
-    </section>
-
-    <!-- ══ Features ══ -->
-    <section class="features" id="features">
-      <p class="eyebrow">What you get</p>
-      <h2 class="h-section">Everything a price tag won't tell you</h2>
-
-      <div class="feature reveal">
-        <div class="feature-copy">
-          <h3>Price history you can read at a glance</h3>
-          <p>
-            Every point on the chart is a real shopper's visit. Hover for exact days,
-            filter by store, and watch the amber line for open-box prices, the ones
-            that never make it into any ad.
-          </p>
-        </div>
-        <div class="feature-art art-chart"><canvas id="fchart"></canvas></div>
-      </div>
-
-      <div class="feature reveal feature-flip">
-        <div class="feature-copy">
-          <h3>An alert that waits for your price</h3>
-          <p>
-            Name the number you'd actually pay. The flock keeps watching, and the
-            moment any member sees it at or below your target, your browser tells you.
-          </p>
-        </div>
-        <div class="feature-art art-alert">
-          <div class="mini-card">
-            <div class="mini-row"><b>$94.99</b><span class="mini-badge">Target met</span></div>
-            <div class="mini-meter"><i></i></div>
-            <div class="mini-sub">You said $95.00 · store #029</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="feature reveal">
-        <div class="feature-copy">
-          <h3>Intel from the aisle</h3>
-          <p>
-            Open-box finds, successful price matches, empty shelves. Threaded notes
-            from shoppers who were standing there an hour ago, voted up by the people
-            they helped.
-          </p>
-        </div>
-        <div class="feature-art art-thread">
-          <div class="mini-comment">
-            <span class="mini-vote">12</span>
-            <p><b>TenGigTinkerer</b><svg class="mini-verified" viewBox="0 0 12 12" role="img"><title>Verified — a claimed handle</title><path d="M2.4 6.3 4.8 8.6 9.6 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg> Grabbed an open-box one for $73 at the Tustin store. Ask at the service desk, they don't always shelve them.</p>
-          </div>
-          <div class="mini-comment mini-nested">
-            <span class="mini-vote">4</span>
-            <p><b>DanFromDenver</b> Seconding this. Mine came with both brackets.</p>
-          </div>
+    <!-- ══ How ══════════════════════════════════════════════════════════════ -->
+    <section class="section how" id="how">
+      <div class="wrap">
+        <p class="eyebrow">How it works</p>
+        <h2 class="h-section">The flock does the remembering</h2>
+        <div class="steps">
+          <article class="step reveal">
+            <span class="step-n">01</span>
+            <h3>You browse, as usual</h3>
+            <p>
+              Open a Micro Center product page, or a page of search results.
+              Jackdaw reads the prices already on your screen. Nothing is
+              scraped, nothing is crawled, and not one extra request is made.
+            </p>
+          </article>
+          <article class="step reveal d1">
+            <span class="step-n">02</span>
+            <h3>Everyone's visits add up</h3>
+            <p>
+              A product page adds one price point. A page of results adds every
+              card on it. Thousands of ordinary shopping trips become a record
+              none of us had alone.
+            </p>
+          </article>
+          <article class="step reveal d2">
+            <span class="step-n">03</span>
+            <h3>You see the whole story</h3>
+            <p>
+              A chart, a verdict, and notes from people who were just in the
+              aisle&mdash;right on the page, before you commit to the drive.
+            </p>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- ══ Privacy ══ -->
-    <section class="privacy" id="privacy">
-      <div class="privacy-inner">
-        <p class="eyebrow">Built to know nothing about you</p>
-        <h2 class="h-section">No account needed. No tracking. No catch.</h2>
+    <!-- ══ Features ═════════════════════════════════════════════════════════ -->
+    <section class="section" id="features">
+      <div class="wrap">
+        <p class="eyebrow">What you get</p>
+        <h2 class="h-section">Everything a price tag won't tell you</h2>
+
+        <div style="margin-top: 56px">
+          <div class="feature reveal">
+            <div class="feature-copy">
+              <span class="feature-tag">Price history</span>
+              <h3>Every point is somebody's visit</h3>
+              <p>
+                Not an estimate and not a scrape&mdash;a timestamped sighting by
+                a real shopper. Filter by store, and watch the amber line for
+                open-box prices, the ones that never make it into any ad.
+              </p>
+            </div>
+            <div class="feature-art art art-chart">
+              <canvas id="fchart" aria-hidden="true"></canvas>
+              <div class="art-legend">
+                <span><i style="background: #16a34a" aria-hidden="true"></i> New</span>
+                <span><i style="background: #d97706" aria-hidden="true"></i> Open box</span>
+                <span><i style="background: #cbd0d8" aria-hidden="true"></i> Typical</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature reveal feature-flip">
+            <div class="feature-copy">
+              <span class="feature-tag">Alerts</span>
+              <h3>Name your price, then forget about it</h3>
+              <p>
+                Say what you'd actually pay. The flock keeps watching, and the
+                moment any member sees it at or under your number, your browser
+                tells you. Open-box and back-in-stock alerts are scoped to your
+                store, because a returned unit sits in exactly one building.
+              </p>
+            </div>
+            <div class="feature-art art art-alert">
+              <div class="mini-card">
+                <div class="mini-top">
+                  <span class="mini-name">ASUS XG-C100C 10G Adapter</span>
+                  <span class="mini-badge">Target met</span>
+                </div>
+                <div class="mini-price met num">$94.99</div>
+                <div class="mini-meter"><i data-meter="100"></i></div>
+                <div class="mini-sub">You said <span class="num">$95.00</span> &middot; seen 3 minutes ago</div>
+              </div>
+              <div class="mini-card">
+                <div class="mini-top">
+                  <span class="mini-name">Corsair RM850x Power Supply</span>
+                  <span class="mini-badge" style="color: var(--muted); border-color: var(--hairline); background: #fff">Watching</span>
+                </div>
+                <div class="mini-price num">$134.99</div>
+                <div class="mini-meter"><i data-meter="62"></i></div>
+                <div class="mini-sub"><span class="num">$15.00</span> above your target &middot; Duluth</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature reveal">
+            <div class="feature-copy">
+              <span class="feature-tag">Aisle intel</span>
+              <h3>Notes from people who were standing there</h3>
+              <p>
+                Open-box finds, successful price matches, empty shelves.
+                Threaded discussion right on the product page, voted up by the
+                people it helped. Sign in to claim a handle and your comments
+                carry a verified mark&mdash;or stay anonymous, which works just
+                as well.
+              </p>
+            </div>
+            <div class="feature-art art art-thread">
+              <div class="mini-comment">
+                <span class="mini-vote">
+                  <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 10 8H2z" fill="currentColor"/></svg>
+                  12
+                </span>
+                <div>
+                  <p>
+                    <b>TenGigTinkerer</b><svg class="mini-verified" viewBox="0 0 12 12" role="img"><title>Verified — a claimed handle</title><path d="M2.4 6.3 4.8 8.6 9.6 3.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Grabbed an open-box one for <span class="num">$73</span>. Ask at
+                    the service desk&mdash;they don't always shelve them.
+                  </p>
+                  <p class="mini-when">2 hours ago</p>
+                </div>
+              </div>
+              <div class="mini-comment mini-nested">
+                <span class="mini-vote">
+                  <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 10 8H2z" fill="currentColor"/></svg>
+                  4
+                </span>
+                <div>
+                  <p><b>DanFromDenver</b> Seconding this. Mine came with both brackets.</p>
+                  <p class="mini-when">41 minutes ago</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Privacy ══════════════════════════════════════════════════════════ -->
+    <section class="section privacy" id="privacy">
+      <div class="wrap privacy-grid">
+        <div>
+          <p class="eyebrow">Built to know nothing about you</p>
+          <h2 class="h-section">No account. No tracking. No catch.</h2>
+          <p class="lede" style="margin-top: 18px">
+            A price tracker that watched you would be worth less than the prices
+            it tracked. So this one doesn't.
+          </p>
+          <div class="privacy-actions">
+            <a class="btn btn-ghost" href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">
+              <span>Read the source</span><span class="btn-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
         <ul class="privacy-list">
-          <li><b>No sign-up.</b> Every feature works anonymously. An optional account syncs your alerts across browsers and lets you claim a handle, so your comments carry a verified mark.</li>
-          <li><b>No browsing history.</b> It runs on Micro Center product, search, and category pages and nowhere else &mdash; and it records what was on the shelf, never what you searched for.</li>
-          <li><b>No ads, no data sales.</b> Not now, not later. It's in the license.</li>
-          <li><b>Open source.</b> Read every line, or run your own copy.</li>
+          <li>
+            <b>No sign-up.</b>
+            Every feature works anonymously. An optional account syncs alerts
+            across browsers and lets you claim a handle&mdash;nothing requires it.
+          </li>
+          <li>
+            <b>We never learn what you searched for.</b>
+            On a results page Jackdaw records the products that were displayed,
+            never the query that displayed them. The address of the page is not
+            sent at all.
+          </li>
+          <li>
+            <b>Nowhere but Micro Center.</b>
+            The extension runs on product, search, and category pages and is
+            inert everywhere else on the web.
+          </li>
+          <li>
+            <b>No ads, no data sales.</b>
+            Not now, not later. The licence says so and the source proves it.
+          </li>
         </ul>
-        <a class="btn btn-ghost" href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">
-          <span>Read the source</span><span class="btn-arrow">→</span>
-        </a>
       </div>
     </section>
 
-    <!-- ══ CTA ══ -->
-    <section class="cta" id="install">
-      <h2 class="h-display cta-title">Join the flock</h2>
-      <p class="cta-sub">One click. Then shop like you always did.</p>
-      <a class="btn btn-primary btn-lg" href="#" id="installBtn">
-        <span>Add to Chrome</span>
-        <span class="btn-arrow">→</span>
-      </a>
-      <p class="cta-note">Chrome Web Store listing coming soon · <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">install from source</a></p>
+    <!-- ══ CTA ══════════════════════════════════════════════════════════════ -->
+    <section class="section cta" id="install">
+      <canvas class="cta-wire" id="ctaWire" aria-hidden="true"></canvas>
+      <div class="wrap cta-inner">
+        <h2 class="h-display">Join the <em>flock</em></h2>
+        <p class="cta-sub">
+          One click, then shop exactly like you always did. The remembering
+          happens on its own.
+        </p>
+        <a class="btn btn-primary btn-lg" href="#" id="installBtn">
+          <span>Add to Chrome</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <p class="cta-note">
+          Chrome Web Store listing coming soon &middot;
+          <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">install from source</a>
+        </p>
+      </div>
     </section>
 
     <footer class="footer">
-      <div class="footer-brand">
-        <span class="nav-dot"></span>
-        <span class="nav-word">Jackdaw</span>
+      <div class="wrap">
+        <div class="footer-inner">
+          <span class="footer-brand">
+            <span class="nav-dot" aria-hidden="true"></span>
+            Jackdaw
+          </span>
+          <nav class="footer-links" aria-label="Footer">
+            <a href="privacy.html">Privacy</a>
+            <a href="terms.html">Terms</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
+          </nav>
+        </div>
+        <p class="footer-fine">
+          Not affiliated with, endorsed by, or sponsored by Micro Center.
+          Product names and trademarks belong to their owners. Prices shown on
+          this page are illustrative of the interface, not a live quote.
+        </p>
       </div>
-      <nav class="footer-links">
-        <a href="privacy.html">Privacy</a>
-        <a href="terms.html">Terms</a>
-        <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
-      </nav>
-      <p class="footer-fine">
-        Not affiliated with, endorsed by, or sponsored by Micro Center. Product names
-        and trademarks belong to their owners.
-      </p>
     </footer>
 
     <script src="main.js"></script>
