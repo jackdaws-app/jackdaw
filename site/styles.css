@@ -55,7 +55,17 @@ a { color: inherit; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  color: var(--muted);
+  /* `--ink-soft`, not `--muted`. Every eyebrow on every page sits on off-white
+     ground — `--paper` on the marketing sections, `--paper-warm` on the privacy
+     band and the whole admin panel — and none on pure white, which is the only
+     surface `--muted` clears at this size. Measured: 4.67 on `--paper` and 4.37
+     on `--paper-warm`, one marginal and one under AA for 11px text. This token
+     takes all five to 6.80–7.28.
+
+     The colour is right where `--muted` is used on white cards, so the fix is
+     here on the one class that never gets a white backdrop rather than on the
+     token. */
+  color: var(--ink-soft);
   margin-bottom: 10px;
 }
 

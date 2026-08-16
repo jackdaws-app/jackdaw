@@ -126,18 +126,15 @@
 }
 .admin-section .eyebrow { margin-bottom: 6px; }
 
-/* `--muted` is tuned for the white cards, where it measures 4.83. The two
-   eyebrows are the only muted text sitting directly on `--paper-warm`, and the
-   warmer backdrop drops the same grey to 4.37 — under AA for 11px, which this
-   is. Fixed at the usage site rather than in the token, because the token is
-   correct everywhere else on the page. Scoped to the admin body: the marketing
-   site uses `.eyebrow` on the same warm ground and has the same shortfall, but
-   that is a different surface with its own review. */
-.admin-body .eyebrow { color: var(--ink-soft); }
-/* Same shortfall, same cause: the two page-level footnotes sit on the warm
-   ground rather than inside a card. A sweep of every text node in the panel
-   found exactly these and the eyebrows below AA — the `.admin-fine` inside a
-   card is on white and measures 4.83, so it is left alone. */
+/* The eyebrows used to be fixed here too. They are now handled by `.eyebrow`
+   itself in styles.css, because a sweep of the marketing pages found the same
+   shortfall there and every eyebrow on the site turns out to sit on off-white —
+   one rule beats two overrides.
+
+   This one stays admin-only: the two page-level footnotes sit on the warm
+   ground rather than inside a card, and the same sweep put them at 4.37 for the
+   same reason. The `.admin-fine` inside a card is on white at 4.83 and is left
+   alone. */
 .panel-wrap > .admin-fine { color: var(--ink-soft); }
 .admin-section-title {
   font-family: "Instrument Serif", Georgia, serif;
