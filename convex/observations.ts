@@ -312,6 +312,23 @@ const CATALOG_MAX_RATIO = 5;
 // different questions and are deliberately not the same number.
 const CATALOG_MAX_LIST_RATIO = 20;
 
+type CatalogSkipReason =
+  | "INVALID_ITEM"
+  | "INVALID_UNITS"
+  | "INVALID_OPEN_BOX"
+  | "INVALID_OPEN_BOX_UNITS"
+  | "INVALID_LIST_PRICE"
+  | "PRICE_OUTLIER";
+
+const catalogSkipReasonValidator = v.union(
+  v.literal("INVALID_ITEM"),
+  v.literal("INVALID_UNITS"),
+  v.literal("INVALID_OPEN_BOX"),
+  v.literal("INVALID_OPEN_BOX_UNITS"),
+  v.literal("INVALID_LIST_PRICE"),
+  v.literal("PRICE_OUTLIER"),
+);
+
 /**
  * Throttle key for one rendered grid: the store plus a 32-bit FNV-1a fold of
  * the product IDs, sorted so card order doesn't matter. Not a security hash —
@@ -402,13 +419,22 @@ export const reportBatch = mutation({
   },
   // Refused in band for the same reason `report` is: the caller discards the
   // result, so a refusal can be counted instead of rolling itself back. The
-  // per-item outcome is returned as counts because there is nothing useful a
-  // content script could do with a list of which cards were skipped, and a
-  // list would be a much larger response to no purpose.
+  // Counts remain convenient for the ordinary extension UI. The bounded item
+  // outcomes also let a sequential browser driver prove that every card on a
+  // page either landed or had a specific refusal, instead of guessing which
+  // item an aggregate skip count referred to. These are response metadata only
+  // and do not add fields to any stored document.
   returns: v.object({
     ok: v.boolean(),
     accepted: v.number(),
     skipped: v.number(),
+    acceptedProductIds: v.array(v.string()),
+    skippedItems: v.array(
+      v.object({
+        productId: v.string(),
+        reason: catalogSkipReasonValidator,
+      }),
+    ),
     throttled: v.boolean(),
     rateLimited: v.boolean(),
     // True when a selector tally arrived and was refused as inconsistent. Not
@@ -421,6 +447,8 @@ export const reportBatch = mutation({
     const nothing = {
       accepted: 0,
       skipped: args.items.length,
+      acceptedProductIds: [] as string[],
+      skippedItems: [] as { productId: string; reason: CatalogSkipReason }[],
       throttled: false,
       rateLimited: false,
       selectorsRejected: false,
@@ -528,6 +556,8 @@ export const reportBatch = mutation({
     // the same document to reach a number a single delta gets to in one.
     let accepted = 0;
     let skipped = 0;
+    const acceptedProductIds: string[] = [];
+    const skippedItems: { productId: string; reason: CatalogSkipReason }[] = [];
     let newProducts = 0;
     let newPricePoints = 0;
     const perCategory = new Map<string, number>();
@@ -555,6 +585,10 @@ export const reportBatch = mutation({
         raw.urlPath.length > 500
       ) {
         skipped++;
+        skippedItems.push({
+          productId: raw.productId.slice(0, 40),
+          reason: "INVALID_ITEM",
+        });
         continue;
       }
       if (
@@ -562,6 +596,7 @@ export const reportBatch = mutation({
         (!Number.isInteger(raw.units) || raw.units < 0 || raw.units > 10_000)
       ) {
         skipped++;
+        skippedItems.push({ productId: raw.productId, reason: "INVALID_UNITS" });
         continue;
       }
       // An open-box price is a used unit's price, so it has to undercut the new
@@ -577,6 +612,7 @@ export const reportBatch = mutation({
           raw.openBoxPrice >= raw.price)
       ) {
         skipped++;
+        skippedItems.push({ productId: raw.productId, reason: "INVALID_OPEN_BOX" });
         continue;
       }
       // A count with no price beside it cannot have come from the one string
@@ -590,6 +626,10 @@ export const reportBatch = mutation({
           raw.openBoxUnits > 1_000)
       ) {
         skipped++;
+        skippedItems.push({
+          productId: raw.productId,
+          reason: "INVALID_OPEN_BOX_UNITS",
+        });
         continue;
       }
       // A list price is the figure the shelf price is discounted FROM, so it
@@ -605,6 +645,7 @@ export const reportBatch = mutation({
           raw.listPrice > raw.price * CATALOG_MAX_LIST_RATIO)
       ) {
         skipped++;
+        skippedItems.push({ productId: raw.productId, reason: "INVALID_LIST_PRICE" });
         continue;
       }
 
@@ -672,6 +713,7 @@ export const reportBatch = mutation({
           raw.price > latest.price * CATALOG_MAX_RATIO)
       ) {
         skipped++;
+        skippedItems.push({ productId: raw.productId, reason: "PRICE_OUTLIER" });
         continue;
       }
 
@@ -796,6 +838,7 @@ export const reportBatch = mutation({
       }
 
       accepted++;
+      acceptedProductIds.push(raw.productId);
       const catKey = categoryKey(category);
       if (catKey !== null) perCategory.set(catKey, (perCategory.get(catKey) ?? 0) + 1);
     }
@@ -841,6 +884,8 @@ export const reportBatch = mutation({
       ok: true,
       accepted,
       skipped,
+      acceptedProductIds,
+      skippedItems,
       throttled: false,
       rateLimited: false,
       selectorsRejected: !selectorsOk,

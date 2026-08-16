@@ -36,13 +36,25 @@
   const CATALOG_OFF_KEY = "jdCatalog";
   const MAX_ITEMS = 96; // Micro Center's largest "items per page"; the backend caps identically
 
-  // Recently-reported suppression. `store:product` -> [sentAtMs, price, inStock]
+  // Page-local completion receipt for the sequential browser driver. It holds
+  // only rendered product ids and the backend verdict; it is neither sent to
+  // Micro Center nor stored in Jackdaw's database.
+  const RECEIPT_ATTR = "data-jackdaw-catalog-receipt";
+  const COLLECTOR_VERSION = (() => {
+    try {
+      return chrome.runtime.getManifest().version;
+    } catch {
+      return "unknown";
+    }
+  })();
+
+  // Recently-reported suppression. `store:product` -> [sentAtMs, fullSignature]
   const SENT_KEY = "jdSent";
   const SENT_WINDOW_MS = 10 * 60 * 1000;
-  // Four full 96-card pages. Entries expire on time, not on count; the cap only
-  // bounds a storage key that a very long session could otherwise grow without
-  // limit.
-  const SENT_MAX = 400;
+  // A complete 20-page watcher pass plus headroom. Entries still expire on
+  // time; this cap prevents overlap near the end of a pass from evicting the
+  // first pages and turning one browser into apparent corroborating readers.
+  const SENT_MAX = 2200;
 
   // Reloading or auto-updating Jackdaw orphans an already-injected content
   // script: it keeps running, and every `chrome.*` call it makes from then on
@@ -57,6 +69,45 @@
       return false;
     }
   };
+
+  function emitReceipt(receipt) {
+    try {
+      document.documentElement.setAttribute(
+        RECEIPT_ATTR,
+        JSON.stringify({
+          receiptVersion: 1,
+          collectorVersion: COLLECTOR_VERSION,
+          observedAt: Date.now(),
+          ...receipt,
+        }),
+      );
+    } catch {
+      // Navigation can detach the document while a reply is landing. The next
+      // rendered page gets its own receipt, so there is nothing to retry here.
+    }
+  }
+
+  function pageFingerprint(storeNum, productIds) {
+    const joined = productIds.slice().sort().join(",");
+    let h = 0x811c9dc5;
+    for (let i = 0; i < joined.length; i++) {
+      h ^= joined.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return `${storeNum}:${productIds.length}:${(h >>> 0).toString(36)}`;
+  }
+
+  function receiptContext(storeNum, shown, visibleProductIds) {
+    const readable = new Set(shown.map((item) => item.productId));
+    return {
+      storeNum,
+      pageFingerprint: pageFingerprint(storeNum, visibleProductIds),
+      visibleCount: visibleProductIds.length,
+      readableCount: shown.length,
+      visibleProductIds,
+      unreadableProductIds: visibleProductIds.filter((id) => !readable.has(id)),
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Card reading
@@ -339,6 +390,7 @@
     // over an unknown number of harvests.
     tally = newTally();
     const seen = new Set();
+    const visible = new Set();
     const items = [];
     const els = [];
     for (const card of cards) {
@@ -347,6 +399,9 @@
       // early returns lands in `seen` without landing in `found`. That gap IS
       // the container-level health signal.
       tally.card.seen++;
+      const idAnchor = card.querySelector("a[data-id]");
+      const visibleId = ((idAnchor && idAnchor.getAttribute("data-id")) || "").trim();
+      if (/^\d{1,20}$/.test(visibleId)) visible.add(visibleId);
       const item = readCard(card);
       if (!item || seen.has(item.productId)) continue;
       tally.card.found++;
@@ -364,7 +419,22 @@
       t.found = Math.min(t.found, t.seen);
       t.bad = Math.min(t.bad, t.found);
     }
-    return { items, els, tally };
+    return { items, els, tally, visibleProductIds: [...visible] };
+  }
+
+  function emitNoStoreReceipt(status, storeNum) {
+    const { items, visibleProductIds } = harvest();
+    emitReceipt({
+      ...receiptContext(storeNum, items, visibleProductIds),
+      status,
+      offeredCount: 0,
+      acceptedCount: 0,
+      skippedCount: 0,
+      acceptedProductIds: [],
+      skippedItems: [],
+      suppressedProductIds: [],
+      selectorsRejected: false,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -402,31 +472,37 @@
     }
   }
 
-  // The remembered entry has to carry EVERY field that can move on its own, not
-  // just the shelf price — otherwise the paragraph above is false. An open-box
-  // unit arriving, repricing or selling, and a promotion starting or ending,
-  // all change the reading while `price` and `inStock` sit still, and the
-  // server would open a new row for each of them. Suppressing those here would
-  // hold back exactly the events the open-box alert exists to catch.
-  //
-  // Both sides are folded through `?? null` for two reasons that happen to want
-  // the same thing. chrome.storage is JSON-serialized, so an `undefined` written
-  // into an array comes back as `null` and a raw `===` would never match — every
-  // product would re-report on every page, silently undoing the suppression.
-  // And an entry written before this change has nothing at [3] and [4] at all,
-  // which folds to `null` too, so it still matches a product with neither field:
-  // the only cards that re-report once after an upgrade are those that actually
-  // carry an open-box or list price.
+  // The remembered signature carries every field reportBatch can update. Shelf
+  // depth and the observability flags matter even when price and Boolean stock
+  // do not move; identity text matters because the same mutation repairs it.
+  // Old array entries contain a number at [1], so the first page after this
+  // upgrade deliberately reports once and replaces them with full signatures.
   const slot = (v) => v ?? null;
+
+  function readingSignature(item) {
+    return JSON.stringify([
+      item.price,
+      item.inStock ? 1 : 0,
+      slot(item.units),
+      item.atLeast === true ? 1 : 0,
+      item.openBoxSeen === true ? 1 : 0,
+      slot(item.openBoxPrice),
+      slot(item.openBoxUnits),
+      item.listSeen === true ? 1 : 0,
+      slot(item.listPrice),
+      item.sku,
+      item.name,
+      item.urlPath,
+      slot(item.brand),
+      slot(item.category),
+    ]);
+  }
 
   function isRepeat(entry, item, now) {
     return (
       Array.isArray(entry) &&
       now - entry[0] < SENT_WINDOW_MS &&
-      entry[1] === item.price &&
-      entry[2] === (item.inStock ? 1 : 0) &&
-      slot(entry[3]) === slot(item.openBoxPrice) &&
-      slot(entry[4]) === slot(item.listPrice)
+      entry[1] === readingSignature(item)
     );
   }
 
@@ -450,14 +526,20 @@
   // Submission
   // ---------------------------------------------------------------------------
 
-  async function submit(storeNum, shown, tally) {
+  async function submit(storeNum, shown, tally, visibleProductIds) {
     const now = Date.now();
     const sent = prune(await readSent(), now);
     // The store is part of the key. Price is national but the shelf is not, so
     // the same card seen after switching stores is a genuinely different
     // reading and must not be suppressed by the first one.
     const keyOf = (item) => `${storeNum}:${item.productId}`;
-    const items = shown.filter((item) => !isRepeat(sent[keyOf(item)], item, now));
+    const items = [];
+    const suppressedProductIds = [];
+    for (const item of shown) {
+      if (isRepeat(sent[keyOf(item)], item, now)) suppressedProductIds.push(item.productId);
+      else items.push(item);
+    }
+    const context = receiptContext(storeNum, shown, visibleProductIds);
     // Every card on this page was already reported at these prices, minutes
     // ago. Nothing to add, so nothing is sent — which also leaves the device's
     // rate-limit budget for a page that does carry something new.
@@ -474,24 +556,97 @@
     // A page whose cards were merely SUPPRESSED as recent stays silent: the
     // readers demonstrably worked, so there is no question to raise, and
     // spending a rate-limit token to say "all fine" is the wrong trade.
-    if (items.length === 0 && tally.card.found > 0) return;
+    if (items.length === 0 && tally.card.found > 0) {
+      emitReceipt({
+        ...context,
+        status: "suppressed",
+        offeredCount: 0,
+        acceptedCount: 0,
+        skippedCount: 0,
+        acceptedProductIds: [],
+        skippedItems: [],
+        suppressedProductIds,
+        selectorsRejected: false,
+      });
+      return;
+    }
 
     // Fire and forget, exactly like the product-page report: the backend
     // refuses in band (throttled, rate limited, no store) and there is nothing
     // a browse page should show a shopper about any of it. The reply is read
     // only to decide what may be forgotten.
     if (!alive()) return;
+    emitReceipt({
+      ...context,
+      status: "submitting",
+      offeredCount: items.length,
+      acceptedCount: 0,
+      skippedCount: 0,
+      acceptedProductIds: [],
+      skippedItems: [],
+      suppressedProductIds,
+      selectorsRejected: false,
+    });
     try {
       chrome.runtime.sendMessage(
         { type: "catalog:batch", storeNum, items, selectors: tally },
         (reply) => {
-          void chrome.runtime.lastError;
+          const runtimeError = chrome.runtime.lastError;
+          if (runtimeError) {
+            emitReceipt({
+              ...context,
+              status: "error",
+              offeredCount: items.length,
+              acceptedCount: 0,
+              skippedCount: 0,
+              acceptedProductIds: [],
+              skippedItems: [],
+              suppressedProductIds,
+              selectorsRejected: false,
+              errorCode: "RUNTIME",
+            });
+            return;
+          }
           // background.js answers in an envelope — `{result}` on success,
           // `{error}` on failure — so the backend's own verdict is one level
           // down. Reading `reply.ok` here instead found `undefined`, took the
           // early return every single time, and left `jdSent` permanently
           // empty: the suppression above existed but never suppressed anything.
           const res = reply && reply.result;
+          if (!res) {
+            emitReceipt({
+              ...context,
+              status: "error",
+              offeredCount: items.length,
+              acceptedCount: 0,
+              skippedCount: 0,
+              acceptedProductIds: [],
+              skippedItems: [],
+              suppressedProductIds,
+              selectorsRejected: false,
+              errorCode: (reply && reply.code) || "NO_RESULT",
+            });
+            return;
+          }
+
+          let status = "refused";
+          if (res.reason === "CONTRIBUTION_OFF") status = "contribution_off";
+          else if (res.reason === "NO_STORE") status = "no_store";
+          else if (res.rateLimited === true) status = "rate_limited";
+          else if (res.throttled === true) status = "throttled";
+          else if (res.ok === true) status = "accepted";
+          emitReceipt({
+            ...context,
+            status,
+            offeredCount: items.length,
+            acceptedCount: res.accepted || 0,
+            skippedCount: res.skipped || 0,
+            acceptedProductIds: res.acceptedProductIds || [],
+            skippedItems: res.skippedItems || [],
+            suppressedProductIds,
+            selectorsRejected: res.selectorsRejected === true,
+          });
+
           // Remember only what the backend actually took. A throttled or
           // rate-limited batch wrote nothing, and recording it would suppress
           // the retry that should carry it. Cards the server SKIPPED are
@@ -501,13 +656,7 @@
           if (!res || res.ok !== true || res.throttled === true) return;
           const stamp = Date.now();
           for (const item of items) {
-            sent[keyOf(item)] = [
-              stamp,
-              item.price,
-              item.inStock ? 1 : 0,
-              slot(item.openBoxPrice),
-              slot(item.listPrice),
-            ];
+            sent[keyOf(item)] = [stamp, readingSignature(item)];
           }
           // Nothing to write for a health-only batch, and `prune` on an
           // unchanged object would rewrite storage for no reason.
@@ -523,7 +672,18 @@
         },
       );
     } catch {
-      /* orphaned; nothing to report and nothing to say about it */
+      emitReceipt({
+        ...context,
+        status: "error",
+        offeredCount: items.length,
+        acceptedCount: 0,
+        skippedCount: 0,
+        acceptedProductIds: [],
+        skippedItems: [],
+        suppressedProductIds,
+        selectorsRejected: false,
+        errorCode: "SEND_FAILED",
+      });
     }
   }
 
@@ -895,7 +1055,7 @@
     ran = true;
 
     // One read of the grid, shared by both halves — see harvest().
-    const { items, els, tally } = harvest();
+    const { items, els, tally, visibleProductIds } = harvest();
 
     // There is deliberately no `items.length === 0` bail here any more. A page
     // that produced no readings is the one page whose selector tally matters,
@@ -917,7 +1077,21 @@
     // the behaviour it already had. The tally rides this switch with the
     // sightings — telemetry about our own readers is still data leaving the
     // browser, and "Share what I browse" off has to mean nothing leaves.
-    if (settings[CATALOG_OFF_KEY] !== false) await submit(storeNum, items, tally);
+    if (settings[CATALOG_OFF_KEY] !== false) {
+      await submit(storeNum, items, tally, visibleProductIds);
+    } else {
+      emitReceipt({
+        ...receiptContext(storeNum, items, visibleProductIds),
+        status: "contribution_off",
+        offeredCount: 0,
+        acceptedCount: 0,
+        skippedCount: 0,
+        acceptedProductIds: [],
+        skippedItems: [],
+        suppressedProductIds: [],
+        selectorsRejected: false,
+      });
+    }
     // Independent of contributing. That switch governs what leaves this browser
     // as an observation; withholding price history from somebody who turned it
     // off would make reading a toll rather than a choice.
@@ -936,13 +1110,24 @@
       } catch {
         return;
       }
-      if (!/^\d{1,10}$/.test(storeNum) || storeNum === "000") return;
+      if (!/^\d{1,10}$/.test(storeNum) || storeNum === "000") {
+        emitNoStoreReceipt("no_store", String(storeNum || "000"));
+        return;
+      }
       // One harvest, shortly after the store is known, so the initial render
       // has settled. Deliberately not observing the DOM for later additions:
       // a report describes what was on screen when somebody looked at it, and
       // a collector that kept watching would be measuring the page rather than
       // the visit.
       setTimeout(() => run(storeNum), 1200);
+    },
+    { once: true },
+  );
+
+  window.addEventListener(
+    "jackdaw:catalog-store-missing",
+    () => {
+      emitNoStoreReceipt("no_store_signal", "000");
     },
     { once: true },
   );

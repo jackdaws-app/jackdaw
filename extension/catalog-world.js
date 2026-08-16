@@ -37,7 +37,10 @@
     // Half of page-world's budget: a grid with no ProductResults entry after
     // 10s is not a grid we should be reading, and unlike the product page
     // there is no panel waiting on the answer, so nothing is kept spinning.
-    if (++tries > 20) return;
+    if (++tries > 20) {
+      window.dispatchEvent(new CustomEvent("jackdaw:catalog-store-missing"));
+      return;
+    }
     const data = extract();
     if (data) {
       window.dispatchEvent(
