@@ -4,6 +4,5 @@ node_modules/
 .DS_Store
 .remember/
 .claude/settings.local.json
-.codex/automations/
 LEGAL-NOTES.md
 BUSINESS-NOTES.md
