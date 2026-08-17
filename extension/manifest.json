@@ -4,7 +4,6 @@
   "version": "0.2.0",
   "description": "Community price history, charts, and discussion for Micro Center products.",
   "permissions": ["storage", "alarms", "notifications", "clipboardWrite"],
-  "host_permissions": ["https://www.microcenter.com/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"

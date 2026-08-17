@@ -194,9 +194,9 @@
     tabEl.addEventListener("click", dismiss, { once: true });
   }
 
-  // First open: a three-step spotlight tour, built in our own shadow world.
+  // First open: a spotlight tour, built in our own shadow world.
   async function maybeTour() {
-    const { jdTourDone } = await store.get("jdTourDone");
+    const { jdTourDone, jdCatalog } = await store.get(["jdTourDone", "jdCatalog"]);
     if (jdTourDone) return;
     const steps = [
       {
@@ -215,6 +215,18 @@
         body: "Set a price. You'll get a notification when a shopper sees it lower.",
       },
     ];
+    // The contribution question, only while it's still open. "Not now" writes
+    // nothing — the question stays open and the popup keeps asking — where the
+    // popup's "No thanks" records a standing no. Mid-tour is a fine moment to
+    // say yes and a bad one to extract a permanent refusal.
+    if (jdCatalog === undefined) {
+      steps.push({
+        consent: true,
+        target: () => paneEl.querySelector(".jd-chart") || paneEl,
+        title: "Help build the price history",
+        body: "This chart exists because shoppers share what they see. Jackdaw can read the prices already on your screen as you browse — anonymously, never opening pages on its own. Nothing is shared until you say yes.",
+      });
+    }
     let i = 0;
     const overlay = el("div", "jd-tour");
     const hole = el("div", "jd-tour-hole");
@@ -244,15 +256,26 @@
       const dots = el("div", "jd-tour-dots");
       steps.forEach((_, d) => dots.append(el("span", "jd-tour-dot" + (d === i ? " jd-tour-dot-on" : ""))));
       const row = el("div", "mk-form-row");
-      const skip = el("button", "mk-cancel", "Skip");
-      skip.addEventListener("click", finish);
-      const next = el("button", "jd-coach-btn", i === steps.length - 1 ? "Done" : "Next");
-      next.addEventListener("click", () => {
-        i += 1;
-        if (i >= steps.length) finish();
-        else show();
-      });
-      row.append(skip, next);
+      if (steps[i].consent) {
+        const later = el("button", "mk-cancel", "Not now");
+        later.addEventListener("click", finish);
+        const join = el("button", "jd-coach-btn", "Start contributing");
+        join.addEventListener("click", () => {
+          store.set({ jdCatalog: true });
+          finish();
+        });
+        row.append(later, join);
+      } else {
+        const skip = el("button", "mk-cancel", "Skip");
+        skip.addEventListener("click", finish);
+        const next = el("button", "jd-coach-btn", i === steps.length - 1 ? "Done" : "Next");
+        next.addEventListener("click", () => {
+          i += 1;
+          if (i >= steps.length) finish();
+          else show();
+        });
+        row.append(skip, next);
+      }
       pop.append(dots, row);
       // popover below the hole when there's room, above otherwise
       const holeBottom = tr.bottom - dr.top;

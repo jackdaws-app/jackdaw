@@ -28,12 +28,13 @@
 //   * it never runs on a signed-in surface (account, cart, order history). The
 //     content-script match patterns keep it to public browse pages.
 //
-// Contributing is on by default and can be switched off in the popup, which is
-// also where it is disclosed in plain language. `jdCatalog === false` is the
-// only off state; absent means on.
+// Contributing is off until it is turned on in the popup, which is where it is
+// disclosed in plain language and where the consent card asks. `jdCatalog ===
+// true` is the only on state; absent means the question hasn't been answered,
+// and an unanswered question sends nothing.
 
 (() => {
-  const CATALOG_OFF_KEY = "jdCatalog";
+  const CATALOG_KEY = "jdCatalog";
   const MAX_ITEMS = 96; // Micro Center's largest "items per page"; the backend caps identically
 
   // Page-local completion receipt for the sequential browser driver. It holds
@@ -1063,21 +1064,23 @@
     // The badge half below still skips an empty grid, because there is nothing
     // to paint on.
 
-    // Both switches default to on when absent, so an orphaned context must not
-    // fall through to `{}` here the way the other reads do — that would run both
-    // halves against a dead context. Stop instead; the next load works normally.
+    // The badges switch still defaults to on when absent, so an orphaned
+    // context must not fall through to `{}` here the way the other reads do —
+    // that would paint badges from a dead context. Stop instead; the next load
+    // works normally. (Contributing reads `{}` as unanswered, which is off.)
     if (!alive()) return;
     let settings;
     try {
-      settings = await chrome.storage.local.get([CATALOG_OFF_KEY, BADGES_OFF_KEY]);
+      settings = await chrome.storage.local.get([CATALOG_KEY, BADGES_OFF_KEY]);
     } catch {
       return;
     }
-    // Absent means on, for both: an install that predates either switch keeps
-    // the behaviour it already had. The tally rides this switch with the
-    // sightings — telemetry about our own readers is still data leaving the
-    // browser, and "Share what I browse" off has to mean nothing leaves.
-    if (settings[CATALOG_OFF_KEY] !== false) {
+    // Contributing takes an explicit true and nothing else: absent means the
+    // popup's consent card hasn't been answered, and an unanswered question
+    // sends nothing. The tally rides this switch with the sightings —
+    // telemetry about our own readers is still data leaving the browser, and
+    // anything short of "yes" has to mean nothing leaves.
+    if (settings[CATALOG_KEY] === true) {
       await submit(storeNum, items, tally, visibleProductIds);
     } else {
       emitReceipt({

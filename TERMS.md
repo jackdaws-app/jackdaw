@@ -1,6 +1,6 @@
 # Terms of Service
 
-*Last updated: August 13, 2026. Draft; review before store submission.*
+*Last updated: August 13, 2026.*
 
 These Terms of Service ("Terms") govern your use of the Jackdaw browser extension and related services ("the Service"). By using the Service you agree to these Terms.
 

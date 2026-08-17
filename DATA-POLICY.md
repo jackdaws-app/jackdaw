@@ -86,13 +86,16 @@ Not sent, from either surface:
   `/product/`, `/search/`, and `/category/` URLs; the extension does not load on those
   pages at all.
 
-## 6. Contributing is one switch, and turning it off leaves the product working
+## 6. Contributing is one switch, off until the person turns it on
 
-The toolbar popup carries a single "Share what I browse" switch. It gates both sighting
-paths at one choke point in the service worker, so switching it off silences product pages
-and result pages together — a switch that quietly left one path reporting would be a lie.
-Price history, charts, alerts, and discussion all keep working while it is off. Reading is
-never gated on contributing.
+The toolbar popup carries a single "Share what I browse" switch, and it starts off: a
+fresh install submits nothing until the person says yes — on the welcome page that opens
+at install, in the popup's consent card, in the panel's first-open tour, or by turning
+the switch on themselves. The switch gates both sighting paths at one choke point in the
+service worker, so anything short of an explicit yes silences product pages and result
+pages together — a switch that quietly left one path reporting would be a lie. Price
+history, charts, alerts, and discussion all work whether it has ever been turned on or
+not. Reading is never gated on contributing.
 
 ## 7. No ads, no paywall, no data sales
 

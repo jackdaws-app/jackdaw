@@ -212,12 +212,14 @@ async function authState() {
 // The contribution switch, read at the one place every observation has to pass
 // through. The popup's label says "Share what I browse", so it has to govern
 // BOTH sighting paths — gating only the catalog collector would leave product
-// pages reporting under a switch that reads as off. Absent means on; only an
-// explicit false opts out, so an install that predates the switch keeps
-// contributing exactly as it did.
+// pages reporting under a switch that reads as off. Only an explicit true —
+// written when the person answers the popup's consent card or turns the
+// switch on — contributes. Absent means the question hasn't been answered
+// yet, and an unanswered question sends nothing: consent has to come before
+// collection, not after it.
 async function contributing() {
   const { jdCatalog } = await chrome.storage.local.get("jdCatalog");
-  return jdCatalog !== false;
+  return jdCatalog === true;
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -464,8 +466,43 @@ function ensureAlarm() {
     if (!a) chrome.alarms.create(ALARM, { delayInMinutes: 2, periodInMinutes: 60 });
   });
 }
-chrome.runtime.onInstalled.addListener(ensureAlarm);
-chrome.runtime.onStartup.addListener(ensureAlarm);
+// A toolbar dot while the contribution question is still open — jdCatalog
+// absent means unanswered, and unanswered sends nothing, so the dot marks
+// "there is a question waiting", not "something is wrong". Cleared the moment
+// either answer lands, from any surface. setBadgeTextColor is Chrome 110+;
+// optional-chaining keeps older Chromiums from throwing over a cosmetic call.
+async function refreshConsentBadge() {
+  try {
+    const { jdCatalog } = await chrome.storage.local.get("jdCatalog");
+    if (jdCatalog === undefined) {
+      chrome.action.setBadgeText({ text: "•" });
+      chrome.action.setBadgeBackgroundColor({ color: "#0e7a37" });
+      chrome.action.setBadgeTextColor?.({ color: "#ffffff" });
+    } else {
+      chrome.action.setBadgeText({ text: "" });
+    }
+  } catch {
+    // cosmetic; never let the badge break the worker
+  }
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  ensureAlarm();
+  refreshConsentBadge();
+  // The welcome page opens once, on a fresh install only — never on an
+  // update or a browser restart. It is where the contribution question is
+  // first asked, before any collection could happen.
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+  }
+});
+chrome.runtime.onStartup.addListener(() => {
+  ensureAlarm();
+  refreshConsentBadge();
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.jdCatalog) refreshConsentBadge();
+});
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== ALARM) return;
