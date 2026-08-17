@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome to Jackdaw</title>
+    <link rel="stylesheet" href="welcome.css" />
+  </head>
+  <body>
+    <main class="wel-wrap">
+      <header class="wel-hero">
+        <!-- The sky: a fixed 472px stage centred in the hero, so the flight
+             path's authored coordinates land on the real glyph centre at any
+             tab width. Exists only while motion is allowed. -->
+        <div class="wel-sky" aria-hidden="true">
+          <div class="wel-flight">
+            <svg viewBox="8 2 76 96" fill="none">
+              <path d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"/>
+              <path d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"/>
+              <path d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"/>
+              <path d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"/>
+            </svg>
+          </div>
+          <!-- Variant B furniture: the sapling and the perched bird. Both are
+               hidden at rest — the tree by its own dash attributes (so it
+               stays hidden even before any CSS animation touches it), the
+               perched bird by opacity — and both are drawn in sky-space:
+               the tree's viewBox maps 1:1 onto sky coordinates. -->
+          <svg class="wel-tree" viewBox="374 76 46 74" fill="none">
+            <path class="wt-trunk" pathLength="1" stroke-dasharray="1.02" stroke-dashoffset="1.02" d="M 408 146 C 406.5 130 405.5 114 403.5 98"/>
+            <path class="wt-perch" pathLength="1" stroke-dasharray="1.02" stroke-dashoffset="1.02" d="M 405 106 C 396 100 385 91 378 83"/>
+            <path class="wt-high" pathLength="1" stroke-dasharray="1.02" stroke-dashoffset="1.02" d="M 404 100 C 405 93 409 86 415 80"/>
+            <path class="wt-stub" pathLength="1" stroke-dasharray="1.02" stroke-dashoffset="1.02" d="M 406.5 126 C 410 123 414 121 417 118"/>
+          </svg>
+          <!-- The perched silhouette (site/main.js's BIRD_P, feet-registered).
+               The innermost group bakes the left-facing mirror so the CSS
+               layers above it — drop (branch-follow), body (business) —
+               never fight the flip. -->
+          <svg class="wel-perched" viewBox="0 0 100 74" fill="none">
+            <g class="wel-perched-drop">
+              <g class="wel-perched-body">
+                <g transform="translate(100 0) scale(-1 1)">
+                  <path class="wp-legs" d="M59 44L59 73.5M66 44L66 73.5"/>
+                  <path class="wp-body" d="M100 7.5L95 5.6L85 0.6L82.5 0L77.5 0L72.5 3.1L70 6.4L65 15.3L55 23.9L47.5 28.1L45 28.3L40 30L22.5 39.7L10 44.2L7.5 45.8L5 50.6L0 53.1L2.5 53.1L5 52.2L10 51.7L17.5 50L25 50.3L27.5 49.7L30 50L40 49.4L45 50.6L47.5 50.3L50 58.6L55 64.2L57.5 63.1L67.5 48.9L75 45.6L80 41.1L85 31.9L87.5 23.3L90 11.9L95 8.9L100 8.1Z"/>
+                </g>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <svg class="wel-bird" viewBox="8 2 76 96" fill="none" aria-hidden="true">
+          <!-- the inner group carries the "adjust" idle so its flick composes
+               with (rather than replaces) the soar drift on the svg itself -->
+          <g class="wel-bird-body">
+            <path d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"/>
+            <path d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"/>
+            <path d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"/>
+            <path d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"/>
+          </g>
+        </svg>
+        <div class="wel-mark">Jackdaw</div>
+        <p class="wel-tag">Community price history for Micro&nbsp;Center</p>
+      </header>
+
+      <section class="wel-feats" aria-label="What Jackdaw does">
+        <div class="wel-feat">
+          <div class="wel-feat-title">Price history on every product page</div>
+          <div class="wel-feat-body">A chart beside the price, built from what real shoppers have seen. Each point is somebody's visit.</div>
+        </div>
+        <div class="wel-feat">
+          <div class="wel-feat-title">Price alerts</div>
+          <div class="wel-feat-body">Set a target. When a shopper sees the price lower — or an open-box unit appears at your store — you hear about it.</div>
+        </div>
+        <div class="wel-feat">
+          <div class="wel-feat-title">Aisle intel</div>
+          <div class="wel-feat-body">Open-box finds, price matches, stock notes. From shoppers, for shoppers.</div>
+        </div>
+      </section>
+
+      <section class="wel-consent" aria-label="Contributing">
+        <div class="wel-consent-title">Help build the price history</div>
+        <div class="wel-consent-body">
+          As you browse Micro Center, Jackdaw can read the prices already on
+          your screen and add them to the shared history — anonymously. It
+          never opens pages or loads products on its own, and nothing is
+          shared until you say yes.
+        </div>
+        <div class="wel-consent-actions">
+          <button class="wel-btn" id="no">No thanks</button>
+          <button class="wel-btn primary" id="yes">Start contributing</button>
+        </div>
+        <div class="wel-consent-note" id="note" hidden></div>
+      </section>
+
+      <footer class="wel-foot">
+        <span>Free and open source. No account needed.</span>
+        <span class="wel-foot-sep" aria-hidden="true">·</span>
+        <a href="https://jackdaws.app/privacy.html" target="_blank" rel="noopener">Privacy</a>
+        <span class="wel-foot-sep" aria-hidden="true">·</span>
+        <span>Not affiliated with Micro&nbsp;Center.</span>
+      </footer>
+    </main>
+    <script src="welcome.js"></script>
+  </body>
+</html>
