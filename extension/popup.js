@@ -121,9 +121,12 @@
 
   // The price line under the number. A watch with its price trigger switched
   // off has no target to measure against, so it names the state instead of
-  // inventing a distance from a target that isn't live.
+  // inventing a distance from a target that isn't live. A watch with no
+  // sighting yet is the same rule from the other side: no price to measure
+  // from, and "$0.00 above your target" would read as at-target.
   function subFor(r) {
     if (!r.alertPrice) return "Price alert off";
+    if (!(r.currentPrice > 0)) return `No sightings yet · target ${fmt(r.target)}`;
     if (r.met) return `Target ${fmt(r.target)} · ${r.inStock ? "in stock" : "out of stock"}`;
     return `${fmt(Math.max(r.currentPrice - r.target, 0))} above your ${fmt(r.target)} target`;
   }
@@ -209,21 +212,28 @@
     bodyEl.append(wrap);
   }
 
+  // Entrance choreography belongs to the popup opening, not to refreshes:
+  // sign-in, sign-out and delete reload the list in place, and replaying the
+  // cascade there would make a data refresh look like a restart.
+  let bodySettled = false;
+
   function loadList() {
     // Names resolve before the first paint, not after it — a row that renders
     // "store #045" and then swaps to "Westmont" is a visible correction.
     return Promise.all([
       send({ type: "watch:dashboard" }),
-      chrome.storage.local.get([STORE_NAMES_KEY, CATALOG_KEY, NOTICE_KEY, BADGES_KEY]),
+      chrome.storage.local.get([STORE_NAMES_KEY, CATALOG_KEY, BADGES_KEY]),
     ]).then(([res, stored]) => {
       storeNames = stored[STORE_NAMES_KEY] || {};
-      catalogOn = stored[CATALOG_KEY] !== false;
+      catalogOn = stored[CATALOG_KEY] === true;
       badgesOn = stored[BADGES_KEY] !== false;
+      bodyEl.classList.toggle("settled", bodySettled);
+      bodySettled = true;
       if (res.error) return renderError();
       const rows = Array.isArray(res.result) ? res.result : [];
       if (!rows.length) renderEmpty();
       else renderList(rows);
-      if (!stored[NOTICE_KEY]) bodyEl.prepend(noticeCard());
+      if (stored[CATALOG_KEY] === undefined) bodyEl.prepend(noticeCard());
     });
   }
 
@@ -233,14 +243,14 @@
   // there costs Micro Center nothing — no page is opened, nothing is fetched,
   // the byte count of the visit is identical either way.
   //
-  // That is a good deal only if the person knows about it, which is why the
-  // notice is shown once on its own and not buried in a settings screen, and
-  // why turning it off is one click from where the notice appears. Absent
-  // means on; only an explicit `false` is off.
+  // That is a good deal only if the person agreed to it first, which is why
+  // the card below asks before anything is sent — on its own, not buried in a
+  // settings screen — and why both answers are one click. Only an explicit
+  // `true` contributes; absent means the question hasn't been answered yet,
+  // and an unanswered question sends nothing.
 
   const CATALOG_KEY = "jdCatalog";
-  const NOTICE_KEY = "jdCatalogNotice";
-  let catalogOn = true;
+  let catalogOn = false;
 
   function setCatalog(on) {
     catalogOn = on;
@@ -260,11 +270,9 @@
     return chrome.storage.local.set({ [BADGES_KEY]: on });
   }
 
-  function dismissNotice() {
-    return chrome.storage.local.set({ [NOTICE_KEY]: true });
-  }
-
-  /** Shown once. Says what happens, in the words a person would use. */
+  /** The consent card: shown until the question is answered, in the words a
+   *  person would use. Both buttons write an explicit answer, so it appears
+   *  exactly as long as the question is open and never nags. */
   function noticeCard() {
     // Two elements, not one: the outer is a grid that collapses its own row on
     // dismissal (so the watch list rises into the gap), the inner is the card.
@@ -272,20 +280,20 @@
     const inner = el("div", "pop-notice-inner");
     card.append(inner);
     inner.append(
-      el("div", "pop-notice-title", "You're helping build the price history"),
+      el("div", "pop-notice-title", "Help build the price history"),
       el(
         "div",
         "pop-notice-body",
-        "As you browse Micro Center, Jackdaw reads the prices already on your " +
-          "screen and adds them to the shared history — anonymously. It never " +
-          "opens pages or loads products on its own.",
+        "As you browse Micro Center, Jackdaw can read the prices already on " +
+          "your screen and add them to the shared history — anonymously. It " +
+          "never opens pages or loads products on its own, and nothing is " +
+          "shared until you say yes.",
       ),
     );
     const actions = el("div", "pop-notice-actions");
-    const off = el("button", "pop-notice-btn", "Turn off");
-    const ok = el("button", "pop-notice-btn primary", "Got it");
+    const no = el("button", "pop-notice-btn", "No thanks");
+    const yes = el("button", "pop-notice-btn primary", "Start contributing");
     const close = () => {
-      dismissNotice();
       card.classList.add("going");
       // The inner's own fade ends first and animationend BUBBLES — without the
       // target check it would remove the card mid-collapse.
@@ -297,12 +305,15 @@
       if (getComputedStyle(card).animationName === "none") done();
       else card.addEventListener("animationend", done);
     };
-    off.addEventListener("click", () => {
+    no.addEventListener("click", () => {
       setCatalog(false);
       close();
     });
-    ok.addEventListener("click", close);
-    actions.append(off, ok);
+    yes.addEventListener("click", () => {
+      setCatalog(true);
+      close();
+    });
+    actions.append(no, yes);
     // Into the inner card — the outer is a one-row grid, and a second child
     // would take an implicit row that the collapse can't close.
     inner.append(actions);
@@ -353,11 +364,9 @@
           on
             ? "Prices and stock from the Micro Center pages you visit, with no account and nothing that identifies you."
             : "Jackdaw still shows you the history. You just won't be adding to it.",
-        onChange: async (on) => {
-          await setCatalog(on);
-          // Someone who found this screen has seen the disclosure by definition.
-          await dismissNotice();
-        },
+        // Writing the explicit boolean is also what answers the consent card's
+        // question, so it stops appearing once this switch has been touched.
+        onChange: setCatalog,
       }),
     );
 

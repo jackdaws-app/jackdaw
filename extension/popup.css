@@ -248,6 +248,13 @@ body.dark .pop-card.met .pop-price { color: #4ade80; }
   from { stroke-dashoffset: 100; }
   to { stroke-dashoffset: 0; }
 }
+/* Re-renders swap data, not scenes: once .settled (set by popup.js on any
+   render after the first), the card cascade, spark draw and meter fill are
+   state, not entrances. Dismissals (.going, .closing) are untouched. */
+.pop-body.settled .pop-card,
+.pop-body.settled .pop-notice-inner,
+.pop-body.settled .pop-spark .spark-draw { animation: none; }
+.pop-body.settled .pop-meter-fill { transition: none; }
 
 /* what else the row is waiting for — set below a hairline so it reads as the
    watch's settings rather than more price copy. Both colours are themed
@@ -404,6 +411,14 @@ body.dark .pop-acct.synced { color: #4ade80; }
   left: 0;
   right: 0;
   bottom: 0;
+  /* The popup window can be shorter than the sheet's content (the settings
+     sheet over a short watchlist, especially): without a ceiling the
+     bottom-anchored card grows past the popup's top edge and nothing can
+     scroll. The card caps itself under a strip of scrim, the grip stays
+     pinned, and the body underneath is what scrolls. */
+  max-height: calc(100% - 26px);
+  display: flex;
+  flex-direction: column;
   background: var(--jd-paper);
   border-top: 1px solid var(--jd-hairline);
   border-radius: 14px 14px 0 0;
@@ -419,12 +434,22 @@ body.dark .pop-sheet-card { background: #131e30; }
 @keyframes pop-sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
 @keyframes pop-scrim-out { from { opacity: 1; } to { opacity: 0; } }
 .pop-sheet-grip {
+  flex: 0 0 auto;
   width: 30px;
   height: 3px;
   border-radius: 2px;
   background: rgba(120, 130, 145, 0.35);
   margin: 0 auto 12px;
 }
+#sheetBody {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 130, 145, 0.35) transparent;
+}
+#sheetBody::-webkit-scrollbar { width: 5px; }
+#sheetBody::-webkit-scrollbar-track { background: transparent; }
+#sheetBody::-webkit-scrollbar-thumb { background: rgba(120, 130, 145, 0.3); border-radius: 8px; }
 
 .pop-sheet-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
 .pop-sheet-body { font-size: 11.5px; color: var(--jd-muted); margin-bottom: 12px; line-height: 1.5; }
