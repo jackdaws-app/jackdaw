@@ -472,6 +472,9 @@
   }
 
   scrimEl.addEventListener("click", closeSheet);
+  // The grip reads as a dismiss handle, so it is one — on a sheet tall enough
+  // to cap out, the strip of scrim above it is too thin to be the only way out.
+  sheetEl.querySelector(".pop-sheet-grip").addEventListener("click", closeSheet);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !sheetEl.hidden) closeSheet();
   });

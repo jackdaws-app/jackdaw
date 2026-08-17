@@ -433,13 +433,33 @@ body.dark .pop-sheet-card { background: #131e30; }
 .pop-sheet.closing .pop-scrim { animation: pop-scrim-out 0.22s ease forwards; }
 @keyframes pop-sheet-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
 @keyframes pop-scrim-out { from { opacity: 1; } to { opacity: 0; } }
+/* A real button: clicking the grip closes the sheet. The visible bar is the
+   ::before; the button itself is a full-width strip reaching up into the
+   card's own top padding, so the touch target is honest while the bar sits
+   exactly where the decorative div left it (8px from the card's top edge). */
 .pop-sheet-grip {
   flex: 0 0 auto;
+  display: block;
+  width: 100%;
+  margin: -8px 0 0;
+  padding: 8px 0 12px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: 14px 14px 0 0;
+}
+.pop-sheet-grip::before {
+  content: "";
+  display: block;
   width: 30px;
   height: 3px;
   border-radius: 2px;
   background: rgba(120, 130, 145, 0.35);
-  margin: 0 auto 12px;
+  margin: 0 auto;
+  transition: background 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .pop-sheet-grip:hover::before { background: rgba(120, 130, 145, 0.6); }
 }
 #sheetBody {
   min-height: 0;
