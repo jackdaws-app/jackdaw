@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-brand-hold>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -45,37 +45,13 @@
          rather than making you wait for the idle cycle. -->
     <div class="nav-rail">
       <nav class="nav" id="nav">
-        <a class="nav-brand" id="navBrand" href="#top" aria-label="Jackdaw, back to top">
-          <!-- The lean toward the cursor lives on the wrapper, not the dot: the
-               dot's squash-and-stretch is a running animation, and a running
-               animation overrides the cascade. Two transforms, two elements. -->
-          <span class="nav-perch" id="navPerch"><span class="nav-dot"></span></span>
-          <!-- Overhead flying silhouette, drawn to the measured proportion
-               rather than by eye: a jackdaw's wingspan is ~2x its body length,
-               and the two blades carry ~3.5x the body's area. The first version
-               had a long heavy lozenge and stubby swept wings — a ratio of 1.2
-               — which at this size rendered as a dark smudge with spikes. Wings
-               are drawn first so the body overlaps their roots. -->
-          <svg class="brand-flit" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true">
-            <g class="brand-flit-wings">
-              <path
-                d="M63 45.6 C61.5 34 56.5 19.5 49.5 6.5 L46.2 15.2 L42.8 10.2 L41.2 19.4 L37.4 16.4 L36.8 25.8 L32.8 24.2 L34 33.2 C38.4 38.4 43 42.4 46 45.6 Z"
-              />
-              <path
-                d="M63 54.4 C61.5 66 56.5 80.5 49.5 93.5 L46.2 84.8 L42.8 89.8 L41.2 80.6 L37.4 83.6 L36.8 74.2 L32.8 75.8 L34 66.8 C38.4 61.6 43 57.6 46 54.4 Z"
-              />
-            </g>
-            <path
-              d="M38 47 L23 41.4 L25.4 45.8 L20.6 44.8 L23.2 48.8 L19.2 50 L23.2 51.2 L20.6 55.2 L25.4 54.2 L23 58.6 L38 53 Z"
-            />
-            <path
-              d="M79 50 C73.5 46.2 67 44.8 59 44.6 C51 44.4 43 45.6 37.5 47.2 L37.5 52.8 C43 54.4 51 55.6 59 55.4 C67 55.2 73.5 53.8 79 50 Z"
-            />
-          </svg>
-          <span class="nav-word" aria-hidden="true"
-            ><i style="--i: 0">J</i><i style="--i: 1">a</i><i style="--i: 2">c</i><i style="--i: 3">k</i
-            ><i style="--i: 4">d</i><i style="--i: 5">a</i><i style="--i: 6">w</i></span
-          >
+        <!-- Two elements and a word. Everything that MOVES — the silhouette,
+             the per-letter spans the duck travels through — is injected by
+             brand.js, so a reader without JavaScript gets the dot and the name
+             rather than an empty anchor. See that file for the repertoire. -->
+        <a class="brand-mark" href="#top" aria-label="Jackdaw, back to top">
+          <span class="brand-perch"><span class="brand-dot"></span></span>
+          <span class="brand-word">Jackdaw</span>
         </a>
 
         <!-- The chrome reads the record. While the pinned section is on screen
@@ -579,16 +555,34 @@
       </div>
     </section>
 
-    <footer class="footer">
+    <footer class="footer" data-lit>
       <div class="wrap">
         <div class="footer-inner">
-          <span class="footer-brand">
-            <span class="nav-dot footer-dot" aria-hidden="true"></span>
-            Jackdaw
-          </span>
+          <!-- The same mark as the nav, not a smaller echo of it. One bird
+               moves at a time page-wide, and only while it is on screen, so
+               reaching the bottom of the page does not mean leaving it
+               behind — see brand.js. -->
+          <a class="brand-mark" href="#top" aria-label="Jackdaw, back to top">
+            <span class="brand-perch"><span class="brand-dot"></span></span>
+            <span class="brand-word">Jackdaw</span>
+          </a>
           <nav class="footer-links" aria-label="Footer">
             <a href="privacy.html">Privacy</a>
             <a href="terms.html">Terms</a>
+            <!-- Three copies of one outline. The two stroked ones are let go of
+                 on the beat and thin as they travel outward; the filled one is
+                 the heart. `lit.js` only lets it run while the footer is on
+                 screen — see the note at the top of that file. -->
+            <a class="footer-love" href="love.html">
+              <span class="heart" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path class="heart-ring heart-ring-a" d="M12 20.6C12 20.6 3.2 15.1 3.2 9.2C3.2 6.3 5.5 4 8.3 4C10.1 4 11.4 4.9 12 6C12.6 4.9 13.9 4 15.7 4C18.5 4 20.8 6.3 20.8 9.2C20.8 15.1 12 20.6 12 20.6Z" />
+                  <path class="heart-ring heart-ring-b" d="M12 20.6C12 20.6 3.2 15.1 3.2 9.2C3.2 6.3 5.5 4 8.3 4C10.1 4 11.4 4.9 12 6C12.6 4.9 13.9 4 15.7 4C18.5 4 20.8 6.3 20.8 9.2C20.8 15.1 12 20.6 12 20.6Z" />
+                  <path class="heart-core" d="M12 20.6C12 20.6 3.2 15.1 3.2 9.2C3.2 6.3 5.5 4 8.3 4C10.1 4 11.4 4.9 12 6C12.6 4.9 13.9 4 15.7 4C18.5 4 20.8 6.3 20.8 9.2C20.8 15.1 12 20.6 12 20.6Z" />
+                </svg>
+              </span>
+              A love letter to MC
+            </a>
             <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
           </nav>
         </div>
@@ -609,7 +603,9 @@
     <script src="vendor/ScrollTrigger.min.js"></script>
     <script src="vendor/lenis.min.js"></script>
     <script src="motion.js"></script>
+    <script src="brand.js"></script>
     <script src="main.js"></script>
+    <script src="lit.js"></script>
     <script src="favicon.js"></script>
   </body>
 </html>

@@ -54,16 +54,37 @@ value so the UI can label it.
   percentage and a `type="number"` input, where a comma isn't a valid value.
 - **Verify both themes on every visual change**, and measure computed contrast against the
   resolved backdrop rather than trusting that inherited text inherited anything. Two
-  regressions shipped past a visual check this way. Two traps when measuring: an element
+  regressions shipped past a visual check this way. Three traps when measuring: an element
   painting a `linear-gradient` reports `backgroundColor: rgba(0,0,0,0)`, so walk to the
-  gradient's first stop; and a hidden collapsed subtree still reports a non-null
-  `offsetParent`, so it surfaces as a false low-contrast hit.
+  gradient's first stop; a hidden collapsed subtree still reports a non-null
+  `offsetParent`, so it surfaces as a false low-contrast hit; and a `color-mix(in oklab,
+  …)` *computes to* an `oklab()` string that no rgb parser reads — paint it to a 1×1
+  canvas and read the pixel back rather than regexing the computed value.
 - **A muted token passes on the surface it was tuned for and can fail one layer out.** The
   admin panel's grey measures 4.83 on its white cards and 4.37 on the warm page ground
   behind them — under AA for the small labels that sit there. Same colour, same page, and
   only the handful of elements outside a card were affected. Sweep *every* text node
   against its own resolved backdrop rather than checking a token once; and fix it at the
   usage site, because the token was right everywhere else.
+- **Two token blocks that re-scope the same theme must declare the same keys, and that is
+  a correctness rule rather than a tidiness one.** A key present in one block and missing
+  from the other does not fall back to a neutral — it falls through to whatever an ancestor
+  last said, which is the *other* theme. The site's paper block declared 18 tokens against
+  night's 26, the eight missing ones sitting at plain `:root` where they read as
+  equivalent and are not (`:root` loses to a theme selector on `<html>`). That held for as
+  long as the theme was a property of the document, and stopped holding the first time a
+  *band* carried its own: a paper leaf inside a night page came out as near-white text on
+  near-white paper. It was silent in the usual way — the ground flipped, so the band
+  visibly changed and looked like it had worked. Diff the two key sets; don't read them.
+- **A token derived from a themed token must be re-declared wherever that theme is.**
+  Custom-property substitution resolves at the element where the property is *declared*,
+  and descendants inherit an already-resolved value. So `--rule: color-mix(… var(--ink) …)`
+  set once at `:root` folds in the root's ink and then travels down as that literal colour
+  — a band re-scoping `--ink` underneath gets its own ink for text and the root's ink for
+  every hairline drawn from the derived token. Put those on the theme selector itself
+  (ours is one unqualified `[data-chapter]` block, so adding a theme needs no maintenance),
+  and leave tokens derived from *fixed* brand colours where they are: moving one down
+  implies it varies, which is the opposite of what it is for.
 - **Anything drawn to canvas needs palette entries in `chart.js` PALETTES** for both
   themes. Canvas doesn't inherit CSS custom properties.
 - **Derive reserved space from measurement.** The chart's price gutter was a hard-coded 52
@@ -116,6 +137,14 @@ Each of these cost real debugging time. They look like bugs in your code and are
   measured 280px tall and the page "overflowed by 320px", both of which vanished at a real
   viewport. Check `document.documentElement.clientWidth` before believing a layout number.
   Computed *colours* survive this, so contrast readings taken there are still good.
+  Two corollaries. **A transition in flight outranks `!important`** (transitions sit above
+  author declarations in the cascade), so a suspended one defeats any override you inject
+  to measure past it — three "failures" in a print check were a 0.9s background transition
+  and a 0.52s opacity transition, frozen. Inject
+  `*,*::before,*::after{transition:none !important;animation:none !important}` before
+  measuring anything behind a media-query flip. And **resource events still fire when rAF
+  does not**: a stylesheet's `onload` resolves in a hidden pane, so you can await CSS
+  without awaiting a frame. Awaiting a frame there hangs until your tool times out.
 - **Measure alignment between separately-positioned SVGs; don't nudge.** Contact points
   need viewBox-scale arithmetic against the actual geometry underneath, which may not be
   flat.
@@ -123,12 +152,32 @@ Each of these cost real debugging time. They look like bugs in your code and are
   — for a bird in flight the wings are 3–4× the body's area, and getting that ratio wrong
   produces something confidently wrong rather than roughly right.
 
-## Measuring an animation
+## Measuring in a driven browser
 
-A probe written to check an animation is itself a program, written quickly, against a
-moving target. In our last verification pass four of the five apparent defects were in the
-probe. **When a measurement surprises you, suspect the measurement first, and go read the
-code it claims to describe.**
+A probe written to check what a page is doing is itself a program, written quickly,
+against a moving target. In one verification pass four of five apparent defects were in
+the probe; in the next, three of three. **When a measurement surprises you, suspect the
+measurement first, and go read the code it claims to describe.**
+
+- **Sweep, don't guess an element per assertion.** A contrast check that asked for
+  `.doc p` matched a date line first and reported its ratio as the body prose's, so the
+  prose was never measured and the probe passed. Enumerate every element that owns a
+  visible text node and measure all of them; a probe that names its targets can only
+  verify the ones you already thought of.
+- **Navigating re-serves cached CSS.** A `?v=N` on the document busts the HTML only —
+  linked stylesheets with no query string come straight from cache, so you measure the
+  file you just edited *and* the one you replaced, depending on which you ask for. Bust
+  the sheet in the same call as the measurement; a later navigate silently restores it.
+- **Reading `parentRule.conditionText` while media conditions are flipped returns the
+  flipped text**, so a probe that flips conditions and then reports which rules it flipped
+  is quoting itself.
+- **A `Range` over an `inline-flex` element yields one client rect per flex item**, not
+  per line, so `getClientRects().length` is not a line count there — which matters for
+  every wrap check on a chip row or a split wordmark.
+- **Test no-JS with `sandbox="allow-same-origin"` and no `allow-scripts`.** That genuinely
+  blocks scripts while leaving the DOM readable from the parent, so a no-JS render can be
+  measured rather than reasoned about. Any claim of the form "with scripts off, nothing
+  hides this" is checkable in one call.
 
 - **An animation gated on first reveal can't be re-measured by scrolling away and back.**
   Scrolling out of view doesn't reset the state that arms it, so the probe reports nothing

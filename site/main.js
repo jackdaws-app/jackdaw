@@ -3016,149 +3016,19 @@
   }
 
   /* ══ Nav ═══════════════════════════════════════════════════════════════════
-     The brand is a cycle with states. The flight is a CLASS rather than a long
-     infinite keyframe track, which is what makes it retriggerable at all: a
-     finished animation never restarts under the same name, so the 17s version
-     could not respond to a hover, or to anything else. */
+     THE BRAND MARK IS NOT HERE ANY MORE. It lives in `brand.js`, because the
+     footer carries one too and so does every other page — and the code that ran
+     it was written against exactly one instance (`$("navBrand")`, one shared
+     busy flag). See that file for the repertoire, the scheduler and the rule
+     that only one bird on the page moves at a time.
+
+     What this file still owns is the one thing that is genuinely about the
+     landing page: WHEN the loud behaviours are allowed to start. The hero
+     assembles for several seconds after load and a nav circuit crossing it is
+     the collision "never two at once" exists to prevent, so main.js holds them
+     and `brand.js` does not have to know why. */
 
   const nav = $("nav");
-  const brand = $("navBrand");
-  const perch = $("navPerch");
-
-  /* The repertoire. One scheduler, four behaviours, weighted — because the
-     flight alone left the mark dead for fifteen to twenty-six seconds at a
-     stretch, and a bird that is only alive once a page-view is a bird nobody
-     sees be alive. `w` is the relative chance on a tick, `gap` the minimum time
-     since that behaviour last ran, and `end` the ONE animation in its set whose
-     finish means the behaviour is over.
-
-     Keying the handler on `animationName` rather than on the target's class is
-     what makes `end` a statement instead of a hope: each set fires several
-     animationend events across three different elements, and the handler must
-     ignore all but the last. Every `end` is therefore the longest in its set —
-     `fly-go` 2.2s over `wing-go`'s 2.14 and the ducks' 2.156 — and the durations
-     in `styles.css` cannot be raised past it without moving this.
-
-     The hop is the one that TIES rather than leads: all three of its animations
-     run 0.74s with no delay, because sharing a timebase is what pins the wings
-     to the body (see `flick-go` in `styles.css`). Co-terminal is safe where
-     merely-shorter would also have been — whichever of the three the engine
-     reports first, the other two have already reached 100%, so the pose is
-     final either way and only `dot-hop` clears `idleBusy`. What is NOT safe is
-     lengthening one of the other two past it: that would strand the flag on an
-     event nobody is listening for. */
-  const IDLE = [
-    { cls: "shift", end: "dot-shift", w: 46, gap: 3400 },
-    { cls: "peck", end: "dot-peck", w: 30, gap: 8000 },
-    { cls: "hop", end: "dot-hop", w: 11, gap: 26000 },
-    { cls: "flit", end: "fly-go", w: 5, gap: 36000 },
-    /* Doing nothing is a behaviour and needs a weight of its own, or the mark
-       fidgets on every single tick. Roughly one tick in four is a rest. */
-    { cls: "", end: "", w: 30, gap: 0 },
-  ];
-  /* `gap` does most of the shaping, and it does not shape the way the weights
-     suggest. Measured over 250s at the first numbers, the mix came out shift 49%
-     / peck 26% / hop 23% / flit 3% — the hop nearly level with the peck, because
-     a behaviour on a long gap is competing against a SMALLER ready pool every
-     time it re-enters one, which inflates it. So the loud one is held back by
-     its gap rather than by its weight: 26s, which is what puts it back where the
-     delight budget wants it (the rare beat, not a third of them). */
-  const IDLE_END = new Map(IDLE.filter((b) => b.end).map((b) => [b.end, b.cls]));
-  let idleTimer = 0;
-  let idleBusy = "";
-  let idleAt = 0;
-  const idleLast = Object.create(null);
-
-  /* Adds the class and nothing else. `idleBusy` is cleared by the animationend
-     below, or by `flit` taking over, or by the watchdog in `idleTick` — a class
-     removed mid-animation fires `animationcancel`, NOT `animationend`, so every
-     path that removes one early has to clear the flag itself. */
-  function idlePlay(cls) {
-    if (!brand || idleBusy || reduced.matches) return;
-    idleBusy = cls;
-    idleAt = performance.now();
-    idleLast[cls] = idleAt;
-    brand.classList.add(cls);
-  }
-
-  function flit() {
-    if (!brand || idleBusy === "flit" || reduced.matches) return;
-    /* Hover jumps the queue, including over a running idle. Strip it first. */
-    if (idleBusy) {
-      brand.classList.remove(idleBusy);
-      idleBusy = "";
-    }
-    idlePlay("flit");
-  }
-
-  function idleTick() {
-    /* Watchdog. A backgrounded tab can swallow the animationend that would have
-       cleared the flag — the same class of hazard as rAF not firing there — and
-       a stuck flag is silent: the mark simply never moves again. Nothing here
-       runs longer than 2.2s, so 4s is unambiguous. */
-    if (idleBusy && performance.now() - idleAt > 4000) {
-      brand.classList.remove(idleBusy);
-      idleBusy = "";
-    }
-    if (!document.hidden && !reduced.matches && !idleBusy) {
-      const now = performance.now();
-      const ready = IDLE.filter((b) => now - (idleLast[b.cls] || -1e9) >= b.gap);
-      let total = 0;
-      for (const b of ready) total += b.w;
-      let r = Math.random() * total;
-      for (const b of ready) {
-        r -= b.w;
-        if (r <= 0) {
-          if (b.cls) idlePlay(b.cls);
-          break;
-        }
-      }
-    }
-    scheduleIdle();
-  }
-
-  /* Never on a metronome — a rhythm you can predict is one you stop seeing. */
-  function scheduleIdle(first) {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(idleTick, first ? 7000 + Math.random() * 4200 : 3400 + Math.random() * 4800);
-  }
-  function scheduleFlit() {
-    /* The loud two are held back past the hero's own assembly: "never two at
-       once" is the rule the header icons already follow, and a nav circuit
-       crossing the title card is exactly the collision it exists to prevent. */
-    idleLast.hop = idleLast.flit = performance.now();
-    scheduleIdle(true);
-  }
-
-  if (brand) {
-    brand.addEventListener("animationend", (e) => {
-      const cls = IDLE_END.get(e.animationName);
-      if (!cls) return;
-      brand.classList.remove(cls);
-      if (idleBusy === cls) idleBusy = "";
-    });
-    brand.addEventListener("pointerenter", flit);
-  }
-
-  /* The bird notices you before it goes: the perch leans a couple of pixels
-     toward the cursor while it is near, and returns when you leave. Two pixels
-     deliberately — enough to register, not enough to look like a bug. */
-  function trackCursor(e) {
-    if (!perch) return;
-    const r = perch.getBoundingClientRect();
-    const dx = e.clientX - (r.left + r.width / 2);
-    const dy = e.clientY - (r.top + r.height / 2);
-    const d = Math.hypot(dx, dy) || 1;
-    const reach = 190;
-    if (d > reach) {
-      perch.style.setProperty("--lx", "0px");
-      perch.style.setProperty("--ly", "0px");
-      return;
-    }
-    const k = (1 - d / reach) * 2.6;
-    perch.style.setProperty("--lx", ((dx / d) * k).toFixed(2) + "px");
-    perch.style.setProperty("--ly", ((dy / d) * k).toFixed(2) + "px");
-  }
 
   /* ══ What still needs JS ═══════════════════════════════════════════════════
      The reveals themselves are CSS scroll-driven timelines. What is left here
@@ -3291,8 +3161,11 @@
       for (const m of document.querySelectorAll("[data-meter]")) m.style.width = m.dataset.meter + "%";
       for (const c of document.querySelectorAll("[data-count]")) c.textContent = c.dataset.count;
     } else {
-      scheduleFlit();
-      window.addEventListener("pointermove", trackCursor, { passive: true });
+      /* Release the mark's loud behaviours, now that the hero has the screen to
+         itself for its own opening. `brand.js` owns everything else about it,
+         including the cursor lean, and waits for this on the strength of the
+         `data-brand-hold` attribute in the markup. */
+      if (window.JackdawBrand) window.JackdawBrand.hold();
       window.addEventListener("pointermove", heroPointer, { passive: true });
       window.addEventListener("pointermove", noticePointer, { passive: true });
       window.addEventListener(

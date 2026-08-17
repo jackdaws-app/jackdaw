@@ -1,34 +1,266 @@
-/* Legal documents: quiet, readable, no brand voice. */
+/* ═══ The document pages ══════════════════════════════════════════════════════
+   Terms, privacy, and the letter. Same palette, same material, same brand mark
+   as the landing page — what changes is the register. These pages are read, not
+   performed, so nothing here is allowed to cost legibility.
+
+   THE STRUCTURE IS A TITLE PAGE AND THEN A RULED LEAF, and that split is doing
+   real work rather than looking like something. `.doc-mast` sits on plain paper
+   and holds the heading, the date and the index; `.doc-leaf` is a
+   `data-ground="paper"` section, so it carries the ledger's feint horizontals,
+   its sanguine margin rule and its tooth — the same stock the middle of the
+   landing page is printed on.
+
+   AND THE COPY SITS ON THE RULING. `--ledger-pitch`'s own comment in styles.css
+   says a baseline grid would be "inventing a relationship the material does not
+   have", and on the landing page that is exactly right: charts, shelf tags and
+   alert cards are PASTED ONTO the leaf, and pasted things do not line up with
+   ruling. A legal document is the other case — it is WRITTEN ON the leaf — so
+   here the relationship is real and the type keeps it. Every vertical value
+   below is a multiple of the pitch, which is what makes the alignment hold at
+   every viewport instead of at the one it was tuned on.
+
+   Splitting the masthead off is what makes that possible. The ruling's phase
+   starts at the leaf's own top edge, so a heading that wraps to two lines on a
+   narrow screen cannot push the clauses off the rules — the masthead's height
+   is simply not in the chain any more. */
+
+/* ── The title page ──────────────────────────────────────────────────────── */
+.doc-mast { padding-top: calc(var(--rail-h) + clamp(18px, 5vw, 54px)); }
+.doc-mast .wrap > * { max-width: 780px; margin-inline: auto; }
+.doc-title {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(38px, 6vw, 62px);
+  line-height: 1.03;
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+}
+/* The ink bleed the landing page gives `.h-section`, for the same reason and on
+   the same stock — this is the one string on the page set large enough to read
+   as printed rather than composited. */
+[data-ground="paper"] .doc-title,
+.doc-mast .doc-title {
+  text-shadow: 0 0 0.4px color-mix(in oklab, currentColor 34%, transparent);
+}
+.doc-meta {
+  margin-top: 14px;
+  font-size: 13.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The index ───────────────────────────────────────────────────────────────
+   A table of contents, which a document of this length wants and which is also
+   the honest place for the section numbers to be introduced — they hang in the
+   margin further down, and a reader meets them here first.
+
+   `column-count`, not grid: the list is one ordered list semantically and
+   breaking it into two columns is a presentation of that list, not a different
+   list. It also means the split adapts to the item count without either page
+   hard-coding where its own halfway point is. */
+.doc-index {
+  margin-top: 34px;
+  padding-top: 26px;
+  border-top: 1px solid var(--hairline);
+}
+.doc-index-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+}
+.doc-index ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: doc-toc;
+  font-size: 14.5px;
+}
+@media (min-width: 720px) {
+  .doc-index ol { column-count: 2; column-gap: 40px; }
+}
+.doc-index li {
+  counter-increment: doc-toc;
+  break-inside: avoid;
+  margin-bottom: 9px;
+  display: flex;
+  gap: 10px;
+}
+.doc-index li::before {
+  content: counter(doc-toc);
+  flex: 0 0 1.4em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  /* Nudged to sit with the cap height of the label beside it rather than with
+     its own, which at 12.5px against 14.5px otherwise reads as slipped. */
+  padding-top: 2px;
+}
+.doc-index a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  border-bottom: 1px solid transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  .doc-index a:hover { color: var(--ink); border-bottom-color: var(--rule); }
+}
+
+/* ── The ruled leaf ──────────────────────────────────────────────────────────
+   `--doc-lift` IS A MEASURED NUMBER, NOT A NUDGE, and it is the one value here
+   that is not exact everywhere. Text sits inside its line box at a baseline the
+   FONT's metrics decide — for the default stack on this machine that is 21.3px
+   down a 30px box — so landing baselines on the rules means shifting the whole
+   leaf by the remainder. The ADVANCE is font-independent and holds on every
+   platform (every step below is a multiple of the pitch); the REGISTRATION is
+   tuned to the metrics measured in the browser, and a system with a different
+   default sans will sit a few pixels off the rules while still marching with
+   them. That trade is deliberate: the rhythm is what is felt, the registration
+   is what is admired, and only the first one can be guaranteed. */
+.doc-leaf {
+  --doc-lift: 9px;
+  padding-block: calc(var(--ledger-pitch) * 4 + var(--doc-lift))
+                 calc(var(--ledger-pitch) * 4);
+}
 .doc {
   max-width: 720px;
   margin: 0 auto;
-  padding: clamp(40px, 7vw, 84px) clamp(18px, 5vw, 24px) clamp(60px, 9vw, 110px);
+  /* --ink, not --ink-soft. The landing page sets prose in the soft ink because
+     it is read in short bursts beside display type; this is a legal document
+     the owner has explicitly asked to stay readable, and the difference is
+     7.1:1 against 14.8:1 on the same stock. Softness is a luxury of copy nobody
+     has to rely on. */
+  color: var(--ink);
+  font-size: 17px;
+  line-height: var(--ledger-pitch);
 }
-.doc h1 {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(34px, 5vw, 52px);
-  line-height: 1.08;
-  letter-spacing: -0.01em;
-  margin-bottom: 6px;
+.doc p,
+.doc li { margin: 0 0 var(--ledger-pitch); }
+.doc ul,
+.doc ol { margin: 0 0 var(--ledger-pitch); padding-left: 22px; }
+.doc li:last-child,
+.doc ul:last-child,
+.doc ol:last-child,
+.doc > :last-child { margin-bottom: 0; }
+.doc strong { font-weight: 650; }
+.doc a {
+  color: var(--green-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, var(--green-deep) 42%, transparent);
+  transition: text-decoration-color 0.2s ease;
 }
-.doc h2 {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  margin: 34px 0 10px;
+@media (hover: hover) and (pointer: fine) {
+  .doc a:hover { text-decoration-color: var(--green-deep); }
 }
-.doc p { color: var(--ink-soft); margin-bottom: 12px; }
-.doc .doc-meta { font-size: 13px; color: var(--muted); margin-bottom: 26px; }
-.doc ul { margin: 0 0 14px; padding-left: 20px; }
-.doc li { color: var(--ink-soft); margin-bottom: 8px; }
-.doc strong { color: var(--ink); }
+/* Vertical padding only — an inline box's own padding and border do not grow
+   the line box, but its LINE-HEIGHT would, and a code span that pushed one line
+   off the ruling would be visible from across the room. */
 .doc code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
+  font-size: 0.88em;
+  line-height: inherit;
   background: var(--paper-warm);
   border: 1px solid var(--hairline);
   border-radius: 5px;
   padding: 1px 5px;
 }
-.doc a { color: var(--green-deep); }
+
+/* ── Clauses ─────────────────────────────────────────────────────────────────
+   `flow-root` so the section's margins cannot collapse through it. Without it
+   the last paragraph's bottom margin escapes and collapses with the next
+   section's top margin, which makes the gap between clauses depend on which of
+   the two is larger — a rhythm that holds by coincidence rather than by
+   construction, and the first thing to break when a value changes. */
+.doc-sec {
+  display: flow-root;
+  margin-top: calc(var(--ledger-pitch) * 2);
+}
+/* `:first-child`, not `:first-of-type`. Both documents open with a preamble
+   paragraph that belongs to no clause, so the first <section> is usually not
+   the first child — and of-type would zero a gap that is wanted. Where a page
+   does start on a clause, this still catches it. */
+.doc > .doc-sec:first-child { margin-top: 0; }
+.doc-sec h2 {
+  position: relative;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: var(--ledger-pitch);
+  letter-spacing: 0.005em;
+  color: var(--ink);
+}
+/* THE NUMBER HANGS IN THE MARGIN — but only where there is a margin to hang it
+   in. `.doc` is 720px inside a 1180px measure, so the gutter only opens up as
+   the wrap stops growing; below that the number goes back inline, where a
+   printed statute would also put it. Same rule, and the same reason, as the
+   sanguine margin rule that appears at 1180px. */
+/* THE NUMBER CARRIES ITS OWN PERIOD, and that is a text decision rather than a
+   typographic one. `PRIVACY.md` and this page have to stay comparable once tags
+   are stripped, and the markdown heading is "## 1. Information We Collect" — so
+   the period lives in the markup, followed by a real space, and a strip of the
+   tags lands on the same string the repo holds. Spacing is only 5px because
+   that space is already doing part of the job. */
+.doc-num {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin-right: 5px;
+}
+@media (min-width: 940px) {
+  .doc-num {
+    position: absolute;
+    right: 100%;
+    margin-right: 26px;
+    font-weight: 500;
+  }
+}
+
+/* ── The reveal ──────────────────────────────────────────────────────────────
+   Hidden ONLY under `html.reveal`, which nothing but the one-line script in
+   each page's <head> sets — so with JavaScript off the clauses were never
+   hidden and there is nothing to fail open. `doc.js` adds `.in` on
+   intersection and reveals everything unconditionally after 2.5s regardless.
+
+   PRINT IS GUARDED SEPARATELY AND THAT IS NOT PARANOIA. Legal documents get
+   printed and saved as PDFs, print does not scroll, and an unrevealed section
+   would come out of the printer blank — a page of missing terms that looks
+   exactly like a page of terms that were never written. */
+html.reveal .doc-sec {
+  opacity: 0;
+  transform: translateY(9px);
+  transition: opacity 0.52s var(--ease-out), transform 0.52s var(--ease-out);
+}
+html.reveal .doc-sec.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  html.reveal .doc-sec { opacity: 1; transform: none; transition: none; }
+}
+
+/* ── Paper, on paper ─────────────────────────────────────────────────────────
+   The chrome is for reading on a screen and none of it survives a printer: the
+   nav is a floating pill over content, the footer is a night band that would
+   cost a page of toner, and the ruling is stock the printer's own paper already
+   is. What is left is the document. */
+@media print {
+  .nav-rail,
+  .footer,
+  .skip { display: none !important; }
+  /* The stock is the printer's, not ours. `body` has no background of its own
+     to suppress — it paints `--ground`, which PROPAGATES TO THE PAGE CANVAS, so
+     on love.html (the one doc page whose <html> is authored `night`) a reader
+     with background graphics on gets a navy sheet around the letter. The leaf
+     paints its own ground too, now that it declares its chapter, and paper's
+     is a light wash that is pure toner on a page that is already white. */
+  body,
+  .doc-leaf { background: #fff !important; }
+  html.reveal .doc-sec { opacity: 1 !important; transform: none !important; }
+  .doc-leaf::before,
+  .doc-leaf::after { display: none !important; }
+  .doc-mast { padding-top: 0; }
+  .doc-leaf { padding-block: 24px; }
+  .doc { color: #000; font-size: 11pt; line-height: 1.5; }
+  .doc-sec { break-inside: auto; }
+  .doc-sec h2 { break-after: avoid; }
+}

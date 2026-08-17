@@ -112,15 +112,10 @@
      motion.js), so this resolves to 0deg there with nothing else to write. */
   --hang: calc(var(--scroll-vel, 0) * -9deg);
 
-  --ink: #16233a;
-  --ink-soft: #4a5568;
-  /* Measured, not chosen. The old #6b7280 gave 4.03:1 on --paper-deep and 4.59
-     on --paper — passing on the ground it was picked against and failing on the
-     two warmer ones the page also uses, which is how the privacy note ended up
-     the only sub-4.5 string on the site. This clears 4.5 on every ground here:
-     4.79 on --paper-deep, 5.62 on --paper, 5.98 on white. */
-  --muted: #5b6472;
-  --hairline: #dde1e6;
+  /* THE INKS ARE NOT HERE. --ink, --ink-soft, --muted, --hairline, --love-red
+     and the three shadows are chapter-scoped and live in the paper block below,
+     which `:root` is part of — so the root still gets them and a paper BAND
+     gets them too. See the completeness note over the chapters. */
 
   /* THE STOCK IS COOL, AND THAT IS THE BRAND ARGUMENT, NOT A PREFERENCE. This
      was a warm cream (#fcfbf9/#f6f3ee/#efeae1) and it ran at the opposite
@@ -160,10 +155,6 @@
      token so the two can never drift apart. */
   --night: #101c30;
 
-  --shadow-sm: 0 1px 2px rgba(22, 35, 58, 0.05), 0 2px 8px rgba(22, 35, 58, 0.04);
-  --shadow-md: 0 4px 14px rgba(22, 35, 58, 0.07), 0 12px 32px rgba(22, 35, 58, 0.06);
-  --shadow-lg: 0 8px 24px rgba(22, 35, 58, 0.09), 0 30px 70px rgba(22, 35, 58, 0.1);
-
   /* One rhythm for the whole page. Sections breathe on this, not on ad-hoc
      numbers, which is most of what makes a long page feel composed. */
   --gap-section: clamp(84px, 11vw, 148px);
@@ -175,17 +166,12 @@
      and its shadows existed in fifteen others. `color-mix` in oklab keeps the
      hue steady as the mix moves — an rgba() of the same colour at 30% drifts
      cooler, which is why hand-tuned sets never quite agree with each other. */
+  /* These two mix the FIXED brand green, which no chapter re-scopes, so one
+     declaration here is correct everywhere. The three that mix a chapter's own
+     ink or accent cannot live here — see the derived block under the chapters
+     for why. */
   --green-line: color-mix(in oklab, var(--green) 30%, transparent);
   --green-line-soft: color-mix(in oklab, var(--green) 16%, transparent);
-  /* The same mix over the CHAPTER's accent rather than the fixed green. Safe to
-     derive once here because `data-chapter` is set on the root element itself,
-     so `--accent` has already resolved to the standing chapter's value by the
-     time this is used. Anything that outlines an accented surface wants this
-     one; `--green-line` stays for the rules that mean the brand green
-     specifically, whatever the light. */
-  --accent-line: color-mix(in oklab, var(--accent) 30%, transparent);
-  --rule: color-mix(in oklab, var(--ink) 12%, transparent);
-  --rule-soft: color-mix(in oklab, var(--ink) 7%, transparent);
 
   /* The page's only texture, and it is generated rather than fetched: one tiled
      feTurbulence as a data URI, so the tooth costs no request, no bitmap and no
@@ -230,7 +216,23 @@
    NAMED SO THE OLD TOKENS STILL WORK. `--ink`, `--muted` and `--hairline` are
    redefined here rather than replaced, so the ~90 existing rules that reference
    them follow the chapter automatically and nothing had to be rewritten to
-   gain a night mode. */
+   gain a night mode.
+
+   BOTH BLOCKS MUST DECLARE THE SAME KEYS, AND THAT IS A CORRECTNESS RULE RATHER
+   THAN A TIDINESS ONE. The paper block used to declare 18 tokens against
+   night's 26 — the eight inks it was missing sat at plain `:root` instead,
+   which reads as equivalent and is not: `:root` LOSES to `[data-chapter="night"]`
+   on <html>, so paper's inks existed only where nothing above had said night.
+   That held for as long as the chapter was a property of the document. It stopped
+   holding the moment a BAND could carry its own — love.html is a night document
+   with a paper leaf, and the leaf came out with paper stock and night ink, a
+   letter set in near-white on near-white. The eight are declared below now, so
+   `[data-chapter="paper"]` restores the whole set from any ancestor.
+
+   The failure was silent in the way this project keeps finding: `--ground`
+   flipped, so the band visibly changed and looked like it had worked. Adding a
+   key to one block and not the other reintroduces it, which is why the two are
+   worth diffing rather than reading. */
 
 :root,
 [data-chapter="paper"] {
@@ -243,6 +245,27 @@
   --surface: #fff;
   --surface-sunk: var(--paper-warm);
   --on-surface: var(--ink);
+
+  --ink: #16233a;
+  --ink-soft: #4a5568;
+  /* Measured, not chosen. The old #6b7280 gave 4.03:1 on --paper-deep and 4.59
+     on --paper — passing on the ground it was picked against and failing on the
+     two warmer ones the page also uses, which is how the privacy note ended up
+     the only sub-4.5 string on the site. This clears 4.5 on every ground here:
+     4.79 on --paper-deep, 5.62 on --paper, 5.98 on white. */
+  --muted: #5b6472;
+  --hairline: #dde1e6;
+  /* The ledger's OWN red, not a new one. `--sanguine-line` mixes this exact
+     hex down to 26% for the printed margin rule, so the heart's ripples are
+     drawn in the same ink the stock is ruled with — which is the difference
+     between a red that belongs to the page and a red that arrived with an
+     icon. Follows the chapter like every other ink; see the night block. */
+  --love-red: #b4432c;
+
+  --shadow-sm: 0 1px 2px rgba(22, 35, 58, 0.05), 0 2px 8px rgba(22, 35, 58, 0.04);
+  --shadow-md: 0 4px 14px rgba(22, 35, 58, 0.07), 0 12px 32px rgba(22, 35, 58, 0.06);
+  --shadow-lg: 0 8px 24px rgba(22, 35, 58, 0.09), 0 30px 70px rgba(22, 35, 58, 0.1);
+
   --accent: var(--green);
   --accent-deep: var(--green-deep);
   --accent-wash: var(--green-wash);
@@ -303,6 +326,11 @@
   --brass: #caa765;
   --brass-lit: #f2e0b4;
 
+  /* Same hue, lifted for the dark — the sanguine at 3.09:1 on this ground is
+     already dim before the ripple's own 55% opacity takes it further, and a
+     ripple you have to look for is not a pulse. 5.0:1 here. */
+  --love-red: #d9634a;
+
   --feint-line: transparent;
   --sanguine-line: transparent;
   --ruling: 0;
@@ -317,6 +345,32 @@
   /* Night has a light source and paper does not. Every lit edge on the dark
      chapters keys off this one value so they all agree where the lamp is. */
   --glow: rgba(120, 170, 255, 0.14);
+}
+
+/* ── Derived from the chapter ────────────────────────────────────────────────
+   A TOKEN THAT MIXES A CHAPTER'S OWN INK HAS TO BE RE-DECLARED WHEREVER THAT
+   INK IS, and the reason is the one rule about custom properties that is easy
+   to have backwards. Substitution happens at the element where the property is
+   DECLARED, not where it is used: descendants inherit a value that has already
+   been resolved. So `--rule` declared once at `:root` folds in the root's ink
+   and then travels down as that literal colour — a band that re-scopes `--ink`
+   underneath gets its own ink for text and the ROOT's ink for every hairline
+   drawn from this. Two ledger rules on one page, one of them from the other
+   chapter.
+
+   `[data-chapter]` unqualified, so this needs no maintenance when a chapter is
+   added, and `:root` beside it because index.html has no authored chapter —
+   `motion.js` writes the first one a frame in, and a hairline that resolves
+   against the wrong ink for one frame is still a flash.
+
+   Only tokens whose source is chapter-scoped belong here. `--green-line` mixes
+   the fixed brand green and stays up in the base block; moving it down would
+   imply it varies, which is the opposite of what it is for. */
+:root,
+[data-chapter] {
+  --accent-line: color-mix(in oklab, var(--accent) 30%, transparent);
+  --rule: color-mix(in oklab, var(--ink) 12%, transparent);
+  --rule-soft: color-mix(in oklab, var(--ink) 7%, transparent);
 }
 
 /* ── Typed custom properties ─────────────────────────────────────────────────
@@ -633,7 +687,7 @@ a:focus-visible, button:focus-visible {
   border: 1px solid transparent;
   /* Containing block for the progress rail below. Nothing else inside is
      absolutely positioned against it — `.nav-readout` resolves against
-     `.nav-mid` and `.brand-flit` against `.nav-brand`, both of which set their
+     `.nav-mid` and `.brand-flit` against `.brand-mark`, both of which set their
      own `position: relative` — so this adds a rail and moves nothing. */
   position: relative;
   transition: background-color 0.3s ease, border-color 0.3s ease,
@@ -782,7 +836,7 @@ a:focus-visible, button:focus-visible {
    · It has STATES. Hovering the brand launches the flight immediately rather
      than making you wait out the idle timer, and the perch leans toward your
      cursor when it is near — the bird noticing you before it goes.
-   · The lean lives on `.nav-perch`, not on `.nav-dot`, because the dot's own
+   · The lean lives on `.brand-perch`, not on `.brand-dot`, because the dot's own
      squash-and-stretch is an animation and a running animation overrides the
      cascade. Two transforms, two elements.
    · THE CIRCUIT CLOSES. The first flight went one way: the bird faded out over
@@ -818,7 +872,7 @@ a:focus-visible, button:focus-visible {
    clips it (the rail sets no overflow), and a bird that crests the rim on the
    way home is the more legible picture anyway. Change the box size and every
    number here moves. */
-.nav-brand {
+.brand-mark {
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -839,15 +893,15 @@ a:focus-visible, button:focus-visible {
    z-index 2, since 1 and 2 were being compared in different contexts. The hop's
    wing flick has to sit BEHIND the dot, so the two have to be sorted at the
    same level — the perch's. It applies without `position` because this is a
-   flex item of `.nav-brand`. Anything that needs to be over the bird is >2. */
-.nav-perch {
+   flex item of `.brand-mark`. Anything that needs to be over the bird is >2. */
+.brand-perch {
   display: inline-flex;
   flex: 0 0 auto;
   z-index: 2;
   transform: translate(var(--lx, 0px), var(--ly, 0px));
   transition: transform 0.5s var(--ease-out);
 }
-.nav-dot {
+.brand-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
@@ -874,8 +928,8 @@ a:focus-visible, button:focus-visible {
   pointer-events: none;
   z-index: 3;
 }
-.nav-word { display: inline-flex; }
-.nav-word i { font-style: normal; display: inline-block; }
+.brand-word { display: inline-flex; }
+.brand-word i { font-style: normal; display: inline-block; }
 
 /* ── The idle repertoire ─────────────────────────────────────────────────────
    Between flights the mark was a static green dot for fifteen to twenty-six
@@ -889,7 +943,7 @@ a:focus-visible, button:focus-visible {
      hop     off the perch and back, wings flicking open
      flit    the full circuit                          rarest, and on hover
 
-   All four animate `.nav-dot` and never `.nav-perch`: the perch carries the
+   All four animate `.brand-dot` and never `.brand-perch`: the perch carries the
    lean toward your cursor as a TRANSITION, and a running animation overrides
    the cascade, so the two would fight over one transform. Same split the flight
    already used, extended to the rest of the set.
@@ -904,9 +958,9 @@ a:focus-visible, button:focus-visible {
    standing 9px away — the reaction would be a cue, not a consequence. The peck
    is the opposite case: it leans INTO the J's airspace, so the J dips, and it
    dips AFTER the lean arrives rather than with it. */
-.nav-brand.shift .nav-dot { animation: dot-shift 1.15s var(--ease-in-out) both; }
-.nav-brand.peck .nav-dot { animation: dot-peck 0.62s var(--ease-out) both; }
-.nav-brand.hop .nav-dot { animation: dot-hop 0.74s var(--ease-in-out) both; }
+.brand-mark.shift .brand-dot { animation: dot-shift 1.15s var(--ease-in-out) both; }
+.brand-mark.peck .brand-dot { animation: dot-peck 0.62s var(--ease-out) both; }
+.brand-mark.hop .brand-dot { animation: dot-hop 0.74s var(--ease-in-out) both; }
 /* The hop borrows the flight's own silhouette for its wing flick, retinted:
    `--green` and BEHIND the dot, so it reads as the dot's wings opening rather
    than as the ink bird arriving early. Wings behind the body is the rule the
@@ -933,7 +987,7 @@ a:focus-visible, button:focus-visible {
    from a static sheet, and fixing the one that was easier to see made the other
    one harder to. */
 /* All three run 0.74s with no delay, on purpose: it is what locks the wings to
-   the body. `.nav-dot` pivots at its feet (`transform-origin: 50% 100%`), so
+   the body. `.brand-dot` pivots at its feet (`transform-origin: 50% 100%`), so
    its CENTRE moves even on frames where its translate does not — squashing into
    the crouch pushes the centre DOWN while `flick-go` was independently lifting
    the wings UP, and the two walked apart to 4.09px at t=134ms: 9.39px of blade
@@ -951,19 +1005,19 @@ a:focus-visible, button:focus-visible {
    even if the order flipped, the losers would be at 100% (opacity 0) when the
    class dropped. What is NOT safe is lengthening either of the other two past
    0.74s: `idleBusy` would then be cleared on an event that is no longer last. */
-.nav-brand.hop .brand-flit {
+.brand-mark.hop .brand-flit {
   color: var(--green);
   z-index: 1;
   animation: flick-go 0.74s var(--ease-in-out) both;
 }
-.nav-brand.hop .brand-flit-wings {
+.brand-mark.hop .brand-flit-wings {
   transform-origin: 55% 50%;
   animation: wing-flick 0.74s var(--ease-out) both;
 }
 /* Only the J, and only on the peck: it is the one letter inside reach. */
-.nav-brand.peck .nav-word i:first-child { animation: peck-dip 0.4s var(--ease-out) 0.14s both; }
+.brand-mark.peck .brand-word i:first-child { animation: peck-dip 0.4s var(--ease-out) 0.14s both; }
 
-/* `.nav-dot`'s `transform-origin: 50% 100%` is what makes these read as a body
+/* `.brand-dot`'s `transform-origin: 50% 100%` is what makes these read as a body
    over feet rather than as a pulsing circle: the squash pivots at the wire, so
    what moves is the top of the dot. Every keyframe in a set carries the same
    transform functions in the same order — a mismatched list forces matrix
@@ -1040,9 +1094,9 @@ a:focus-visible, button:focus-visible {
 /* One circuit. 2.2s, triggered by `.flit`. The longer duration is the owner's
    standing preference for hero motion (~2x typical UI defaults) and it is what
    the round trip needs — the one-way version fitted in 1.5s by cheating. */
-.nav-brand.flit .nav-dot { animation: dot-go 2.2s var(--ease-in-out) both; }
-.nav-brand.flit .brand-flit { animation: fly-go 2.2s var(--ease-in-out) both; }
-.nav-brand.flit .brand-flit-wings {
+.brand-mark.flit .brand-dot { animation: dot-go 2.2s var(--ease-in-out) both; }
+.brand-mark.flit .brand-flit { animation: fly-go 2.2s var(--ease-in-out) both; }
+.brand-mark.flit .brand-flit-wings {
   /* ~5 beats a second, which is about right for a corvid. Starts once the bird
      is off the perch and stops as it flares. */
   animation: wing-go 0.2s steps(1, end) 0.14s 10;
@@ -1052,7 +1106,7 @@ a:focus-visible, button:focus-visible {
    would assert translateY(0) throughout its own delay and flatten the first
    dip, which is the whole reason the fill modes differ here. --i is in the
    markup; the return wave runs the other way, hence the subtraction. */
-.nav-brand.flit .nav-word i {
+.brand-mark.flit .brand-word i {
   animation: duck-go 0.42s var(--ease-out), duck-back 0.4s var(--ease-out);
   animation-delay: calc(0.27s + var(--i) * 0.097s), calc(1.756s - var(--i) * 0.0953s);
   animation-fill-mode: both, forwards;
@@ -1134,9 +1188,9 @@ a:focus-visible, button:focus-visible {
   38% { transform: translateY(0.9px); }
 }
 
-/* The narrow-width nav lives HERE, after `.nav-brand`, because a media query
+/* The narrow-width nav lives HERE, after `.brand-mark`, because a media query
    carries no extra specificity: the old block sat above the base rules and its
-   `.nav-brand { font-size: 13px }` was outranked and had never once applied. At
+   `.brand-mark { font-size: 13px }` was outranked and had never once applied. At
    320px that showed — the CTA's right edge sat 12.59px PAST the pill's own,
    sliced off by the rounding, in the one element on the page that is supposed
    to be a self-contained pill. Tightening moves it 5.41px inside.
@@ -3239,24 +3293,119 @@ a:focus-visible, button:focus-visible {
 }
 
 /* ── Footer ──────────────────────────────────────────────────────────────────
-   The bird's last state: asleep. Slower than a pulse and barely visible, which
-   is the point — it is the only motion below the fold and it should read as
-   something resting rather than something waiting. */
+   THE SAME MARK AS THE NAV, NOT A SMALLER ECHO OF IT. The footer used to carry
+   a static dot on a slow doze — the bird asleep — which was a nice line and a
+   worse idea than it looked: it made the bottom of the page the one place the
+   brand does not do the thing the brand IS. It now carries the full repertoire,
+   and `brand.js` sees to it that only one bird on the page moves at a time and
+   only while it is actually on screen, so the two never fidget at each other.
+
+   THE 40px OF PADDING ABOVE IS STRUCTURAL. The flight climbs 29.5px above the
+   dot's centre and the ink reaches ~9.6px further, so it needs ~39px of room
+   overhead; at 40 the crest clears the footer's own rule with a pixel to spare.
+   Anything that tightens this has to move the flight with it. */
 .footer { border-top: 1px solid var(--hairline); padding-block: 40px 44px; }
 .footer-inner { display: flex; flex-wrap: wrap; gap: 18px 32px; align-items: center; justify-content: space-between; }
-.footer-brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; }
-.footer-dot { animation: doze 7s var(--ease-in-out) infinite; }
-@keyframes doze {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.86); opacity: 0.55; }
-}
-.footer-links { display: flex; gap: 22px; font-size: 14px; }
+.footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: 22px; font-size: 14px; }
 .footer-links a { color: var(--ink-soft); text-decoration: none; transition: color 0.22s ease, opacity 0.22s ease; }
 .footer-fine { margin-top: 24px; font-size: 12px; color: var(--muted); max-width: 62em; line-height: 1.55; }
 @media (hover: hover) and (pointer: fine) {
   .footer-links a:hover { color: var(--ink); }
   /* Same group-focus idea as the nav, one last time on the way out. */
   .footer-links:has(a:hover) a:not(:hover) { opacity: 0.5; }
+}
+
+/* A FOOTER THAT DECLARES ITS OWN CHAPTER HAS TO PAINT IT. On the landing page
+   the bottom of the document is already night — the attribute is on <html> and
+   the body carries `--ground` — so the footer inherited the dark for free. No
+   other page has a chapter arc: the documents stay on paper for their whole
+   length, and the colophon is the one band that closes on night, which is what
+   makes every page end the way the landing page does. Without this rule
+   `data-chapter="night"` on the element would re-scope the tokens and paint
+   nothing, leaving pale ink on pale stock. */
+[data-chapter]:not(:root) { background: var(--ground); color: var(--ink); }
+
+/* ── The love letter's heart ─────────────────────────────────────────────────
+   ONE PATH, DRAWN THREE TIMES. The ripples are not rings — they are the heart's
+   own outline let go of, which is the same continuity rule the bird follows
+   (one thing becomes another; a ripple that shares nothing with its source is
+   decoration). Stroke-only copies, `non-scaling-stroke` so they THIN as they
+   grow: a ripple whose line thickens on the way out reads as a zoom.
+
+   The beat is a real one — lub, a short rest, a smaller dub — on a 4.4s cycle,
+   which is slow enough that a footer link does not become the loudest thing on
+   a page it sits at the bottom of. That is the delight budget: rare, and quiet.
+
+   RUNS ONLY WHILE IT IS ON SCREEN (`lit.js` sets `.lit` on any `[data-lit]`).
+   An idle loop on a permanently off-screen element is work nobody sees, and the
+   footer of a long landing page is off screen nearly always. Without JS the
+   heart is simply a heart, which is the correct still frame.
+
+   THE GATE IS `.lit`, NOT `.footer.lit`, because the letter's own page opens on
+   a hero-sized copy of this exact mark and the two must not be two components.
+   Only the size differs, and it differs by one custom property.
+
+   HOVER CANNOT USE `transform`. A running animation overrides the cascade, so a
+   hover scale would be silently defeated by `heart-beat` — the same gotcha the
+   panel's entrance animations hit. `filter` and `stroke-width` are untouched by
+   the keyframes, so those are what the pointer gets. */
+.footer-love { display: inline-flex; align-items: center; gap: 9px; }
+.heart {
+  --heart-size: 15px;
+  /* In SCREEN pixels, because `non-scaling-stroke` below takes the width out of
+     the coordinate system — which is the whole point of it, and also why this
+     has to be a knob. A hairline that is right beside a 15px mark is a thread
+     beside a 116px one. */
+  --heart-stroke: 1.5;
+  position: relative;
+  display: block;
+  width: var(--heart-size);
+  height: var(--heart-size);
+  flex: 0 0 auto;
+}
+/* `overflow: visible` because the ripples leave the box by design — a viewBox
+   is not a clip until something says so, but the <svg> element's own default
+   is `hidden`. */
+.heart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+/* `fill-box`, so all three copies scale about the heart's own centre rather
+   than the SVG viewport's — they share a path, so they share a box. */
+.heart path { transform-box: fill-box; transform-origin: center; }
+.heart-core { fill: #fff; }
+.heart-ring {
+  fill: none;
+  stroke: var(--love-red);
+  stroke-width: var(--heart-stroke);
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+}
+@keyframes heart-beat {
+  0%, 24%, 100% { transform: scale(1); }
+  5%            { transform: scale(1.16); }
+  11%           { transform: scale(1.02); }
+  15%           { transform: scale(1.09); }
+}
+@keyframes heart-ripple {
+  0%        { transform: scale(1); opacity: 0.55; }
+  36%, 100% { transform: scale(2.6); opacity: 0; }
+}
+/* One cycle, three entries into it. The third ring only exists in the hero
+   copy; a rule for a path the footer does not have costs nothing and keeps the
+   two hearts one component. */
+.lit .heart-core { animation: heart-beat 4.4s var(--ease-out) infinite; }
+.lit .heart-ring-a { animation: heart-ripple 4.4s var(--ease-out) infinite; }
+.lit .heart-ring-b { animation: heart-ripple 4.4s var(--ease-out) 0.26s infinite; }
+.lit .heart-ring-c { animation: heart-ripple 4.4s var(--ease-out) 0.52s infinite; }
+@media (hover: hover) and (pointer: fine) {
+  .footer-love:hover .heart-ring { stroke-width: calc(var(--heart-stroke) + 0.6); }
+  .footer-love:hover .heart-core {
+    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--love-red) 75%, transparent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lit .heart-core,
+  .lit .heart-ring-a,
+  .lit .heart-ring-b,
+  .lit .heart-ring-c { animation: none; }
 }
 
 /* ── Material: the ledger ────────────────────────────────────────────────────
@@ -3726,20 +3875,22 @@ a:focus-visible, button:focus-visible {
   .reel-hint { display: none; }
   .reel-panel .chip { max-width: 340px; margin-right: 6px; padding-inline: 10px; opacity: 1; border-color: var(--hairline); }
   .chip-age { max-width: 180px; opacity: 1; }
-  .nav-brand .brand-flit { display: none; }
-  .nav-brand .nav-dot { transform: scale(1); }
-  .nav-perch { transform: none; }
+  .brand-mark .brand-flit { display: none; }
+  .brand-mark .brand-dot { transform: scale(1); }
+  .brand-perch { transform: none; }
   /* The scheduler already refuses to add these classes while the preference is
      set, so this is the belt to that braces — but it has to be `!important` to
-     be worth writing at all: `.nav-brand.hop .nav-dot` is (0,3,0) against the
+     be worth writing at all: `.brand-mark.hop .brand-dot` is (0,3,0) against the
      reset directly above at (0,2,0), and an animation overrides the cascade
      regardless. Every set here ends on its resting pose, so the `*` rule's
      0.001ms would land correctly anyway; the tags do not, which is why they
      needed the same treatment. */
-  .nav-brand.shift .nav-dot,
-  .nav-brand.peck .nav-dot,
-  .nav-brand.hop .nav-dot,
-  .nav-brand.peck .nav-word i:first-child { animation: none !important; }
+  .brand-mark.shift .brand-dot,
+  .brand-mark.peck .brand-dot,
+  .brand-mark.hop .brand-dot,
+  .brand-mark.flit .brand-dot,
+  .brand-mark.flit .brand-word i,
+  .brand-mark.peck .brand-word i:first-child { animation: none !important; }
   .art-pulse { display: none; }
   /* The meters are deliberately NOT pinned here. Their widths come from
      `data-meter` via JS, which runs regardless of motion preference, so killing

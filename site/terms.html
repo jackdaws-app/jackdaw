@@ -1,58 +1,159 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-chapter="paper">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Terms of Service · Jackdaw</title>
     <meta name="robots" content="index,follow" />
+    <meta
+      name="description"
+      content="The terms governing use of the Jackdaw browser extension: community data is provided as is, what you may post, and the limits of our liability."
+    />
+    <meta name="theme-color" content="#f6f8fa" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+    <!-- Self-hosted, same as every other page. See vendor/NOTICE.md. -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="vendor/fonts/instrument-serif-latin.woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="doc.css" />
+    <!-- Sets the class `doc.css` hangs the reveal off, before first paint. With
+         JavaScript off it is never set, so the clauses were never hidden. -->
+    <script>
+      document.documentElement.classList.add("reveal");
+    </script>
   </head>
   <body>
     <a class="skip" href="#doc">Skip to content</a>
-    <nav class="nav">
-      <a class="nav-brand" href="index.html">
-        <span class="nav-dot"></span><span class="nav-word">Jackdaw</span>
-      </a>
-      <div class="nav-links">
-        <a href="index.html">Home</a>
-        <a href="privacy.html">Privacy</a>
-        <a href="terms.html">Terms</a>
-        <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
-      </div>
-      <a class="btn btn-ghost nav-cta" href="index.html#install"><span>Add to Chrome</span><span class="btn-arrow">&#8594;</span></a>
-    </nav>
-    <main class="doc" id="doc">
-      <h1>Terms of Service</h1>
-      <p class="doc-meta">Last updated: August 13, 2026. Draft; review before store submission.</p>
-      <p>These Terms of Service (&quot;Terms&quot;) govern your use of the Jackdaw browser extension and related services (&quot;the Service&quot;). By using the Service you agree to these Terms.</p>
-      <h2>1. The Service</h2>
-      <p>Jackdaw is a free, open-source tool that displays community-contributed price history and discussion for Micro Center products. Jackdaw is not affiliated with, endorsed by, or sponsored by Micro Center or Micro Electronics, Inc. All product names and trademarks are the property of their respective owners.</p>
-      <h2>2. Community Data</h2>
-      <p>Price data is contributed by users&#x27; own browsers from pages they visit. It is provided &quot;as is,&quot; may be incomplete or inaccurate, and is not an offer or guarantee of any price. Confirm prices with the retailer before purchasing.</p>
-      <h2>3. User Content</h2>
-      <p>You may post comments, votes, and reports. You retain ownership of content you post and grant us a non-exclusive, royalty-free license to display and distribute it within the Service. You may not post content that is unlawful, harassing, or defamatory; spam or commercial solicitation; links or contact information; or content you do not have the right to share. We may hide or remove content and restrict access for violations, with or without notice. Content hidden by community reports may be reviewed by a maintainer.</p>
-      <h2>4. Disclaimer of Warranty; Limitation of Liability</h2>
-      <p>The Service is provided &quot;as is&quot; and &quot;as available,&quot; without warranty of any kind, express or implied. To the maximum extent permitted by law, the maintainers are not liable for any indirect, incidental, or consequential damages arising from use of the Service or reliance on its data.</p>
-      <h2>5. Copyright Complaints</h2>
-      <p>If you believe content on the Service infringes your copyright, submit a notice containing the information required by 17 U.S.C. § 512(c)(3) via an issue in the project&#x27;s GitHub repository. We will respond promptly.</p>
-      <h2>6. Changes</h2>
-      <p>We may update these Terms. Continued use after an update constitutes acceptance. The current version is maintained in the project repository.</p>
-      <h2>7. Governing Law</h2>
-      <p>These Terms are governed by the laws of the State of Ohio, USA, without regard to conflict-of-law principles.</p>
-    </main>
-    <footer class="footer">
-      <div class="footer-brand"><span class="nav-dot"></span><span class="nav-word">Jackdaw</span></div>
-      <nav class="footer-links">
-        <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
-        <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
+
+    <div class="nav-rail">
+      <nav class="nav" id="nav">
+        <a class="brand-mark" href="index.html" aria-label="Jackdaw, home">
+          <span class="brand-perch"><span class="brand-dot"></span></span>
+          <span class="brand-word">Jackdaw</span>
+        </a>
+        <div class="nav-mid">
+          <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="privacy.html">Privacy</a>
+            <a href="terms.html" aria-current="page">Terms</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">Source</a>
+          </div>
+        </div>
+        <a class="btn btn-primary nav-cta" href="index.html#install">
+          <span class="btn-label">Add to Chrome</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
       </nav>
-      <p class="footer-fine">Not affiliated with, endorsed by, or sponsored by Micro Center. Product names and trademarks belong to their owners.</p>
+    </div>
+
+    <!-- ══ The title page ═══════════════════════════════════════════════════ -->
+    <header class="section doc-mast">
+      <div class="wrap">
+        <p class="eyebrow">Jackdaw</p>
+        <h1 class="doc-title">Terms of Service</h1>
+        <p class="doc-meta">Last updated: August 13, 2026. Draft; review before store submission.</p>
+        <nav class="doc-index" aria-label="Sections">
+          <p class="doc-index-label">Contents</p>
+          <ol>
+            <li><a href="#s1">The Service</a></li>
+            <li><a href="#s2">Community data</a></li>
+            <li><a href="#s3">User content</a></li>
+            <li><a href="#s4">Disclaimer of warranty; limitation of liability</a></li>
+            <li><a href="#s5">Copyright complaints</a></li>
+            <li><a href="#s6">Changes</a></li>
+            <li><a href="#s7">Governing law</a></li>
+          </ol>
+        </nav>
+      </div>
+    </header>
+
+    <!-- ══ The ruled leaf ═══════════════════════════════════════════════════ -->
+    <!-- `data-chapter` as well as `data-ground`: the leaf paints its own stock
+         rather than taking it from <html>, which `doc.js` moves on scroll. A
+         no-op here, where <html> is already `paper` — carried for the same
+         reason love.html needs it, where it is not. See that file's leaf. -->
+    <section class="section doc-leaf" data-ground="paper" data-chapter="paper">
+      <div class="wrap">
+        <main class="doc" id="doc">
+          <p>These Terms of Service (&quot;Terms&quot;) govern your use of the Jackdaw browser extension and related services (&quot;the Service&quot;). By using the Service you agree to these Terms.</p>
+
+          <section class="doc-sec" id="s1">
+            <h2><span class="doc-num">1.</span> The Service</h2>
+            <p>Jackdaw is a free, open-source tool that displays community-contributed price history and discussion for Micro Center products. Jackdaw is not affiliated with, endorsed by, or sponsored by Micro Center or Micro Electronics, Inc. All product names and trademarks are the property of their respective owners.</p>
+          </section>
+
+          <section class="doc-sec" id="s2">
+            <h2><span class="doc-num">2.</span> Community Data</h2>
+            <p>Price data is contributed by users&#x27; own browsers from pages they visit. It is provided &quot;as is,&quot; may be incomplete or inaccurate, and is not an offer or guarantee of any price. Confirm prices with the retailer before purchasing.</p>
+          </section>
+
+          <section class="doc-sec" id="s3">
+            <h2><span class="doc-num">3.</span> User Content</h2>
+            <p>You may post comments, votes, and reports. You retain ownership of content you post and grant us a non-exclusive, royalty-free license to display and distribute it within the Service. You may not post content that is unlawful, harassing, or defamatory; spam or commercial solicitation; links or contact information; or content you do not have the right to share. We may hide or remove content and restrict access for violations, with or without notice. Content hidden by community reports may be reviewed by a maintainer.</p>
+          </section>
+
+          <section class="doc-sec" id="s4">
+            <h2><span class="doc-num">4.</span> Disclaimer of Warranty; Limitation of Liability</h2>
+            <p>The Service is provided &quot;as is&quot; and &quot;as available,&quot; without warranty of any kind, express or implied. To the maximum extent permitted by law, the maintainers are not liable for any indirect, incidental, or consequential damages arising from use of the Service or reliance on its data.</p>
+          </section>
+
+          <section class="doc-sec" id="s5">
+            <h2><span class="doc-num">5.</span> Copyright Complaints</h2>
+            <p>If you believe content on the Service infringes your copyright, submit a notice containing the information required by 17 U.S.C. § 512(c)(3) via an issue in the project&#x27;s GitHub repository. We will respond promptly.</p>
+          </section>
+
+          <section class="doc-sec" id="s6">
+            <h2><span class="doc-num">6.</span> Changes</h2>
+            <p>We may update these Terms. Continued use after an update constitutes acceptance. The current version is maintained in the project repository.</p>
+          </section>
+
+          <section class="doc-sec" id="s7">
+            <h2><span class="doc-num">7.</span> Governing Law</h2>
+            <p>These Terms are governed by the laws of the State of Ohio, USA, without regard to conflict-of-law principles.</p>
+          </section>
+        </main>
+      </div>
+    </section>
+
+    <!-- ══ The colophon ═════════════════════════════════════════════════════ -->
+    <footer class="footer" data-chapter="night" data-lit>
+      <div class="wrap">
+        <div class="footer-inner">
+          <a class="brand-mark" href="index.html" aria-label="Jackdaw, home">
+            <span class="brand-perch"><span class="brand-dot"></span></span>
+            <span class="brand-word">Jackdaw</span>
+          </a>
+          <nav class="footer-links" aria-label="Footer">
+            <a href="privacy.html">Privacy</a>
+            <a href="terms.html" aria-current="page">Terms</a>
+            <a class="footer-love" href="love.html">
+              <span class="heart" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path class="heart-ring heart-ring-a" d="M12 20.6C12 20.6 3.2 15.1 3.2 9.2C3.2 6.3 5.5 4 8.3 4C10.1 4 11.4 4.9 12 6C12.6 4.9 13.9 4 15.7 4C18.5 4 20.8 6.3 20.8 9.2C20.8 15.1 12 20.6 12 20.6Z" />
+                  <path class="heart-ring heart-ring-b" d="M12 20.6C12 20.6 3.2 15.1 3.2 9.2C3.2 6.3 5.5 4 8.3 4C10.1 4 11.4 4.9 12 6C12.6 4.9 13.9 4 15.7 4C18.5 4 20.8 6.3 20.8 9.2C20.8 15.1 12 20.6 12 20.6Z" />
+                  <path class="heart-core" d="M12 20.6C12 20.6 3.2 15.1 3.2 9.2C3.2 6.3 5.5 4 8.3 4C10.1 4 11.4 4.9 12 6C12.6 4.9 13.9 4 15.7 4C18.5 4 20.8 6.3 20.8 9.2C20.8 15.1 12 20.6 12 20.6Z" />
+                </svg>
+              </span>
+              A love letter to MC
+            </a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
+          </nav>
+        </div>
+        <p class="footer-fine">
+          Not affiliated with, endorsed by, or sponsored by Micro Center.
+          Product names and trademarks belong to their owners.
+        </p>
+      </div>
     </footer>
+
+    <script src="brand.js"></script>
+    <script src="doc.js"></script>
+    <script src="lit.js"></script>
     <script src="favicon.js"></script>
   </body>
 </html>

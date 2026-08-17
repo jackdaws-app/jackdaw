@@ -1,0 +1,237 @@
+/* ═══ A love letter to Micro Center ══════════════════════════════════════════
+   The third document page, and the only one with a chapter arc: a night title
+   card, a ruled leaf, a night colophon. It loads `doc.css` first and adds only
+   what a letter needs that a policy does not — a masthead built around the
+   heart, a salutation, a signature, and a postscript.
+
+   THE HERO DECLARES BOTH `data-ground` AND `data-chapter`, WHICH IS NOT
+   REDUNDANT. `data-ground` is read by `doc.js` and hands the chapter to <html>
+   when the section crosses the viewport's middle — that is what keeps the
+   floating nav in the palette of whatever is behind it. `data-chapter` is read
+   by the stylesheet and paints THIS element, unconditionally, whatever <html>
+   currently says.
+
+   Only the second one is load-bearing, and it is load-bearing because of a
+   failure mode the first one has on its own: the chapter follows whichever
+   ground is under the midpoint, so a hero shorter than half the viewport never
+   claims it, and the page would open with white type and a white heart on paper
+   stock. This hero is ~600px and would clear 50vh on any screen anyone has —
+   which is exactly the reasoning that produced `#opCostNew`, a condition with
+   no solutions that nobody noticed because nothing errored. A hero that paints
+   its own ground cannot have that bug at any viewport, so it paints its own
+   ground.
+
+   It also fixes the no-JavaScript case for free. With scripts off the chapter
+   never moves off its authored value, and the two bands that must be dark are
+   dark because they say so rather than because something ran. */
+
+/* ── The title card ──────────────────────────────────────────────────────── */
+.love-hero {
+  /* Not `--gap-section`: the rail floats over this band, so the top has to
+     clear it before the eye starts. Same construction as `.doc-mast`. */
+  padding-block: calc(var(--rail-h) + clamp(20px, 6vw, 64px)) clamp(64px, 9vw, 116px);
+  text-align: center;
+}
+.love-hero .wrap > * { max-width: 760px; margin-inline: auto; }
+/* `.eyebrow` is a flex row with a rule after it, so centring is a main-axis
+   question rather than a text-align one. */
+.love-hero .eyebrow { justify-content: center; }
+.love-title {
+  margin-top: 22px;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(40px, 7vw, 84px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.love-sub { margin-top: 20px; }
+
+/* ── The heart, at hero size ─────────────────────────────────────────────────
+   The same component as the footer's, and deliberately not a second one: the
+   markup is identical, `styles.css` owns every rule, and this page changes two
+   custom properties. A hero heart drawn as its own thing would drift from the
+   footer's the first time either was touched.
+
+   The third ring only exists here. The footer's is a 15px mark beside a link
+   and two entries into the cycle is already generous at that size; at 100px
+   there is room for the ripple to read as a train rather than as a blink, and
+   `styles.css` already carries the rule for a `-c` path the footer does not
+   have. */
+.love-heart {
+  --heart-size: clamp(84px, 13vw, 116px);
+  /* Screen pixels, not user units — `non-scaling-stroke` is what makes the
+     ripples thin as they travel, and its side effect is that stroke width stops
+     scaling with the mark. 1.5px is a hairline beside a 15px heart and a thread
+     beside a 116px one, so the hero asks for its own. */
+  --heart-stroke: 2;
+  /* Only the block axis — `.love-hero .wrap > *` above already centres it, and
+     at (0,2,0) it outranks anything this rule could say about the inline one. */
+  margin-block: 0 clamp(28px, 4vw, 40px);
+}
+/* THE GLOW IS PAINT, NOT MOTION. The beat and three ripples are already four
+   things moving in one 116px square; a fifth that pulsed would turn a heartbeat
+   into a throb. It sits still and gives the ripples something to travel out of.
+
+   `z-index` on the <svg> rather than a negative one on the glow: `.heart` is
+   positioned but forms no stacking context, so a negative child would paint
+   through it and land behind an ancestor's background. Lifting the sibling is
+   the version that has one answer. */
+.love-heart::before {
+  content: "";
+  position: absolute;
+  inset: -95%;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--love-red) 26%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+.love-heart svg { position: relative; z-index: 1; }
+
+/* ── The leaf ────────────────────────────────────────────────────────────────
+   `.doc` does the prose. Everything below is the furniture a letter has and a
+   policy does not, and all of it keeps the pitch — this page is written on the
+   ruling exactly like the other two. */
+.letter-date {
+  margin-bottom: var(--ledger-pitch);
+  text-align: right;
+  font-size: 13.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* The salutation is set in the display face because a letter's opening line is
+   the one string in it that is written rather than typed. `line-height` stays
+   on the pitch, so a 26px serif still lands on the rule the 17px sans does. */
+.letter-hail {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: 26px;
+  line-height: var(--ledger-pitch);
+  letter-spacing: -0.012em;
+}
+
+/* ── The signature ───────────────────────────────────────────────────────────
+   ONE CONTINUOUS STROKE THAT RELEASES A BIRD, and what it is not is a
+   hand-lettered "Jackdaw". CONVENTIONS.md's rule is to draw from references
+   rather than from memory, and a script signature drawn from memory is a
+   forgery of handwriting nobody has — it would read as a font pretending to be
+   a hand, which is the one thing a signature cannot be. A flourish is honest:
+   it is a mark, it claims to be nothing else, and the typed name sits under it
+   the way it does on a real letter.
+
+   The stroke draws left to right, lifts at the end, and the lift is where the
+   bird leaves — the project's continuity rule (one thing becomes another; the
+   pen's exit velocity is the bird's entry velocity). It is the same silhouette
+   `brand.js` flies in the nav, so the letter is signed by the mark at the top
+   of every page.
+
+   `pathLength="1"` NORMALISES THE GEOMETRY so the dash animation needs no
+   measurement — the browser reports the path as one unit long whatever its
+   actual length, which means the offset is a fraction and JavaScript never has
+   to call `getTotalLength()`. Edit the `d` and the timing is unchanged. */
+.letter-sign { text-align: left; }
+.sign-mark {
+  display: block;
+  /* 240 × 60 is two pitches tall exactly (the viewBox is 300 × 75, so the mark
+     renders at 0.8), which keeps the typed name below it on the rules. Below
+     240px of measure the height goes off-grid, which happens on no viewport
+     this page has — `.doc` is 280px wide at a 320px window. */
+  width: min(240px, 100%);
+  height: auto;
+  /* Negative left by the stroke's own inset: the path starts at x=6, which is
+     4.8px once rendered, and a signature that begins indented from the line
+     above it reads as misaligned rather than as written. */
+  margin: 2px 0 4px -5px;
+  overflow: visible;
+}
+.sign-stroke {
+  fill: none;
+  stroke: var(--ink);
+  /* 2.4 user units at the 0.8 render scale is 1.92 real pixels — chosen after
+     2 measured out at 1.6 and read as a hairline rather than as ink. */
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sign-bird { fill: var(--ink); }
+.sign-name { font-weight: 650; }
+
+/* THE DRAWN STATE IS THE BASE STATE. Hiding the stroke in the base rule and
+   revealing it with a class is the version where a script that never runs
+   leaves an unsigned letter — the same failure `doc.css` guards the clauses
+   against, and a signature is the one element on this page whose absence is
+   silent. So the hidden state is scoped to `html.reveal`, which only the inline
+   one-liner in <head> sets. */
+html.reveal .sign-stroke {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1.45s var(--ease-out) 0.2s;
+}
+html.reveal .letter-sign.in .sign-stroke { stroke-dashoffset: 0; }
+
+/* A CSS TRANSFORM ON AN SVG CHILD IS IN ITS OWN USER UNITS, NOT IN CSS PIXELS.
+   The bird sits inside a group carrying `scale(0.26)` as an attribute, so `px`
+   here is 0.26 of a rendered pixel — the offsets below are ~7px and ~7px on
+   screen. Two more traps in the same three lines: a CSS `transform` REPLACES an
+   element's `transform` attribute outright, which is why the positioning lives
+   on a parent group this rule cannot reach; and the delay is tuned to the
+   stroke's own finish, so the bird leaves the nib rather than beside it. */
+html.reveal .sign-bird {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(-28px, 24px) scale(0.5);
+  transition: opacity 0.55s var(--ease-out) 1.3s, transform 0.8s var(--ease-out) 1.3s;
+}
+html.reveal .letter-sign.in .sign-bird { opacity: 1; transform: none; }
+
+/* ── The postscript ──────────────────────────────────────────────────────────
+   Three commitments, and the list marker is a sanguine dash rather than a bullet
+   or a heart: the ledger's own margin ink, and the same red as the ripples, so
+   the promises at the bottom are tied to the mark at the top. */
+.letter-ps .eyebrow { margin-bottom: var(--ledger-pitch); }
+.ps-list { list-style: none; margin: 0; padding-left: 0; }
+.ps-list li { position: relative; padding-left: 26px; }
+.ps-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  /* Half a pitch down: text sits low in its line box, so a rule centred on the
+     BOX reads high against the glyphs it is meant to sit beside. */
+  top: calc(var(--ledger-pitch) / 2 + 1px);
+  width: 14px;
+  height: 1px;
+  /* 80%, not the 62% this started at, which measured 2.65:1 on paper and is
+     under the 3:1 a non-text mark owes. It is the list's only visible marker —
+     the `<ul>` carries the semantics but nothing else carries the ink — so it
+     has to be legible rather than merely present. 70% would have cleared it at
+     3.10; a 1px hairline lands on a fractional device pixel and antialiases
+     lighter than its ratio predicts, so it takes the headroom. 3.69:1. */
+  background: color-mix(in oklab, var(--love-red) 80%, transparent);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   The heart's own fallback lives with the heart in `styles.css`; the reveal's
+   lives in `doc.css`. What is left here is the signature, and it resolves to
+   the finished state rather than to an unsigned one. */
+@media (prefers-reduced-motion: reduce) {
+  html.reveal .sign-stroke { stroke-dashoffset: 0; transition: none; }
+  html.reveal .sign-bird { opacity: 1; transform: none; transition: none; }
+}
+
+/* ── Print ───────────────────────────────────────────────────────────────────
+   `doc.css` already drops the chrome and forces the clauses visible. The one
+   thing it cannot know about is the signature, whose hidden state is a dash
+   offset rather than an opacity — and `doc.js`'s 2.5s backstop is no help to
+   someone who hits print before it fires. A letter that comes out of a printer
+   unsigned is worse than one that never animated. */
+@media print {
+  .love-hero { display: none !important; }
+  html.reveal .sign-stroke { stroke-dashoffset: 0 !important; transition: none !important; }
+  html.reveal .sign-bird { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .sign-stroke, .sign-bird { stroke: #000; fill: #000; }
+  .sign-stroke { fill: none; }
+}
