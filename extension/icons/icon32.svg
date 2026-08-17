@@ -7,10 +7,10 @@
     </radialGradient>
   </defs>
   <rect width="128" height="128" rx="28" fill="url(#bg)"/>
-  <!-- The brand mark: overhead flying silhouette, one ink. Geometry is the
-       measured-proportion bird from site/brand.js (wings ~3.5x body area,
-       wingspan ~2x body length), centred on its own bounding box. -->
-  <g fill="#e8edf4" transform="translate(64 64) scale(1.16) translate(-49 -50)">
+  <!-- Same geometry as master with a light stroke fattening so limbs survive
+       the downsample to 32. -->
+  <g fill="#e8edf4" stroke="#e8edf4" stroke-width="1.6" stroke-linejoin="round"
+     transform="translate(64 64) scale(1.16) translate(-49 -50)">
     <path d="M63 45.6 C61.5 34 56.5 19.5 49.5 6.5 L46.2 15.2 L42.8 10.2 L41.2 19.4 L37.4 16.4 L36.8 25.8 L32.8 24.2 L34 33.2 C38.4 38.4 43 42.4 46 45.6 Z"/>
     <path d="M63 54.4 C61.5 66 56.5 80.5 49.5 93.5 L46.2 84.8 L42.8 89.8 L41.2 80.6 L37.4 83.6 L36.8 74.2 L32.8 75.8 L34 66.8 C38.4 61.6 43 57.6 46 54.4 Z"/>
     <path d="M38 47 L23 41.4 L25.4 45.8 L20.6 44.8 L23.2 48.8 L19.2 50 L23.2 51.2 L20.6 55.2 L25.4 54.2 L23 58.6 L38 53 Z"/>

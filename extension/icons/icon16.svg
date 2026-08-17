@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="bg" cx="38%" cy="32%" r="85%">
+      <stop offset="0%" stop-color="#23375c"/>
+      <stop offset="55%" stop-color="#16233a"/>
+      <stop offset="100%" stop-color="#0d1626"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- The 16px cut: fingered primaries and the fan's notches are subpixel at
+       this size, so the blades go solid, the body fattens, and the tail is a
+       plain wedge. The dominant shapes survive; the detail was never going to. -->
+  <g fill="#e8edf4" stroke="#e8edf4" stroke-width="3" stroke-linejoin="round"
+     transform="translate(64 64) scale(1.24) translate(-49 -50)">
+    <path d="M62 46 C60 33 55 19 47.5 8 C40.5 14 35.5 25 34 34 C39 40 44.5 44.5 47.5 46.5 Z"/>
+    <path d="M62 54 C60 67 55 81 47.5 92 C40.5 86 35.5 75 34 66 C39 60 44.5 55.5 47.5 53.5 Z"/>
+    <path d="M37 45.5 L20 40.5 L24 50 L20 59.5 L37 54.5 Z"/>
+    <path d="M81 50 C74 44 65 42.8 56 43 C47.5 43.2 40 45 35.5 47 L35.5 53 C40 55 47.5 56.8 56 57 C65 57.2 74 56 81 50 Z"/>
+  </g>
+</svg>
