@@ -123,6 +123,38 @@ Each of these cost real debugging time. They look like bugs in your code and are
   — for a bird in flight the wings are 3–4× the body's area, and getting that ratio wrong
   produces something confidently wrong rather than roughly right.
 
+## Measuring an animation
+
+A probe written to check an animation is itself a program, written quickly, against a
+moving target. In our last verification pass four of the five apparent defects were in the
+probe. **When a measurement surprises you, suspect the measurement first, and go read the
+code it claims to describe.**
+
+- **An animation gated on first reveal can't be re-measured by scrolling away and back.**
+  Scrolling out of view doesn't reset the state that arms it, so the probe reports nothing
+  moving — which is indistinguishable from broken. Reproduce the real sequence instead:
+  a fresh page, hooked at the top, then scrolled down.
+- **Don't infer ordering from event timestamps.** Elements parked at their start pose
+  before a staggered delay elapses all report the same first-drawn time, so any "order"
+  you read out is the sort's, not the animation's. Instrument the launch, or don't claim it.
+- **Collapse sampled positions in 2-D.** Two things passing each other share one axis and
+  never both; a 1-D key silently merges them and loses both tracks.
+- **Reading canvas state inside a draw hook reads the *previous* value** where the state is
+  set after the shape is described, and a shape drawn inside a translated context reports
+  its untranslated coordinates. Both invent defects that aren't there.
+- **A behaviour on a long cooldown is unreachable in any realistic observation window, and
+  its absence proves nothing.** Trigger it directly, through its real entry point where
+  one exists.
+- **Check for clipping ancestors separately from measuring extents.**
+  `getBoundingClientRect` reports the same box whether or not an ancestor cuts it, so an
+  `overflow` change that decapitates an animation is invisible to a rect-based probe. Note
+  `overflow: clip visible` is a legal pair that really does clip one axis and not the other.
+- **A JS `matchMedia` patch cannot test the CSS half of `prefers-reduced-motion`.** Media
+  queries are evaluated against the real browser setting. A faithful run needs the patch
+  *and* every `@media (prefers-reduced-motion: reduce)` block in the stylesheet lifted out
+  and applied unconditionally — check how many there are; ours is three, and taking only
+  the first left eight infinite animations running.
+
 ## Data collection is not negotiable
 
 These rules are the project's whole posture, not preferences.

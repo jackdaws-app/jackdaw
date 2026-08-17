@@ -3,38 +3,158 @@
    THE IDEA. A jackdaw collects and remembers, and jackdaws flock. A price
    history is many separate sightings by many separate shoppers. So the page's
    one visual idea is that the DATA IS THE FLOCK: the chart line is a wire, and
-   every price point is a bird that lands on it. Nothing here is a particle
-   effect for its own sake — the marks are the observations, and they resolve
-   into a chart you can actually read.
+   every price point is a bird that lands on it.
+
+   AND SCROLL IS TIME. The pinned section in the middle of the page maps the
+   axis you are dragging onto the price history's own time axis — eight months
+   of one part assemble as you descend and rewind as you go back up. That is why
+   the motion is not decoration here: the scroll position IS the date, the marks
+   ARE the readings, and the counter counts the same marks. A page about a
+   record you can read in both directions should be one.
 
    MOTION follows the extension's rule, which CONVENTIONS.md names as the house
    standard for every surface including this one: things transform into other
    things, every stage owns its motion, mass hands off between stages, and
-   neighbours react causally. Curves and durations match panel.css. Every
-   animation has a reduced-motion fallback that leaves the page COMPLETE, not
-   merely still.
+   neighbours react causally. Curves and durations match panel.css.
+
+   HOW IT IS DRIVEN. Two systems, deliberately split:
+     · Native CSS scroll-driven timelines (`animation-timeline: view()`) for
+       everything independent — reveals, strike-throughs, parallax. Free, runs
+       compositor-side, no JS. Guarded behind `@supports` in the direction where
+       no support means the FINISHED state, never a blank one.
+     · One JS progress value for the pinned record, because a scrubbed <canvas>
+       needs JS regardless and running two timing systems side by side is how
+       they desync. That value drives the canvas and is published as `--p`.
+
+   Every animation has a reduced-motion fallback that leaves the page COMPLETE,
+   not merely still.
    ──────────────────────────────────────────────────────────────────────────── */
 
+/* Self-hosted, not fonts.googleapis.com. A site whose entire pitch is that it
+   does not report you to anyone should not open every page load with a request
+   to Google — and a `<link>` to a second origin is render-blocking on top of it.
+   The four subsets are the ones Google serves, `unicode-range` copied verbatim
+   from their stylesheet so a Latin-only page never fetches the `-ext` pair.
+   Licence and provenance: `vendor/NOTICE.md`. */
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("vendor/fonts/instrument-serif-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("vendor/fonts/instrument-serif-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("vendor/fonts/instrument-serif-italic-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("vendor/fonts/instrument-serif-italic-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
+  /* The rail is out of flow, so nothing below it is pushed clear automatically
+     and any section that wants to start under the pill has to say so. One
+     owner: the rail's own box is sized from this, and the hero's top padding
+     reads the same token. Measured at 81.19px and identical across all three
+     nav states (rest / stuck / reading) — the pill's transitions move padding
+     and colour, never height. */
+  --rail-h: 82px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   /* A softer spring for things that settle rather than arrive — the nav pill,
      the cards lifting. Slight overshoot; never used on anything load-bearing. */
   --ease-settle: cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  /* THE HANGING RULE. Every object on this page that hangs from a hook reads
+     this one angle, so the page has a single answer to "what does a tag do when
+     you scroll" instead of three tuned ones that drift apart.
+
+     Negated: scrolling DOWN drives the content up past the viewport, so a
+     hanging thing lags BACKWARDS. The opposite sign reads as the tag leading
+     the scroll, which is the tell that a physics effect is faked.
+
+     Proportional to velocity rather than acceleration, and that is a deliberate
+     model choice — this is a card hanging in an airstream, not a pendulum under
+     a constant push. Which is also why an object is allowed to scale it down:
+     drag over weight is a property of the object, so a small dense tag leaning
+     less than a big light one is the same rule, not an exception to it. What is
+     NOT allowed is a second formula. Scale `--hang`, or restate it locally off
+     `--scroll-vel` with the amplitude named as a token — see `.reel-alert`,
+     whose ceiling is read back out by `layoutReel`.
+
+     `--scroll-vel` is pinned to 0 under `prefers-reduced-motion` (see
+     motion.js), so this resolves to 0deg there with nothing else to write. */
+  --hang: calc(var(--scroll-vel, 0) * -9deg);
+
   --ink: #16233a;
   --ink-soft: #4a5568;
-  --muted: #6b7280;
-  --hairline: #e6e4e0;
-  --paper: #fcfbf9;
-  --paper-warm: #f6f3ee;
+  /* Measured, not chosen. The old #6b7280 gave 4.03:1 on --paper-deep and 4.59
+     on --paper — passing on the ground it was picked against and failing on the
+     two warmer ones the page also uses, which is how the privacy note ended up
+     the only sub-4.5 string on the site. This clears 4.5 on every ground here:
+     4.79 on --paper-deep, 5.62 on --paper, 5.98 on white. */
+  --muted: #5b6472;
+  --hairline: #dde1e6;
+
+  /* THE STOCK IS COOL, AND THAT IS THE BRAND ARGUMENT, NOT A PREFERENCE. This
+     was a warm cream (#fcfbf9/#f6f3ee/#efeae1) and it ran at the opposite
+     colour temperature to the night chapter — R−B +3/+8/+14 against a ground
+     whose whole comment is that it "carries the same blue that the ink does".
+     Two chapters on two hue axes are a light theme and a dark theme; two
+     chapters on ONE are the same book under two lights, which is what the page
+     claims to be. Pewter, because that is where the dark ground already got its
+     colour: a jackdaw's nape, the one part of the bird that is not charcoal.
+
+     Derived by holding LIGHTNESS and moving only hue and chroma (oklch hue 250,
+     chroma ×1.25), so the swap cost nothing in contrast — every ink landed
+     within 0.02 of its old ratio and no measured value on the page had to be
+     re-picked for the cast. What DID have to move is one step of depth: the old
+     --paper was #fcfbf9, 99% white, so a white card lifted 1.03:1 off it and
+     paper's whole trick barely happened. A step down puts the lift at 1.065 on
+     --paper and 1.146 on --paper-warm, which is the difference between a card
+     and a slightly whiter region of the same surface. --green-deep is the only
+     ink the step cost anything (see below). */
+  --paper: #f6f8fa;
+  --paper-warm: #ebf0f6;
   /* One step deeper than --paper-warm, for the bands that need to read as a
      different room rather than a different shade. */
-  --paper-deep: #efeae1;
+  --paper-deep: #dee7f1;
   --green: #16a34a;
-  --green-deep: #0e7a37;
+  /* Darkened with the stock, not independently. At #0e7a37 the deeper ground
+     took this to 4.36:1 — the one ink the depth step pushed under AA. This is
+     the same hue and chroma one step down, which lands it at 5.34/4.96/4.55
+     across the three grounds: the old set (5.26/4.92/4.54) restored rather than
+     merely cleared, so nothing that was legible became marginal. */
+  --green-deep: #067734;
   --green-wash: #f2faf5;
   --amber: #d97706;
+  --amber-deep: #a75d05;
 
   /* Ink used as a surface — the CTA band and the panel chrome. Kept as its own
      token so the two can never drift apart. */
@@ -42,37 +162,291 @@
 
   --shadow-sm: 0 1px 2px rgba(22, 35, 58, 0.05), 0 2px 8px rgba(22, 35, 58, 0.04);
   --shadow-md: 0 4px 14px rgba(22, 35, 58, 0.07), 0 12px 32px rgba(22, 35, 58, 0.06);
-  --shadow-lg: 0 8px 24px rgba(22, 35, 58, 0.09), 0 30px 70px rgba(22, 35, 58, 0.10);
+  --shadow-lg: 0 8px 24px rgba(22, 35, 58, 0.09), 0 30px 70px rgba(22, 35, 58, 0.1);
 
   /* One rhythm for the whole page. Sections breathe on this, not on ad-hoc
      numbers, which is most of what makes a long page feel composed. */
   --gap-section: clamp(84px, 11vw, 148px);
   --pad-x: clamp(20px, 5.5vw, 64px);
   --measure: 1180px;
+
+  /* Derived, not hand-picked. Every translucent rule and tint on the page used
+     to be its own rgba() literal, which meant the palette existed in one place
+     and its shadows existed in fifteen others. `color-mix` in oklab keeps the
+     hue steady as the mix moves — an rgba() of the same colour at 30% drifts
+     cooler, which is why hand-tuned sets never quite agree with each other. */
+  --green-line: color-mix(in oklab, var(--green) 30%, transparent);
+  --green-line-soft: color-mix(in oklab, var(--green) 16%, transparent);
+  /* The same mix over the CHAPTER's accent rather than the fixed green. Safe to
+     derive once here because `data-chapter` is set on the root element itself,
+     so `--accent` has already resolved to the standing chapter's value by the
+     time this is used. Anything that outlines an accented surface wants this
+     one; `--green-line` stays for the rules that mean the brand green
+     specifically, whatever the light. */
+  --accent-line: color-mix(in oklab, var(--accent) 30%, transparent);
+  --rule: color-mix(in oklab, var(--ink) 12%, transparent);
+  --rule-soft: color-mix(in oklab, var(--ink) 7%, transparent);
+
+  /* The page's only texture, and it is generated rather than fetched: one tiled
+     feTurbulence as a data URI, so the tooth costs no request, no bitmap and no
+     resolution decision. Held as a token because four surfaces now draw it and a
+     second copy of a 300-character data URI is a second chance to drift. */
+  --tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
+  /* 8mm feint, which is what a real ledger rules at. Not derived from the type:
+     the ruling is the BOOK and the content is pasted onto it, so chasing a
+     baseline grid across three type sizes would be inventing a relationship the
+     material does not have. */
+  --ledger-pitch: 30px;
+  /* A torn edge, drawn once and tiled. HAND-IRREGULAR ON PURPOSE: the peaks sit
+     at uneven x AND uneven depth, because a row of matched teeth is a border
+     style and a tear is not. 260px is wide enough that the repeat is not
+     legible at slip width, and the first and last y are both 6 so the tile
+     joins itself without a step. Used as a mask, so only its alpha matters. */
+  --tear: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='10'%3E%3Cpath d='M0 0L0 6L9 2L17 7L23 3L34 8L41 4L47 9L58 3L65 7L74 2L81 8L89 5L97 9L106 3L113 7L121 2L130 8L138 4L145 9L155 3L162 7L171 2L179 8L187 5L196 9L204 3L212 7L221 2L229 8L238 4L246 9L253 4L260 6L260 0Z' fill='%23000'/%3E%3C/svg%3E");
 }
 
+/* ── Chapters ────────────────────────────────────────────────────────────────
+   THE PAGE STANDS ON TWO DIFFERENT GROUNDS AND WALKS BETWEEN THEM. It opens at
+   night — the wire, the flock and one lit headline against near-black — lifts
+   to paper for the middle, where the argument is made on ruled ledger stock,
+   and goes back to night to close. `motion.js` writes `data-chapter` on <html>
+   as each section crosses the middle of the viewport, and the whole cascade
+   turns over from that one attribute.
+
+   WHY AN ATTRIBUTE AND NOT PER-SECTION BACKGROUNDS. A section that paints its
+   own ground has a seam at its top edge, and a page of five of them reads as
+   five stacked panels. One ground that CHANGES has no seam at all: the room
+   gets darker while you are standing in it. That is the device the reference
+   page uses and it is most of why a long scroll there feels authored rather
+   than assembled.
+
+   THESE ARE SEMANTIC NAMES, NOT COLOURS. `--ground` is "the floor", `--surface`
+   is "a thing sitting on the floor". Both chapters define the full set, so a
+   rule written against them is correct in both without knowing either exists —
+   which is the only way a page this size stays honest across a palette flip.
+   Contrast is measured per chapter, never assumed to carry over; the values
+   below were picked against their own ground, not adapted from the other's.
+
+   NAMED SO THE OLD TOKENS STILL WORK. `--ink`, `--muted` and `--hairline` are
+   redefined here rather than replaced, so the ~90 existing rules that reference
+   them follow the chapter automatically and nothing had to be rewritten to
+   gain a night mode. */
+
+:root,
+[data-chapter="paper"] {
+  --ground: var(--paper);
+  --ground-2: var(--paper-warm);
+  --ground-3: var(--paper-deep);
+  /* A card. White on paper, because paper's whole trick is that a page laid on
+     a desk is lighter than the desk — 1.065:1 off --paper and 1.146:1 off
+     --paper-warm, which only became true when the stock stepped down off white. */
+  --surface: #fff;
+  --surface-sunk: var(--paper-warm);
+  --on-surface: var(--ink);
+  --accent: var(--green);
+  --accent-deep: var(--green-deep);
+  --accent-wash: var(--green-wash);
+  /* The one loud note. Used perhaps four times on the whole page — the
+     reference gets its charge from a single acid colour that appears rarely,
+     and a highlighter is the ledger's own version of exactly that. */
+  --mark: #d8f34a;
+  --mark-ink: #1d2a10;
+  --brass: #b08d4f;
+  --brass-lit: #e6cd94;
+  --glow: transparent;
+
+  /* The stock the middle of the page is printed on. Two inks, both of them the
+     ones a real ledger uses: a feint blue for the horizontals and a sanguine for
+     the margin rule. Mixed rather than written as rgba() for the reason the
+     rules above are — an rgba() of the same blue at the same alpha drifts cooler
+     as it thins, and a ruling that drifts cool stops reading as printing ink. */
+  --feint-line: color-mix(in oklab, #3d6ea3 13%, transparent);
+  --sanguine-line: color-mix(in oklab, #b4432c 26%, transparent);
+  /* Not a colour — a switch. The ruling crosses on the same 900ms as every other
+     surface, and it goes to nothing at night because feint blue on dark stock is
+     not a thing you can see. The room going dark takes the ruling with it. */
+  --ruling: 1;
+  --tooth-o: 0.035;
+}
+
+[data-chapter="night"] {
+  /* Not black. A jackdaw is not black either — it is charcoal with a pewter
+     nape, and the page's darkest ground carries the same blue that the ink
+     does, so the two chapters read as one book under two lights rather than
+     as a light theme and a dark one. */
+  --ground: #0a1120;
+  --ground-2: #0d1526;
+  --ground-3: #070d18;
+  --surface: #131d33;
+  --surface-sunk: #0d1526;
+  --on-surface: #eef2f8;
+
+  --ink: #f0f4fa;
+  --ink-soft: #c2ccdb;
+  /* 7.24:1 on --ground. The paper chapter's --muted is 4.99 on its darkest
+     ground; picking a night muted by eye from that one lands around 3.2, which
+     is the specific mistake this project has now made twice. */
+  --muted: #9aa8bd;
+  --hairline: rgba(255, 255, 255, 0.11);
+
+  /* --green at #16a34a is 3.31:1 on this ground and unusable for text. The
+     night chapter gets its own accent, one step up the ramp, and --accent-deep
+     inverts to become the LIGHTER of the pair — "deep" means "more emphatic",
+     not "darker", and that is the whole reason the token is named for its role
+     rather than for its value. */
+  --accent: #4ade80;
+  --accent-deep: #86efac;
+  --accent-wash: rgba(74, 222, 128, 0.12);
+
+  --mark: #d8f34a;
+  --mark-ink: #10180a;
+  --brass: #caa765;
+  --brass-lit: #f2e0b4;
+
+  --feint-line: transparent;
+  --sanguine-line: transparent;
+  --ruling: 0;
+  /* Noise reads weaker against ink, so the dark chapters carry more of it to
+     land at the same apparent tooth. The CTA band takes another step on top of
+     this one — it is the darkest surface on the page. */
+  --tooth-o: 0.04;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5), 0 30px 70px rgba(0, 0, 0, 0.45);
+  /* Night has a light source and paper does not. Every lit edge on the dark
+     chapters keys off this one value so they all agree where the lamp is. */
+  --glow: rgba(120, 170, 255, 0.14);
+}
+
+/* ── Typed custom properties ─────────────────────────────────────────────────
+   Registering a custom property gives it a TYPE, and a type is what turns a
+   string the browser copies around into a value it can reason about: it can be
+   interpolated, it can be inherited as a number rather than as text, and it can
+   be used in `calc()` without a fallback dance.
+
+   Three of these carry a measurement out of the canvas and into the stylesheet
+   — `--p` is the record's progress, `--px`/`--py` are the all-time low's
+   position in the feature chart. That is the point of publishing them: the
+   chart and the room around it read the SAME number, so they cannot disagree
+   about where you are or what you are looking at.
+
+   `--angle` is registered for the opposite reason: a conic gradient's rotation
+   is not animatable at all unless the angle behind it is a registered property.
+   It is the one thing on this page that CSS can do and nothing else can. */
+@property --p {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+/* The record's own progress, which is NOT `--p`: the readings finish at
+   DRAW_SPAN and the scroll carries on past them. Registered so the foot rail
+   interpolates rather than snapping between substituted token streams. */
+@property --rec {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+/* How thick the foot rail is, as a multiple of its 1px hairline. Registered so
+   it can be transitioned — see `.foot-rail`, where one eased number feeds two
+   transforms that could not both be transitioned themselves. */
+@property --rail-t {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+@property --lx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --ly { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --px { syntax: "<length-percentage>"; inherits: false; initial-value: 50%; }
+@property --py { syntax: "<length-percentage>"; inherits: false; initial-value: 50%; }
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
 * { box-sizing: border-box; }
+
+/* Small enough to miss and wrong enough to notice if it were default blue on a
+   page this warm. */
+::selection { background: color-mix(in oklab, var(--green) 24%, transparent); color: var(--ink); }
 html {
   scroll-behavior: smooth;
   /* The nav floats over the top of anchored sections; without this, jumping to
-     #how puts the heading underneath it. */
+     #features puts the heading underneath it. */
   scroll-padding-top: 96px;
 }
+/* NEVER LET SCROLLTRIGGER SEE `scroll-behavior: smooth`. To measure, it sets the
+   scroller to 0 and reads every trigger's rect back synchronously, in the same
+   frame. Smooth turns that write into an animation, so the reads all happen at
+   the position the page was already at and every start/end lands offset by
+   exactly -scrollY — the whole scroll timeline shifted off the page.
+
+   It hides in plain sight because at scrollY 0 there is nothing to animate and
+   the measurement is correct, and a page under development is nearly always
+   loaded from the top. What surfaces it is a RELOAD below the fold: Chrome
+   restores the scroll position before scripts run, so the first refresh is the
+   broken one. Measured at 9331px — the ground stayed `paper` through both night
+   sections, no chapter boundary fired anywhere on the page, and a manual
+   `ScrollTrigger.refresh()` reproduced the same wrong numbers rather than
+   repairing them, which is what rules out "refreshed too early".
+
+   Nothing is lost by dropping it here: `has-motion` means the JS layer booted,
+   in-page anchors are handed to `JD.scrollTo` explicitly, and Lenis is doing
+   the smoothing. The one path that had been relying on CSS for it — GSAP
+   present but Lenis absent — now asks for `behavior: "smooth"` on the
+   `scrollIntoView` call itself, which no stylesheet can turn into a hazard. */
+html.has-motion { scroll-behavior: auto; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
 }
 body {
   margin: 0;
-  /* The flight path reaches outside the stage — clip it rather than letting it
-     create a horizontal scrollbar. `clip` (not `hidden`) keeps sticky working. */
+  /* Flight paths reach outside their stages — clip rather than letting them
+     create a horizontal scrollbar. `clip` (not `hidden`) keeps sticky working,
+     which the pinned record depends on entirely. */
   overflow-x: clip;
-  background: var(--paper);
+  background: var(--ground);
   color: var(--ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 16.5px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* The chapter crossfade. 900ms is long for UI and correct here: this is not
+     a control responding to a click, it is the light in the room changing, and
+     the one thing that would give it away as a swap is doing it quickly.
+     Named properties rather than `all`, because `all` would also catch every
+     transform on every descendant that inherits nothing of the sort. */
+  transition: background-color 900ms var(--ease-out), color 900ms var(--ease-out);
+}
+/* Every surface that paints itself has to cross at the same rate or the page
+   arrives in pieces — the cards would still be white for half a second after
+   the floor went dark. One list, applied everywhere it matters. */
+.panel,
+.chip,
+.mini-card,
+.mini-comment,
+.btn,
+.nav,
+.step,
+.pcol,
+.feature-art,
+.reel,
+.how,
+.privacy,
+.cta,
+.footer,
+.section {
+  transition:
+    background-color 900ms var(--ease-out),
+    border-color 900ms var(--ease-out),
+    color 900ms var(--ease-out),
+    box-shadow 900ms var(--ease-out);
+}
+/* Hover and press must stay instant. The chapter transition above would
+   otherwise apply to them too and every button on the page would take nearly a
+   second to acknowledge the pointer. */
+.btn:hover,
+.btn:active,
+.nav:hover {
+  transition-duration: 180ms;
 }
 h1, h2, h3, h4 { margin: 0; font-weight: 400; }
 p { margin: 0; }
@@ -90,19 +464,25 @@ img, svg, canvas { display: block; max-width: 100%; }
   line-height: 0.98;
   font-size: clamp(46px, 8.2vw, 104px);
 }
-.h-display em { font-style: italic; color: var(--green-deep); }
+/* `--accent-deep`, not `--green-deep` — see the note on `.chip-good`. This word
+   is in the hero headline, which is a NIGHT surface, and the fixed green read
+   3.46:1 there against the 13.43 the chapter's own accent gives. The bug was
+   already known: `.cta .h-display em` existed solely to patch this rule for the
+   one instance somebody noticed, which is why fixing the base rule deletes it. */
+.h-display em { font-style: italic; color: var(--accent-deep); }
 .h-section {
   font-family: "Instrument Serif", Georgia, serif;
   font-size: clamp(32px, 4.4vw, 54px);
   line-height: 1.06;
   letter-spacing: -0.015em;
 }
-.h-sub {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: clamp(21px, 2.3vw, 27px);
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
+/* `balance` on headings, `pretty` on prose. The browser is doing the job a
+   typesetter would — no more one-word last lines on a display serif at 104px,
+   and no orphans at the foot of a paragraph — and it does it per viewport, at
+   every width, which hand-inserted <br>s cannot. The two <br>s that remain are
+   deliberate line breaks in the composition, not fixes for a bad wrap. */
+.h-display, .h-section, .feature h3, .step h3 { text-wrap: balance; }
+.lede, .beat, .feature p, .step p, .cta-sub, .footer-fine, .pcol-note { text-wrap: pretty; }
 .eyebrow {
   font-size: 11px;
   font-weight: 700;
@@ -113,7 +493,7 @@ img, svg, canvas { display: block; max-width: 100%; }
      band and the whole admin panel — and none on pure white, which is the only
      surface `--muted` clears at this size. Measured: 4.67 on `--paper` and 4.37
      on `--paper-warm`, one marginal and one under AA for 11px text. This token
-     takes all of them to 6.80–7.28. */
+     takes all of them to 6.57–7.07. */
   color: var(--ink-soft);
   display: flex;
   align-items: center;
@@ -185,21 +565,32 @@ a:focus-visible, button:focus-visible {
     box-shadow 0.22s var(--ease-out), gap 0.2s var(--ease-out),
     border-color 0.18s ease, color 0.18s ease;
 }
+/* THE PRIMARY BUTTON IS ALWAYS THE HIGHEST-CONTRAST OBJECT ON THE PAGE, and on
+   a page with two grounds that means it inverts rather than holds a colour. Ink
+   on paper, paper on ink — written as the `--ink` / `--ground` pair so the flip
+   comes free with the chapter and there is no second set of values to keep in
+   step. Written as `background: var(--ink); color: var(--ground)` it briefly
+   read as a navy pill with navy text on the night chapter, which is what a
+   hardcoded `color: #fff` had been hiding: the fill followed the chapter and
+   the label did not. */
 .btn-primary {
   background: var(--ink);
-  color: #fff;
-  box-shadow: 0 3px 12px rgba(22, 35, 58, 0.2), 0 1px 2px rgba(22, 35, 58, 0.18);
+  color: var(--ground);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 .btn-ghost { border: 1px solid var(--hairline); color: var(--ink); background: transparent; }
 .btn-lg { padding: 16px 30px; font-size: 15.5px; }
 .btn-arrow { display: inline-block; transition: transform 0.2s var(--ease-out); }
 @media (hover: hover) and (pointer: fine) {
   .btn-primary:hover {
-    background: #1e3252;
+    /* Toward the ground rather than to a literal — a fixed #1e3252 was a
+       lightening on paper and would have been a second dark-on-dark on night.
+       12% is the smallest step that reads as a state change at this size. */
+    background: color-mix(in oklab, var(--ink) 88%, var(--ground));
     gap: 13px;
-    box-shadow: 0 8px 28px rgba(22, 35, 58, 0.28), 0 1px 2px rgba(22, 35, 58, 0.2);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   }
-  .btn-ghost:hover { border-color: #cdc9c2; background: #fff; gap: 13px; }
+  .btn-ghost:hover { border-color: color-mix(in oklab, var(--ink) 22%, transparent); background: var(--surface); gap: 13px; }
   .btn:hover .btn-arrow { transform: translateX(3px); }
 }
 .btn:active { transform: scale(0.975); }
@@ -207,12 +598,25 @@ a:focus-visible, button:focus-visible {
 /* ── Nav ─────────────────────────────────────────────────────────────────────
    A floating pill rather than a full-width bar: it keeps the warm ground
    running edge to edge behind it, which is most of why the page reads as paper
-   rather than as an app chrome. It contracts slightly once you leave the top,
-   so the page feels like it moved under something physical. */
+   rather than as app chrome. It contracts slightly once you leave the top, so
+   the page feels like it moved under something physical. */
+/* FIXED, not sticky — and the difference is 81px of the hero.
+   The rail is the first element in the document and pins at top:0, so sticky
+   and fixed look identical; what is not identical is that a sticky rail still
+   occupies its 81px of normal flow, which pushed the hero down and made
+   `min-height: 100svh` end 81px PAST the fold. The first thing to fall off the
+   bottom was the shelf tag, because it hangs from the newest reading, which is
+   also the record's lowest price and therefore the wire's lowest point.
+   Out of flow, the pill floats over the night sky — which is where the
+   composition wanted it anyway — and 100svh means the viewport again.
+   `html { scroll-padding-top }` already assumed an overlaying nav. */
 .nav-rail {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 60;
+  height: var(--rail-h);
   padding: 14px var(--pad-x) 0;
   pointer-events: none;
 }
@@ -227,6 +631,11 @@ a:focus-visible, button:focus-visible {
   padding: 9px 9px 9px 18px;
   border-radius: 999px;
   border: 1px solid transparent;
+  /* Containing block for the progress rail below. Nothing else inside is
+     absolutely positioned against it — `.nav-readout` resolves against
+     `.nav-mid` and `.brand-flit` against `.nav-brand`, both of which set their
+     own `position: relative` — so this adds a rail and moves nothing. */
+  position: relative;
   transition: background-color 0.3s ease, border-color 0.3s ease,
     box-shadow 0.3s ease, transform 0.35s var(--ease-out), padding 0.3s var(--ease-out);
 }
@@ -238,8 +647,69 @@ a:focus-visible, button:focus-visible {
   box-shadow: var(--shadow-sm);
   transform: scale(0.985);
 }
+
+/* ── Reading progress ────────────────────────────────────────────────────────
+   The one consumer of `--scroll-prog`. It fills the pill's own bottom border
+   rather than cutting a bar across the top of the viewport, because the pill is
+   already the chrome that reads the document — the same object that swaps its
+   links for the record's date and price is the one that should say how far
+   through you are. A full-width bar at y=0 would also be the one element on the
+   page drawn against the viewport rather than against the composition, and over
+   the night hero it reads as a browser affordance that wandered in.
+
+   INSET 38px, AND THAT NUMBER IS THE RADIUS, NOT A MARGIN. `border-radius: 999px`
+   resolves to half the height — 33.1 at the measured 66.2 — so the bottom edge
+   is only STRAIGHT between the two corner arcs, and a chord drawn end to end
+   would leave its tips hanging outside the silhouette. 38 clears the arc by
+   ~5px, and because the radius is a function of height alone it keeps clearing
+   it at every width the pill takes.
+
+   `bottom: -1px` lands on the border itself, not inside it: an absolutely
+   positioned child resolves against the PADDING box, so 0 would sit one pixel
+   in and paint a second line under the first. Overlaid exactly, the effect is
+   the pill's own edge turning brass from the left.
+
+   scaleX off a left origin, never a width — same rule, and the same reason, as
+   `.foot-fill` down in the record. */
+.nav::before,
+.nav::after {
+  content: "";
+  position: absolute;
+  left: 38px;
+  right: 38px;
+  bottom: -1px;
+  height: 1px;
+  border-radius: 1px;
+  opacity: 0;
+  /* Earned, like the record's foot rail: a gauge on a page nobody has moved
+     yet is furniture for its own sake. `stuck` is already computed for the
+     pill's own arrival, so the rail and the chrome it belongs to appear
+     together rather than on two thresholds that could drift apart. */
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.nav::before { background: var(--hairline); }
+.nav::after {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--brass) 40%, transparent), var(--brass));
+  transform: scaleX(var(--scroll-prog, 0));
+  transform-origin: 0 50%;
+}
+.nav.stuck::before,
+.nav.stuck::after { opacity: 1; }
+
+/* The middle of the pill holds two things in the same place: the links, and —
+   while the record is pinned — the date and price the scroll is sitting on. The
+   chrome reads the content, which is the one place on the page where a nav bar
+   earns motion. */
+.nav-mid { position: relative; display: flex; align-items: center; justify-content: center; }
 .nav-links { display: flex; align-items: center; gap: 26px; font-size: 14.5px; }
-.nav-links a { text-decoration: none; color: var(--ink-soft); position: relative; padding-block: 4px; }
+.nav-links a {
+  text-decoration: none;
+  color: var(--ink-soft);
+  position: relative;
+  padding-block: 4px;
+  transition: color 0.22s ease;
+}
 /* Underline grows from the left rather than fading in — a line being drawn,
    not a state being toggled. */
 .nav-links a::after {
@@ -255,15 +725,44 @@ a:focus-visible, button:focus-visible {
 @media (hover: hover) and (pointer: fine) {
   .nav-links a:hover { color: var(--ink); }
   .nav-links a:hover::after { transform: scaleX(1); }
+  /* A hover that only changes the thing under the cursor is a highlight; one
+     the neighbours answer is a group giving something its attention. `:has()`
+     is what makes it expressible — the parent reacting to the state of a child
+     is precisely the relationship CSS could never describe before. */
+  .nav-links:has(a:hover) a:not(:hover) { color: color-mix(in oklab, var(--ink-soft) 52%, transparent); }
 }
-@media (max-width: 860px) { .nav-links { display: none; } }
+.nav-links, .nav-readout {
+  transition: opacity 0.32s var(--ease-out), transform 0.32s var(--ease-out);
+}
+.nav-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(7px);
+  pointer-events: none;
+}
+.nav-readout-when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.nav-readout-rule { width: 20px; height: 1px; background: var(--hairline); }
+/* Same fix, and this one is the more clearly wrong of the two: the nav is fixed,
+   so this price is on screen through BOTH chapters and can never be a colour
+   picked for one of them. 3.32:1 on the night ground, 13.43 on the accent. */
+.nav-readout-price { color: var(--accent-deep); font-size: 14px; }
+.nav.reading .nav-links { opacity: 0; transform: translateY(-7px); pointer-events: none; }
+.nav.reading .nav-readout { opacity: 1; transform: none; }
+
+@media (max-width: 880px) { .nav-mid { display: none; } }
 /* The label is never hidden. An earlier rule dropped it below 460px and left a
    bare arrow in a circle, which names nothing — the one control in the bar
    became a mystery button. It fits at 375px once the padding tightens. */
 @media (max-width: 460px) {
   .nav { padding-left: 14px; }
   .nav-cta { padding: 10px 16px; font-size: 13.5px; }
-  .nav-brand { font-size: 13px; letter-spacing: 0.1em; }
 }
 
 /* ── The nav jackdaw ─────────────────────────────────────────────────────────
@@ -272,10 +771,53 @@ a:focus-visible, button:focus-visible {
    back as the dot. The letters duck as it passes over them — the neighbours
    react, which is the difference between choreography and decoration.
 
-   Kept and refined rather than replaced (owner's call). What changed: the
-   flight is slower and flatter, the takeoff has a crouch before it, the landing
-   has a settle, and the whole cycle is longer so it reads as punctuation rather
-   than as a loop. */
+   Kept and refined rather than replaced (owner's call). What changed since:
+
+   · The flight is a CLASS, not a long infinite animation. A 17s keyframe track
+     that is only interesting for 1.5s of its length cannot be retriggered, so
+     the bird could not respond to anything — and a finished animation never
+     restarts under the same name (CONVENTIONS.md). Now JS adds `.flit`, which
+     runs one 1.5s flight, and removes it on animationend. The idle cadence and
+     the hover both go through that one door.
+   · It has STATES. Hovering the brand launches the flight immediately rather
+     than making you wait out the idle timer, and the perch leans toward your
+     cursor when it is near — the bird noticing you before it goes.
+   · The lean lives on `.nav-perch`, not on `.nav-dot`, because the dot's own
+     squash-and-stretch is an animation and a running animation overrides the
+     cascade. Two transforms, two elements.
+   · THE CIRCUIT CLOSES. The first flight went one way: the bird faded out over
+     the "a" and the dot rematerialized at the far left with a landing squash it
+     had not earned. A teleport, in the one mark whose whole premise is that
+     mass hands off — and the pose sheet is what showed it. It now flies the
+     word, banks over the top at the far end, and comes back along a higher line
+     to land on the perch it left. The letters duck TWICE, and the second dip is
+     shallower because the return leg is further away: the reaction is scaled by
+     the distance, which is what makes it read as cause rather than as a cue.
+   · The turn is a ROTATION, not a mirror. From overhead a bird reversing course
+     yaws through 90 degrees — for one frame it points away from you, wings
+     foreshortened to a blade. `scaleX(-1)` would arrive at the same silhouette
+     (the overhead view is symmetric about the body axis) while passing through
+     an instant of nothing. It turns through the TOP, away from the letters,
+     which is also what keeps the clearance.
+
+   The corridor is measured, not guessed — and measure the INK, not the box. The
+   first pass fitted the flight to `getBoundingClientRect`, which reports the
+   22px square the SVG occupies and says nothing about where inside it the bird
+   is drawn; the outbound leg came out 2px INSIDE the letters. What matters:
+
+     letters' cap top   -7.84   (TextMetrics, not a guess from font-size)
+     pill's inner top  -33.6
+     ink half-height    +-9.57  (viewBox y 6.5..93.5 of 100, in a 22px box)
+     ...plus 6.78*sin(pitch), because a rotated wide shape reaches further
+
+   So the outbound leg cruises at -21 — 2.9px of daylight over the caps, close
+   enough that the 1.5px duck is doing real work — and the return rides at -26,
+   which puts its top edge 2.7px ABOVE the pill's rim. That is deliberate: the
+   band between the caps and the rim is only 25.8px and the bird needs 20 of it,
+   so the circuit reads as cramped if the whole thing stays inside. Nothing
+   clips it (the rail sets no overflow), and a bird that crests the rim on the
+   way home is the more legible picture anyway. Change the box size and every
+   number here moves. */
 .nav-brand {
   display: inline-flex;
   align-items: center;
@@ -289,6 +831,22 @@ a:focus-visible, button:focus-visible {
   /* The bird flies outside the anchor's box; let it. */
   overflow: visible;
 }
+/* Holds the lean, so the dot keeps its keyframes to itself.
+
+   `z-index` is on the PERCH and not only on the dot, because the perch's
+   transform makes it a stacking context and seals the dot's own z-index inside
+   it: measured, `.brand-flit` at z-index 1 still painted on top of a dot at
+   z-index 2, since 1 and 2 were being compared in different contexts. The hop's
+   wing flick has to sit BEHIND the dot, so the two have to be sorted at the
+   same level — the perch's. It applies without `position` because this is a
+   flex item of `.nav-brand`. Anything that needs to be over the bird is >2. */
+.nav-perch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  z-index: 2;
+  transform: translate(var(--lx, 0px), var(--ly, 0px));
+  transition: transform 0.5s var(--ease-out);
+}
 .nav-dot {
   width: 9px;
   height: 9px;
@@ -301,13 +859,16 @@ a:focus-visible, button:focus-visible {
      lands, so the mass hands off in both directions. */
   transform-origin: 50% 100%;
 }
+/* `left` and `margin-top` put the box's CENTRE over the dot's centre at
+   translate(0,0), so every number in `fly-go` is an offset from the perch. The
+   dot's centre is 4.5px in; half the box is 11. */
 .brand-flit {
   position: absolute;
-  left: 0;
+  left: -6.5px;
   top: 50%;
-  width: 15px;
-  height: 15px;
-  margin-top: -7.5px;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
   color: var(--ink);
   opacity: 0;
   pointer-events: none;
@@ -316,69 +877,461 @@ a:focus-visible, button:focus-visible {
 .nav-word { display: inline-flex; }
 .nav-word i { font-style: normal; display: inline-block; }
 
-/* The cycle. 17s, and the bird is only visible for 1.5s of it. Rare by budget:
-   an idle animation you can predict is one you start ignoring. */
-@media (hover: hover) and (pointer: fine) {
-  .nav-brand .nav-dot { animation: brand-dot 17s var(--ease-in-out) 6s infinite; }
-  .nav-brand .brand-flit { animation: brand-fly 17s var(--ease-in-out) 6s infinite; }
-  .nav-brand .brand-flit-wings { animation: brand-wing 0.19s steps(1, end) 6s 8; transform-origin: 55% 50%; }
-  .nav-brand .nav-word i {
-    animation: brand-duck 17s var(--ease-out) infinite;
-    /* Each letter ducks as the bird reaches it. --i is set in the markup. */
-    animation-delay: calc(6s + 0.36s + var(--i) * 0.052s);
-  }
+/* ── The idle repertoire ─────────────────────────────────────────────────────
+   Between flights the mark was a static green dot for fifteen to twenty-six
+   seconds — which is most of the time anyone spends on the page. The one thing
+   on screen whose entire premise is that it is alive was, in practice, a bullet
+   point that occasionally did a trick. So the flight is now the RAREST of four
+   behaviours on one scheduler rather than the only one:
+
+     shift   a weight rock, a step along the wire     most of the time
+     peck    a lean into the word, and the J flinches
+     hop     off the perch and back, wings flicking open
+     flit    the full circuit                          rarest, and on hover
+
+   All four animate `.nav-dot` and never `.nav-perch`: the perch carries the
+   lean toward your cursor as a TRANSITION, and a running animation overrides
+   the cascade, so the two would fight over one transform. Same split the flight
+   already used, extended to the rest of the set.
+
+   They are mutually exclusive — JS holds one at a time — and they are written
+   ABOVE `.flit` deliberately. Equal specificity, so source order is the
+   tie-break, and if the two ever do overlap the flight has to win.
+
+   What does NOT react is the deliberate part. The letters ignore the hop: a
+   rigid rail transmits no impulse (`CONVENTIONS.md`), so a bird that goes
+   straight up and comes straight back down has nothing to say to a letter
+   standing 9px away — the reaction would be a cue, not a consequence. The peck
+   is the opposite case: it leans INTO the J's airspace, so the J dips, and it
+   dips AFTER the lean arrives rather than with it. */
+.nav-brand.shift .nav-dot { animation: dot-shift 1.15s var(--ease-in-out) both; }
+.nav-brand.peck .nav-dot { animation: dot-peck 0.62s var(--ease-out) both; }
+.nav-brand.hop .nav-dot { animation: dot-hop 0.74s var(--ease-in-out) both; }
+/* The hop borrows the flight's own silhouette for its wing flick, retinted:
+   `--green` and BEHIND the dot, so it reads as the dot's wings opening rather
+   than as the ink bird arriving early. Wings behind the body is the rule the
+   artwork itself follows — the blades are drawn first so the body overlaps
+   their roots — applied one level up.
+
+   The WHOLE silhouette, and getting there took hiding two thirds of it first.
+   A pose sheet showed the flash reading as a spiky burst up and to the left, so
+   the tail and body — the two bare `path` children — were hidden on the theory
+   that the dot is already the body. Symmetric afterwards, and still wrong: the
+   blades alone are a vertical SPINDLE. They root together at x 46-63 and sweep
+   up-left and down-left from there, so as a pair with nothing between them they
+   draw one leaf, pointed top and bottom, fingered down one edge. Two rows of
+   the same pose sheet side by side settled it — wings-only is a leaf at every
+   frame; with the tail and body back it is a bird, beak right, tail left, wings
+   fanned above and below.
+
+   The real defect was the drift below, and it was masquerading as a drawing
+   problem. The body path sits ON the dot and merges with it — same ink, which
+   is the whole reason it works — so while the blades were 4px high the mass
+   under them was not, and the silhouette tore. Pinned, the body lands on the
+   dot and the tail and beak give the blades the axis that stops them being a
+   leaf. The lesson is the ordering: a symmetry bug and a shape bug looked alike
+   from a static sheet, and fixing the one that was easier to see made the other
+   one harder to. */
+/* All three run 0.74s with no delay, on purpose: it is what locks the wings to
+   the body. `.nav-dot` pivots at its feet (`transform-origin: 50% 100%`), so
+   its CENTRE moves even on frames where its translate does not — squashing into
+   the crouch pushes the centre DOWN while `flick-go` was independently lifting
+   the wings UP, and the two walked apart to 4.09px at t=134ms: 9.39px of blade
+   above the dot against 1.21px below, which is the leaf-shaped flash the pose
+   sheet showed rather than a pair of wings. Sharing a duration, a delay AND a
+   timing function makes the percentages map 1:1 onto `dot-hop`, so `flick-go`'s
+   translateY can be set to the dot's own centre track — 4.5px x (1 - scaleY)
+   for the pivot, plus its translate — and then the two cannot drift between
+   keyframes either, which matching only at the keyframes would not have given.
+
+   `dot-hop` stays the scheduler's nominated `end` (see `IDLE` in main.js). All
+   three are co-terminal rather than one leading, which is safe in a way that
+   wants stating: measured, the engine reports `dot-hop` first and the other two
+   fire their own `animationend` 0.2ms later, so nothing is ever cancelled — and
+   even if the order flipped, the losers would be at 100% (opacity 0) when the
+   class dropped. What is NOT safe is lengthening either of the other two past
+   0.74s: `idleBusy` would then be cleared on an event that is no longer last. */
+.nav-brand.hop .brand-flit {
+  color: var(--green);
+  z-index: 1;
+  animation: flick-go 0.74s var(--ease-in-out) both;
+}
+.nav-brand.hop .brand-flit-wings {
+  transform-origin: 55% 50%;
+  animation: wing-flick 0.74s var(--ease-out) both;
+}
+/* Only the J, and only on the peck: it is the one letter inside reach. */
+.nav-brand.peck .nav-word i:first-child { animation: peck-dip 0.4s var(--ease-out) 0.14s both; }
+
+/* `.nav-dot`'s `transform-origin: 50% 100%` is what makes these read as a body
+   over feet rather than as a pulsing circle: the squash pivots at the wire, so
+   what moves is the top of the dot. Every keyframe in a set carries the same
+   transform functions in the same order — a mismatched list forces matrix
+   interpolation, which is what smeared the flight's turn. */
+@keyframes dot-shift {
+  0%, 100% { transform: translateX(0px) scale(1, 1); }
+  26% { transform: translateX(-0.85px) scale(1.07, 0.94); }
+  62% { transform: translateX(0.7px) scale(0.95, 1.05); }
+  86% { transform: translateX(0.15px) scale(1.02, 0.98); }
+}
+/* Fast in, slow out. A peck that recovered as quickly as it struck would read
+   as a wobble; the asymmetry is the whole gesture. */
+@keyframes dot-peck {
+  0%, 100% { transform: translateX(0px) scale(1, 1); }
+  22% { transform: translateX(0.5px) scale(0.94, 1.06); }
+  38% { transform: translateX(1.7px) scale(1.16, 0.82); }
+  52% { transform: translateX(1.5px) scale(1.12, 0.86); }
+}
+@keyframes peck-dip {
+  0%, 100% { transform: translateY(0px); }
+  40% { transform: translateY(0.8px); }
+}
+/* Crouch, push, apex, absorb — and never the same shape leaving as landing. */
+@keyframes dot-hop {
+  0%, 100% { transform: translateY(0px) scale(1, 1); }
+  16% { transform: translateY(0.6px) scale(1.24, 0.78); }
+  30% { transform: translateY(-2.2px) scale(0.8, 1.24); }
+  46% { transform: translateY(-4.4px) scale(0.94, 1.08); }
+  62% { transform: translateY(-2.4px) scale(0.9, 1.12); }
+  78% { transform: translateY(0.5px) scale(1.28, 0.74); }
+  90% { transform: translateY(0px) scale(0.94, 1.06); }
+}
+/* Out for the push, folded before the landing. A hop with its wings shut is a
+   bouncing ball. It peaks a little before the body does, which is the right
+   order — the stroke that bought the height happens before the height.
+
+   Opaque at the peak, which the first pass was not. Translucency was a hedge
+   against loudness and it measured as the opposite of a refinement: the wings
+   are the same `--green` as the dot, so any alpha below 1 composites them
+   TOWARD the ground and they can only ever be dimmer than the mark they belong
+   to. At 0.62 that was 2.88:1 on night and 2.03:1 on paper, against a dot
+   sitting at 5.72 and 3.17 — a flick you would half-see on the dark chapter and
+   barely see on the light one. Solid, they inherit the dot's own figures
+   exactly, because they are the same ink. What keeps it from reading as a bloom
+   is that it is not a uniform scale: the blades sweep open on their own axis
+   while the body squashes and rises underneath them. */
+/* Percentages are `dot-hop`'s, not this animation's own — every translateY is
+   the dot's centre at that same frame, so the blades are pinned to the body
+   through the whole move and only the opacity and scale are saying anything.
+   The lift is therefore not authored here at all: the wings rise because the
+   dot does, which is the only reason a wing on a bird ever rises. */
+@keyframes flick-go {
+  0% { opacity: 0; transform: translateY(0px) rotate(0deg) scale(0.3, 0.3); }
+  /* Bottom of the crouch — and the widest frame, deliberately: the dot is at
+     its shortest here (scaleY 0.78), so the blades clear the most body. */
+  16% { opacity: 1; transform: translateY(1.59px) rotate(-5deg) scale(0.98, 0.98); }
+  30% { opacity: 1; transform: translateY(-3.28px) rotate(-3deg) scale(0.92, 0.88); }
+  46% { opacity: 0.4; transform: translateY(-4.76px) rotate(-1deg) scale(0.62, 0.58); }
+  62% { opacity: 0; transform: translateY(-2.94px) rotate(0deg) scale(0.44, 0.4); }
+  78% { opacity: 0; transform: translateY(1.67px) rotate(0deg) scale(0.36, 0.34); }
+  100% { opacity: 0; transform: translateY(0px) rotate(0deg) scale(0.3, 0.3); }
+}
+/* The spread, on `dot-hop`'s clock like everything else in the set. This one is
+   free to use its own easing because it scales about the blades' own vertical
+   centre, so it changes the span without moving where the span is centred. */
+@keyframes wing-flick {
+  0% { transform: scaleY(0.22); }
+  16% { transform: scaleY(1.08); }
+  30% { transform: scaleY(0.9); }
+  46% { transform: scaleY(0.5); }
+  100% { transform: scaleY(0.3); }
 }
 
-@keyframes brand-dot {
-  /* crouch, launch, gone… then back, and absorb the landing */
-  0%, 1.4% { transform: scale(1); }
-  2.1% { transform: scale(1.28, 0.72); }
-  2.6% { transform: scale(0.7, 1.3); }
-  3%, 10.4% { transform: scale(0); }
-  11.1% { transform: scale(1.34, 0.66); }
-  11.9% { transform: scale(0.88, 1.12); }
-  12.6%, 100% { transform: scale(1); }
+/* One circuit. 2.2s, triggered by `.flit`. The longer duration is the owner's
+   standing preference for hero motion (~2x typical UI defaults) and it is what
+   the round trip needs — the one-way version fitted in 1.5s by cheating. */
+.nav-brand.flit .nav-dot { animation: dot-go 2.2s var(--ease-in-out) both; }
+.nav-brand.flit .brand-flit { animation: fly-go 2.2s var(--ease-in-out) both; }
+.nav-brand.flit .brand-flit-wings {
+  /* ~5 beats a second, which is about right for a corvid. Starts once the bird
+     is off the perch and stops as it flares. */
+  animation: wing-go 0.2s steps(1, end) 0.14s 10;
+  transform-origin: 55% 50%;
 }
-@keyframes brand-fly {
-  0%, 2.4% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.5); }
-  3% { opacity: 1; transform: translate(1px, -3px) rotate(-12deg) scale(1); }
-  /* A flat cruise across the word — birds this size don't arc much, and the
-     earlier version's swoop read as a paper plane. */
-  5.5% { transform: translate(26px, -8px) rotate(-5deg) scale(1); }
-  8% { transform: translate(56px, -9px) rotate(2deg) scale(1); }
-  10% { opacity: 1; transform: translate(76px, -5px) rotate(9deg) scale(0.94); }
-  10.9% { opacity: 0; transform: translate(84px, 1px) rotate(14deg) scale(0.6); }
-  11%, 100% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.5); }
+/* Two passes, so two ducks. The second must NOT fill backwards: with `both` it
+   would assert translateY(0) throughout its own delay and flatten the first
+   dip, which is the whole reason the fill modes differ here. --i is in the
+   markup; the return wave runs the other way, hence the subtraction. */
+.nav-brand.flit .nav-word i {
+  animation: duck-go 0.42s var(--ease-out), duck-back 0.4s var(--ease-out);
+  animation-delay: calc(0.27s + var(--i) * 0.097s), calc(1.756s - var(--i) * 0.0953s);
+  animation-fill-mode: both, forwards;
+}
+
+@keyframes dot-go {
+  /* crouch, launch, gone… then back, and absorb the landing */
+  0%, 4% { transform: scale(1); }
+  6.5% { transform: scale(1.32, 0.68); }
+  8.5% { transform: scale(0.66, 1.34); }
+  10%, 92% { transform: scale(0); }
+  95.5% { transform: scale(1.38, 0.62); }
+  97.5% { transform: scale(0.88, 1.12); }
+  99.5%, 100% { transform: scale(1); }
+}
+/* Every keyframe carries the same three transform functions in the same order.
+   A mismatched list forces matrix interpolation, and the turn — which crosses
+   90 degrees while scaling — is exactly where that goes wrong. */
+@keyframes fly-go {
+  0%, 4% { opacity: 0; transform: translate(0px, 0px) rotate(0deg) scale(0.5, 0.5); }
+  /* Off the perch, steep and small: the dot becoming the bird. */
+  7% { opacity: 1; transform: translate(1px, -4.5px) rotate(-20deg) scale(0.62, 0.62); }
+  11% { opacity: 1; transform: translate(5px, -12.5px) rotate(-15deg) scale(0.92, 0.92); }
+  16% { opacity: 1; transform: translate(13px, -20.5px) rotate(-7deg) scale(1, 1); }
+  /* The outbound leg is a flat, low cruise ~3px over the caps. Birds this size
+     don't arc much, and an earlier swoop read as a paper plane. */
+  24% { opacity: 1; transform: translate(26px, -21px) rotate(-2deg) scale(1, 1); }
+  34% { opacity: 1; transform: translate(52px, -21.5px) rotate(0deg) scale(1, 1); }
+  42% { opacity: 1; transform: translate(80px, -21px) rotate(1deg) scale(1, 1); }
+  47% { opacity: 1; transform: translate(92px, -22px) rotate(-6deg) scale(1, 1); }
+  /* The turn: yaw through the top, wings foreshortening to a blade at the apex
+     because you are seeing a banked bird edge-on across its span. It is also
+     the SHORTEST part of the flight vertically — at -90deg the span is
+     horizontal and only the body's length reaches up.
+     The outboard reach is capped by the CTA, not by taste. The bird is
+     `var(--ink)` and `.btn-primary` is painted the SAME `rgb(22,35,58)`, so any
+     frame that reaches the button does not overlap it — it disappears into it,
+     in the most legible moment of the flight. At 320px the first fit put three
+     frames inside the button's box. It banks at the end of the word now instead
+     of 15px past it, everywhere, which reads better than the long version did
+     and needs no second flight to maintain. */
+  50% { opacity: 1; transform: translate(100px, -24px) rotate(-28deg) scale(1, 0.86); }
+  52.5% { opacity: 1; transform: translate(105px, -27.5px) rotate(-72deg) scale(1, 0.52); }
+  55% { opacity: 1; transform: translate(103px, -29.5px) rotate(-118deg) scale(1, 0.52); }
+  58% { opacity: 1; transform: translate(96px, -28.5px) rotate(-162deg) scale(1, 0.86); }
+  /* Rolled level, heading home along a higher line — over the pill's rim. */
+  61% { opacity: 1; transform: translate(88px, -27px) rotate(-184deg) scale(1, 1); }
+  70% { opacity: 1; transform: translate(68px, -26.5px) rotate(-181deg) scale(1, 1); }
+  80% { opacity: 1; transform: translate(40px, -26px) rotate(-178deg) scale(1, 1); }
+  /* It holds the high line until it is PAST the word, then drops. The first fit
+     let the descent start over the "J" and left 1.1px of daylight — the numbers
+     said clear, the eye would have said clipped. */
+  86% { opacity: 1; transform: translate(22px, -24.5px) rotate(-183deg) scale(1, 1); }
+  90% { opacity: 1; transform: translate(9px, -19px) rotate(-188deg) scale(1, 1); }
+  /* Flare: nose up, wings cupped, still falling — then it collapses back into
+     the dot, which squashes to absorb exactly the mass it is handed. */
+  93% { opacity: 1; transform: translate(3px, -11px) rotate(-168deg) scale(0.96, 0.9); }
+  96.5% { opacity: 1; transform: translate(0px, -3.5px) rotate(-172deg) scale(0.72, 0.62); }
+  98.5% { opacity: 0; transform: translate(0px, 0px) rotate(-180deg) scale(0.5, 0.4); }
+  100% { opacity: 0; transform: translate(0px, 0px) rotate(-180deg) scale(0.5, 0.5); }
 }
 /* The wingbeat is a two-pose sprite sheet — steps(1) so it snaps between poses
-   instead of interpolating through an impossible in-between. */
-@keyframes brand-wing {
+   instead of interpolating through an impossible in-between. It compresses the
+   span toward the body; it does NOT flip it. The first version used
+   `scaleY(-0.55)`, which mirrors the wings to the wrong side of the shoulder —
+   at 15px that read as flicker, and the pose sheet is what made it obvious. */
+@keyframes wing-go {
   0% { transform: scaleY(1); }
-  50% { transform: scaleY(-0.55); }
+  50% { transform: scaleY(0.42); }
   100% { transform: scaleY(1); }
 }
-@keyframes brand-duck {
+@keyframes duck-go {
   0%, 100% { transform: translateY(0); }
-  1.1% { transform: translateY(1.5px); }
-  2.6% { transform: translateY(0); }
+  38% { transform: translateY(1.5px); }
+}
+/* Shallower: the return leg passes 4.5px further up. */
+@keyframes duck-back {
+  0%, 100% { transform: translateY(0); }
+  38% { transform: translateY(0.9px); }
 }
 
-/* ── Hero ────────────────────────────────────────────────────────────────── */
+/* The narrow-width nav lives HERE, after `.nav-brand`, because a media query
+   carries no extra specificity: the old block sat above the base rules and its
+   `.nav-brand { font-size: 13px }` was outranked and had never once applied. At
+   320px that showed — the CTA's right edge sat 12.59px PAST the pill's own,
+   sliced off by the rounding, in the one element on the page that is supposed
+   to be a self-contained pill. Tightening moves it 5.41px inside.
+
+   The wordmark is deliberately NOT what shrinks. Every offset in `fly-go` is a
+   measured pixel distance against a 15px "JACKDAW", so a second wordmark size
+   means a second flight to tune and re-measure; the padding and the gaps carry
+   the whole reduction instead, and the bird's geometry stays true at every
+   width. The reduction is exactly 18.00px: 279.59 of content becomes 261.59.
+
+   420 and not the width where it actually breaks, because that width MOVES.
+   Untightened content fits down to ~342px (4.41px of headroom left at 346) —
+   but the same content set in a serif fallback measures 294.14 instead of
+   279.59, +14.55px, which walks the failure width up to ~356. A breakpoint
+   pitched at the measured limit sits inside that band; this one clears it.
+
+   Measure headroom as clientWidth − padding − (children + gaps). `scrollWidth
+   − clientWidth` is worthless here: `justify-content: space-between` hands the
+   free space to the gap, so it reads 0 at every width that fits and tells you
+   nothing about how close you are. It is what produced the earlier claim that
+   381px fit "with slack EXACTLY 0.00" — 421px read 0.00 too, on 68px of room. */
+@media (max-width: 420px) {
+  .nav { gap: 10px; padding-left: 12px; padding-right: 8px; }
+  .nav-cta { padding-left: 12px; padding-right: 12px; gap: 7px; }
+}
+
+/* ── Hero: the night title card ──────────────────────────────────────────────
+   One image carrying the whole thesis — a wire across the dark that IS the
+   price line, the flock arriving to become its readings, one shelf tag hanging
+   off today's number. The product interface is deliberately NOT here; it is one
+   scroll down where it gets pinned and scrubbed, and spending that reveal on a
+   static thumbnail up here would leave the opening frame saying nothing.
+
+   THE BAND IS DECLARED HERE AND READ BY main.js, never passed to it — the same
+   single-owner rule `.panel-chart`'s height follows. Two numbers: how far the
+   wire's LOW end sits above the hero's foot, and how much higher its HIGH end
+   is. The copy reserves exactly their sum plus a gutter, so the type and the
+   wire cannot collide at any viewport without one of the three moving. */
+
+/* REGISTERED, because an unregistered custom property is a token stream and
+   nothing more: `getComputedStyle().getPropertyValue("--wire-base")` hands back
+   the literal string `clamp(214px, 26vh, 288px)`, `parseFloat` gives NaN, and
+   main.js falls through to its own hardcoded fallback — silently, with no error
+   anywhere, which is precisely the drift the single-owner rule exists to
+   prevent, arriving through the one channel that cannot raise. Measured: the
+   wire sat 10px below where the copy had reserved for it. `<length>` is what
+   makes them compute to px before JS ever sees them. */
+@property --wire-base {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 224px;
+}
+@property --wire-rise {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 130px;
+}
+
 .hero {
+  /* THE BAND IS DECLARED HERE AND READ BY main.js. `--wire-base` is not a taste
+     number: the tag hangs off the LOWEST point of the wire, so the band under
+     it has to hold the whole card — hook (34) + card (163 measured) + how far
+     the flock pulls the line down under the last bird (8.5: 9.5 of sag, less
+     the 1px main.js lifts the hook by) + the sway's corner swing (2) + a
+     breath. 220.5 is that sum and the breath is what is left of it: measured at
+     882, where 25vh resolves to exactly 220.5, the card clears the fold by 13.
+     25vh reaches that figure at 882 and nowhere shorter, which is why the
+     card-trim branch below takes every height from 881 down. */
+  --wire-base: clamp(202px, 25vh, 268px);
+  --wire-rise: clamp(96px, 14vh, 164px);
+  --wire-gutter: clamp(16px, 2.6vh, 34px);
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  /* The flock arrives from off-frame right and the tag hangs past the fold —
+     both need somewhere to be before they are anywhere. */
+  overflow: hidden;
+}
+
+/* The lamp. One soft source up and left, so the type sits in light and the wire
+   runs out into the dark on the right — which is also the direction the record
+   travels. It is `--glow`, so it is a chapter token: on paper it resolves to
+   transparent and the whole layer costs nothing rather than needing a rule to
+   turn it off. */
+.hero-lamp {
+  position: absolute;
+  inset: -18% -12% -6%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(52% 46% at 27% 32%, var(--glow), transparent 68%),
+    radial-gradient(38% 34% at 76% 74%, var(--accent-wash), transparent 70%);
+  animation: lamp-drift 27s var(--ease-in-out) infinite alternate;
+}
+/* Transform, never background-position: the paint is the expensive half and
+   moving the layer instead of re-rasterising it is the difference between a
+   drift and a stutter. Slow and unsynchronised with everything else on the
+   page, so it reads as the room rather than as an effect. */
+@keyframes lamp-drift {
+  from { transform: translate3d(-1.6%, -1.1%, 0) scale(1); }
+  to { transform: translate3d(2.2%, 1.8%, 0) scale(1.07); }
+}
+
+/* Full-bleed and pointer-transparent. The hero itself owns the pointer, so a
+   bird can react to the cursor without the canvas eating clicks meant for the
+   buttons sitting over it. */
+.hero-sky {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  display: grid;
+  align-content: center;
+  width: 100%;
   max-width: var(--measure);
   margin: 0 auto;
-  padding: clamp(46px, 7vw, 84px) var(--pad-x) clamp(64px, 8vw, 104px);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr);
-  gap: clamp(34px, 5vw, 68px);
-  align-items: center;
+  /* Top clears the fixed rail, bottom reserves the wire band. Both are exact
+     rather than generous, because the hero's whole job is to fit one frame and
+     every px of slack here comes out of the headline. */
+  padding: calc(var(--rail-h) + clamp(4px, 1.2vh, 20px)) var(--pad-x)
+    calc(var(--wire-base) + var(--wire-rise) + var(--wire-gutter));
 }
-@media (max-width: 940px) {
-  .hero { grid-template-columns: 1fr; gap: 40px; }
+/* Viewport-height aware, because the hero's whole job is fitting in one frame
+   and the thing it competes with for that frame — the wire band below it — is
+   also measured in vh. A fixed 20px gap is fine at 1080 and is 80px of the
+   remaining 320 at 700. */
+.hero-inner > * + * { margin-top: clamp(10px, 1.9vh, 20px); }
+/* Held well short of the measure so the wire has open sky to the right of the
+   type rather than running out from under a full-width paragraph.
+
+   28em AND NOT 27, because an em measure is only scale-invariant in theory. Swept
+   the whole of `.lede`'s clamp in 0.1px steps: at 27em this sentence set in FOUR
+   lines with a one-word last line at every size from 17 to 19, and cleared three
+   only at the 19.5px cap, by 1.6px. So the three-line hero I had been checking
+   at 1440 was the exception and every narrower viewport was the orphan. At 28em
+   it sets in three at every size in the range, and 546px against an 1180px
+   measure is still open sky. Line count is checked by cloning the node offscreen
+   and stepping the size — a wrap this close to its boundary cannot be eyeballed
+   at one viewport.
+
+   And it BALANCES, against the `pretty` the rule above gives every other
+   paragraph, because this one is part of a composition rather than a column of
+   prose: it sets beside the wire, under a display headline, and its rag is
+   read as shape. `pretty` only repairs the foot of a paragraph and could not
+   repair this one — measured across box widths 280 to 560, it left a last line
+   at 17% of the measure at 420, 21% at 340 and 23% at 320, which is the phone
+   hero. `balance` never fell below 69% anywhere in that sweep and never changed
+   the line count, so it costs no height at any width. */
+.hero-sub { max-width: 28em; text-wrap: balance; }
+/* Bounded by height as well as width. A display face sized off vw alone is
+   correct on a 27" monitor and three lines tall on a laptop in a docked window,
+   and on this page that pushes the wire and the tag straight past the fold. */
+.hero .h-display {
+  font-size: clamp(38px, min(7.2vw, 9vh), 92px);
+  line-height: 0.95;
+  letter-spacing: -0.028em;
 }
 
-.hero-copy > * + * { margin-top: 22px; }
-.hero-sub { max-width: 30em; }
+/* A brass rule drawing itself in from the left, then the label. The rule is the
+   first mark on the page — the ledger's ruling, before anything is written on
+   it. */
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hero-eyebrow::before {
+  content: "";
+  flex: 0 0 auto;
+  width: clamp(26px, 4.6vw, 56px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brass));
+  transform-origin: 0 50%;
+}
+.play .hero-eyebrow::before { animation: rule-draw 1s var(--ease-out) 0.06s backwards; }
+.play .hero-eyebrow > span { animation: soft-up 0.7s var(--ease-out) 0.34s backwards; }
+@keyframes rule-draw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .hero-note {
   font-size: 13px;
@@ -410,6 +1363,34 @@ a:focus-visible, button:focus-visible {
   from { transform: translateY(0.92em); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* The hero's headline is WRITTEN rather than raised: a left-to-right wipe, the
+   reference page's own language, and the right one for a title card because it
+   reads as ink being laid down instead of a block sliding into place. The
+   sections below keep the rise — a wipe on every heading would turn a signature
+   into a template.
+
+   `overflow: visible` on the line, because the mask is now the clip-path and
+   the inherited `overflow: hidden` would crop the italic's descender and the
+   `f`'s overhang for good, not just during the animation. The clip therefore
+   opens PAST the right edge and below the baseline for the same reason. */
+.hero .h-display .line { overflow: visible; }
+.play .hero .h-display .line > span {
+  animation: line-write 1.25s var(--ease-out) backwards;
+  animation-delay: calc(0.2s + var(--l) * 0.14s);
+}
+@keyframes line-write {
+  from {
+    clip-path: inset(-14% 100% -22% -4%);
+    transform: translateY(0.1em);
+    opacity: 0.28;
+  }
+  to {
+    clip-path: inset(-14% -8% -22% -4%);
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
 .play .hero-sub, .play .hero-actions, .play .hero-note {
   animation: soft-up 0.8s var(--ease-out) backwards;
 }
@@ -421,29 +1402,387 @@ a:focus-visible, button:focus-visible {
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* ── The stage: a real panel, assembled by a flock ──────────────────────────
-   The card is a faithful reduction of what the extension actually draws on a
-   product page — same chrome, same chip vocabulary, same figures. Showing an
-   invented interface on the landing page of a data product is the one lie a
-   shopper can check. */
-.stage { position: relative; }
+/* The cue is a rail with a mark travelling down it, not a bouncing chevron: the
+   page's whole conceit is that down = later, so the invitation should read as
+   time passing rather than as a button hint. */
+.scroll-cue {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: clamp(18px, 3vh, 34px);
+  transform: translateX(-50%);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.2s ease;
+}
+.scroll-cue-rail {
+  position: relative;
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(180deg, var(--hairline), transparent);
+  overflow: hidden;
+  /* The mark dissolves at the foot of the rail rather than hitting a clip edge
+     — the difference between something travelling out of view and something
+     being cut off at a boundary. */
+  -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
+  mask-image: linear-gradient(180deg, #000 60%, transparent);
+}
+.scroll-cue-rail i {
+  position: absolute;
+  left: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.play .scroll-cue { animation: soft-up 0.8s var(--ease-out) 0.9s backwards; }
+.play .scroll-cue-rail i { animation: cue-fall 2.6s var(--ease-in-out) 1.6s infinite; }
+@keyframes cue-fall {
+  0% { transform: translateY(-6px); opacity: 0; }
+  22% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translateY(42px); opacity: 0; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .scroll-cue:hover { color: var(--ink-soft); }
+}
+/* Centred, the cue ends up UNDER the tag on a phone — measured at 375, the
+   label ran 32px behind the card and 69px of it was covered. The card's right
+   edge is always `vw − 26` (main.js sets the record's last x from the card's own
+   half-width, so the two cannot drift), which makes the collision solvable
+   rather than a matter of taste: a centred cue clears a 178px card only once
+   `vw/2 + 43.5 + 24 ≤ vw − 26 − 178`, i.e. at 543 and up, taking the page's own
+   24px margin as the clearance it deserves. 560 is the nearest breakpoint this
+   file already keeps (the hero note's, above) and it satisfies that with 33px
+   to spare, so it is reused rather than a fourth number invented.
+
+   Below it the cue goes to the copy's own left margin — the same `--pad-x` the
+   headline sets against — which is the more honest place for it anyway: the
+   column it is inviting you to keep reading is the one on the left. */
+@media (max-width: 560px) {
+  .scroll-cue { left: var(--pad-x); transform: none; align-items: flex-start; }
+}
+
+/* ── The shelf tag ───────────────────────────────────────────────────────────
+   The one physical object in the frame, and the page's skeuomorphic anchor: a
+   laminated shelf tag punched and hung off the record's newest reading. It
+   keeps PAPER colours on the night ground on purpose — it is a thing made of
+   card sitting in the room, not a surface the site is painting, and a tag that
+   went dark with the chapter would just be another panel.
+
+   Two rotations about ONE point. `.hero-tag` is a zero-size anchor pinned to
+   the wire, and it carries the scroll-driven lean; the card underneath carries
+   the idle sway with its origin pushed back up to the same attachment. Both
+   therefore pivot where the string actually meets the wire, which is the only
+   place a hanging object can pivot. */
+.hero-tag {
+  --hook: 34px;
+  position: absolute;
+  z-index: 3;
+  left: var(--tag-x, 78%);
+  top: var(--tag-y, 62%);
+  width: 0;
+  height: 0;
+  /* The page's hanging rule at full amplitude — this tag is the object it was
+     derived from, so it is the one that takes it undamped. */
+  transform: rotate(var(--hang));
+}
+.tag-hook {
+  position: absolute;
+  left: -0.5px;
+  top: 0;
+  width: 1px;
+  height: var(--hook);
+  background: linear-gradient(180deg, var(--brass-lit), var(--brass));
+}
+.tag-card {
+  position: absolute;
+  left: 0;
+  top: var(--hook);
+  width: clamp(174px, 14.5vw, 208px);
+  padding: 20px 14px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  /* Off-axis so the light reads as coming from the lamp up and to the left,
+     and warm at the fold because that is what card stock does. */
+  background: linear-gradient(154deg, #fffdf8 0%, #f7f3ea 54%, #ece5d7 100%);
+  color: #17222e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.07),
+    0 2px 5px rgba(0, 0, 0, 0.35),
+    0 20px 38px rgba(0, 0, 0, 0.5);
+  transform-origin: 50% calc(var(--hook) * -1);
+  transform: translateX(-50%);
+  animation: tag-sway 7.6s var(--ease-in-out) infinite;
+}
+/* Just over a degree either way. A pendulum you can measure is a pendulum you
+   stop believing — this is the amplitude of a tag in a room with a door
+   somewhere, not of one being swung. */
+@keyframes tag-sway {
+  0%, 100% { transform: translateX(-50%) rotate(-1.15deg); }
+  50% { transform: translateX(-50%) rotate(1.15deg); }
+}
+/* The punch shows the night through the card, which is what makes it a hole
+   rather than a printed circle. */
+.tag-punch {
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
+  border-radius: 50%;
+  background: var(--ground);
+  box-shadow:
+    inset 0 1.5px 2px rgba(0, 0, 0, 0.75),
+    0 1px 0 rgba(255, 255, 255, 0.8);
+}
+/* #625a4a and not the #6f6757 this started at, because the card is a GRADIENT
+   and the ratio has to hold at its far end: 5.50 against the lit corner meant
+   nothing once the same ink read 4.46 against the #ece5d7 fold, which is under
+   4.5 for both the 8.5px eyebrow and the 10px meta. Measured against the
+   darkest stop, which is the only stop worth measuring — the card resizes, so
+   the gradient's endpoints move under the type. 4.46 → 5.44, and the warm grey
+   is still a warm grey. */
+.tag-eyebrow {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #625a4a;
+}
+.tag-price {
+  display: block;
+  margin-top: 3px;
+  font-size: clamp(27px, 2.3vw, 32px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+.tag-delta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #146c34;
+}
+.tag-delta svg { width: 9px; height: 9px; flex: 0 0 auto; fill: currentColor; }
+.tag-meta {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #625a4a;
+}
+/* Not a real barcode and not pretending to be one — enough repetition to read
+   as retail printing at a glance, drawn in gradient stops so it costs no
+   request and no bitmap. */
+.tag-code {
+  display: block;
+  height: 14px;
+  margin-top: 8px;
+  opacity: 0.62;
+  background: repeating-linear-gradient(
+    90deg,
+    #1b1b1b 0 1px, transparent 1px 3px,
+    #1b1b1b 3px 5px, transparent 5px 6px,
+    #1b1b1b 6px 7px, transparent 7px 10px,
+    #1b1b1b 10px 12px, transparent 12px 13px
+  );
+}
+/* Lamination. The angle is driven from the pointer by main.js, so the sheen
+   travels across the card as you move past it — the one cue that says the
+   surface is glossy plastic rather than printed paper.
+
+   IT TRAVELS UNDER THE PRINT, and that is a contrast decision rather than a
+   compositing accident. `screen` lightens whatever is beneath it, and it was
+   beneath EVERYTHING — being last in the box, it painted over the type as well
+   as the paper, pulling both toward white by ~0.30 at the band's peak and
+   collapsing the ratio between them: the muted ink measured 2.55 there against
+   4.46 at rest. Darkening the ink cannot repair it, because the wash lifts the
+   ink and the paper together — holding 4.5 under that peak caps the sheen at
+   α 0.084, which is not a highlight. So the type is lifted a layer instead and
+   the sheen sweeps the paper, the punch and the barcode below it, where
+   lightening the ground RAISES the ratio rather than eating it. Slightly
+   untrue to a real laminate, which does glaze the print; the readable version
+   wins on a card whose whole job is to be read at a glance. */
+.tag-eyebrow, .tag-price, .tag-delta, .tag-meta { position: relative; z-index: 1; }
+.tag-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  background: linear-gradient(
+    var(--sheen-a, 122deg),
+    transparent 32%,
+    rgba(255, 255, 255, 0.55) 45%,
+    rgba(255, 255, 255, 0.12) 51%,
+    transparent 60%
+  );
+}
+/* Dropped, not faded in — and after the last bird has landed, because it hangs
+   off the newest reading and cannot arrive before the thing it hangs from. The
+   fill is `backwards`, so once it settles the live `--scroll-vel` lean takes
+   over from the cascade rather than being pinned by a `forwards` fill. */
+/* 2.95s is not a taste number: the last bird reaches the wire at ~3.0s (see
+   main.js START/STAGGER), and the tag has to arrive off the reading it is
+   labelling, not before it exists. The 50ms overlap is the house rule about
+   synchronising an entrance with the beat it follows rather than queueing
+   after it. */
+.play .hero-tag { animation: tag-hang 1.15s var(--ease-settle) 2.95s backwards; }
+@keyframes tag-hang {
+  0% { transform: translateY(-26px) rotate(-11deg); opacity: 0; }
+  40% { opacity: 1; }
+  70% { transform: translateY(0) rotate(4.5deg); }
+  100% { transform: translateY(0) rotate(0deg); opacity: 1; }
+}
+@media (max-width: 940px) {
+  /* Below the two-column composition the tag would sit on top of the copy, so
+     it goes to the right margin and shrinks — still hanging off the wire, just
+     not competing for the same pixels.
+
+     THE FLOOR IS 168 AND NOT 150, and the 18px is the difference between a card
+     and a clipped one: at 150 the delta line ("▾ $35.00 since January", 137.1px
+     measured at its own size) wrapped to two, which took the card from 144 to
+     162 in a band sized for 144 and pushed its foot through the hero's
+     `overflow: hidden`. So the floor is the widest single line the card must
+     hold plus its own box — 137.1 + 26 padding + 2 border = 165.1, rounded up
+     past subpixel rounding. Same single-owner rule as `--wire-base`: the card's
+     width is owned by what it has to carry, and main.js reads it back to place
+     the record's last reading, so widening it moves the wire rather than the
+     margin. */
+  .tag-card { width: clamp(168px, 40vw, 178px); padding: 20px 13px 12px; }
+  .tag-price { font-size: 28px; }
+  .tag-code { height: 13px; }
+}
+
+/* A SHORT viewport is a different constraint from a narrow one and needs its
+   own rule — a docked laptop window is 1440 wide and 700 tall, so every
+   max-width rule above misses it entirely. The tag is what sets the floor under
+   `--wire-base` (it hangs off the newest reading, which is also the LOWEST
+   price and therefore the wire's lowest point), so shrinking the card and
+   lowering the band have to happen in the same breath or the two disagree.
+
+   881 AND NOT 800, because the breakpoint is derived rather than chosen: the
+   full-size card needs a 220.5px band (see `--wire-base` above) and 25vh only
+   reaches that at 882, so every height BELOW 882 has to take the trim. At 800
+   there was a stripe of viewport heights — 801 to 881 — holding the big card
+   in a band too short for it, which is the one place a breakpoint can make
+   things worse than having none.
+
+   The last pixel of that stripe was measured, not assumed: at 880 the card
+   cleared, at 881 its bottom corner sat 1px past the fold. Between 881 and 900
+   the clearance moves 1:1 with the viewport, which is the tell that the whole
+   composition hangs from the top of the frame — so the fold is what moves, and
+   the crossing point is a single derivable height rather than a range. */
+@media (max-height: 881px) {
+  /* The band cannot shrink proportionally with the viewport, because what sets
+     its floor is a physical card whose text has to stay readable — so the card
+     is trimmed FIRST and the band follows it down, not the reverse. Measured at
+     1440×900 the card is 163px; these trims take it to 144.
+
+     A FLAT LENGTH, NOT A vh CLAMP, and that is the whole repair: nothing this
+     band holds scales with the viewport any more. Once the card is trimmed its
+     height is fixed, so a proportional band just adds dead air — `28vh` capped
+     at 236 reserved 236px for an assembly needing 180.5 and dropped the card
+     43px at the breakpoint, a jump far more visible than the wire's own.
+     194 is the same arithmetic as `--wire-base` above with this branch's
+     numbers: hook 26 + card 144 + sag 8.5 + swing 2 + the same 13px of breath
+     the tall branch resolves to. Measured across the boundary — 13px of
+     clearance at 882 and 13px at 881, so the card does not move at all and it
+     is the wire that steps down to meet it. */
+  .hero {
+    --wire-base: 194px;
+    --wire-rise: clamp(76px, 12vh, 120px);
+  }
+  .hero-tag { --hook: 26px; }
+  .tag-card { padding: 17px 13px 10px; }
+  .tag-price { font-size: 25px; }
+  .tag-delta { margin-top: 5px; }
+  .tag-meta { margin-top: 5px; }
+  .tag-code { height: 11px; margin-top: 6px; }
+
+  /* And the copy stack gives up its most compressible thing rather than the
+     hero giving up its one-frame contract: the note goes. It is the only line
+     in the hero repeated verbatim further down the page, so it is the one
+     whose absence costs nothing. Everything load-bearing stays, and the lede
+     still sets in three lines here — holding its line count is the point of
+     the measure below, not reducing it. */
+  .hero .h-display { font-size: clamp(34px, min(6.6vw, 8.4vh), 70px); }
+  /* The measure is restated in em BECAUSE the font-size dropped, not despite
+     it: `max-width: 27em` shrinks with the type, so a smaller lede in the same
+     em box wraps to MORE lines, not fewer. Measured — 17px/27em set in three
+     lines and 15.5px/27em set in four, which is the opposite of the point. */
+  .hero-sub { font-size: 15.5px; line-height: 1.55; max-width: 36em; }
+  .hero-note { display: none; }
+}
+
+/* 677 is where the hero stops fitting one frame, and it is the height a
+   1366×768 laptop actually presents (~648 after browser chrome) — the single
+   commonest short viewport there is, so this branch is mainstream hardware
+   rather than an edge case. Measured to the pixel, same as 881: 678 fits, 676
+   overflows by 1.
+
+   Everything above shrank the TAG. Nothing is left to take there — the card
+   holds a price, a delta, a provenance line and a barcode, and none of them
+   can lose a point and stay a shelf tag. So this branch takes from the COPY
+   and from the wire's amplitude instead, in that order, and the lede finally
+   gives up its third line: 52em at 15px is wide enough to set it in two on any
+   viewport this branch can be reached at, which is the one line the hero can
+   lose without losing an idea.
+
+   AND IT STOPS HERE, at a floor that was measured rather than assumed: one
+   frame holds down to 600 (gapBottom 14, cue 18) and no further — 580 runs 8px
+   past the fold. What is below that is a window somebody has deliberately
+   squashed, and the honest thing is to let it scroll rather than keep shaving
+   a hero that has already given up its note and a line of lede. The
+   degradation is safe, which is the part worth checking: at 480 the hero runs
+   87px past the fold and the card's bottom is still 16px INSIDE the hero box,
+   so `overflow: hidden` never cuts the tag. It goes below the fold, it is
+   never destroyed. */
+@media (max-height: 677px) {
+  .hero {
+    --wire-rise: clamp(60px, 11vh, 96px);
+    --wire-gutter: clamp(10px, 2vh, 20px);
+  }
+  .hero-inner { padding-top: calc(var(--rail-h) + 4px); }
+  .hero-inner > * + * { margin-top: clamp(8px, 1.4vh, 14px); }
+  .hero .h-display { font-size: clamp(30px, min(6vw, 7.8vh), 56px); }
+  .hero-sub { font-size: 15px; max-width: 52em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still hanging, just not moving. The page has to be COMPLETE when still. */
+  .hero-lamp, .tag-card { animation: none; }
+  .tag-card { transform: translateX(-50%); }
+}
+
+/* ── The panel ───────────────────────────────────────────────────────────────
+   A faithful reduction of what the extension actually draws on a product page —
+   same chrome, same chip vocabulary, same figures. Showing an invented
+   interface on the landing page of a data product is the one lie a shopper can
+   check. Lives in the record's pinned stage, where it gets a real entrance. */
 .panel {
   position: relative;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 16px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   transform-origin: 50% 60%;
-}
-.play .panel { animation: panel-open 0.9s var(--ease-out) 0.24s backwards; }
-/* Opens by stretching, not by scaling uniformly — a surface unfolding rather
-   than a finished thing zooming in (CONVENTIONS.md, hero moments). */
-@keyframes panel-open {
-  0% { transform: scaleX(0.86) scaleY(0.5); opacity: 0; }
-  55% { opacity: 1; }
-  70% { transform: scaleX(1.012) scaleY(1.03); }
-  100% { transform: scale(1); opacity: 1; }
 }
 .panel-head {
   display: flex;
@@ -451,7 +1790,16 @@ a:focus-visible, button:focus-visible {
   gap: 9px;
   padding: 13px 15px;
   border-bottom: 1px solid var(--hairline);
-  background: linear-gradient(180deg, #fff, #fdfcfa);
+  /* The card's surface with the lamp on it. This was `linear-gradient(#fff,
+     #fdfcfa)` — the one hardcoded colour left in the panel — so at night the
+     card went dark, its title went light, and the header band stayed white:
+     `--ink-soft` on paper white, measured at 1.62:1, on the two strings that
+     name what you are looking at. `--glow` is the token the night chapter
+     already keeps for exactly this ("night has a light source and paper does
+     not"), and it is `transparent` on paper, which collapses this to a flat
+     `--surface` there — a 2/255 change on one band, and worth it to have no
+     literal here at all. */
+  background: linear-gradient(180deg, var(--glow), transparent), var(--surface);
 }
 .panel-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: 0 0 auto; }
 .panel-title {
@@ -463,7 +1811,17 @@ a:focus-visible, button:focus-visible {
   text-overflow: ellipsis;
   flex: 1;
 }
-.panel-chips { display: flex; gap: 6px; padding: 12px 15px 0; flex-wrap: wrap; }
+.panel-when {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Gap is zero and the spacing rides on each chip's own margin, so a chip that
+   has not arrived yet leaves no hole where it will be. */
+.panel-chips { display: flex; gap: 0; padding: 12px 15px 0; flex-wrap: wrap; row-gap: 6px; }
 .chip {
   font-size: 11px;
   font-weight: 600;
@@ -471,17 +1829,27 @@ a:focus-visible, button:focus-visible {
   padding: 3px 10px;
   border: 1px solid var(--hairline);
   color: var(--ink-soft);
-  background: #fff;
+  background: var(--surface);
   white-space: nowrap;
+  margin-right: 6px;
 }
-.chip-good { color: var(--green-deep); border-color: rgba(22, 163, 74, 0.3); background: var(--green-wash); }
-.panel-chart { width: 100%; padding: 4px 15px 0; }
+/* The accent trio, not the green trio. `--green-deep` is a fixed #0e7a37, which
+   is 3.08:1 on the night card — the chapter block defines `--accent-deep` as the
+   LIGHTER green for precisely this reason and this rule was reaching past it. */
+.chip-good { color: var(--accent-deep); border-color: var(--accent-line); background: var(--accent-wash); }
+/* The chart's height is declared HERE and READ by the drawing code, never
+   passed to it. A <canvas> with no CSS height falls back to its intrinsic
+   300×150, so the box reserved before the first draw is the wrong shape and the
+   section reflows the moment the chart is drawn — which for the feature chart is
+   precisely when the reader scrolls it into view. One owner for the size, in the
+   language that already knows the viewport. */
+.panel-chart { width: 100%; height: 176px; padding: 4px 15px 0; }
 .panel-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--hairline);
 }
-.stat { padding: 12px 15px; }
+.stat { padding: 12px 15px; min-width: 0; }
 .stat + .stat { border-left: 1px solid var(--hairline); }
 .stat b { display: block; font-size: 17px; font-weight: 700; }
 .stat span {
@@ -493,91 +1861,914 @@ a:focus-visible, button:focus-visible {
   color: var(--muted);
   margin-top: 1px;
 }
-.stat-lead b { color: var(--green-deep); }
+.stat-lead b { color: var(--accent-deep); }
 
-/* The floating caption that names what the flock did. It arrives after the
-   chart has finished assembling, because it is a statement ABOUT the chart. */
-.stage-caption {
-  position: absolute;
-  right: -6px;
-  bottom: -22px;
+/* ── The record: pinned, scrubbed ────────────────────────────────────────────
+   A tall track with a sticky viewport-height stage inside it. The distance
+   scrolled through the track is the progress through eight months. */
+.reel { background: var(--ground-2); border-block: 1px solid var(--hairline); }
+/* THE ONLY CONTROL OVER HOW LONG THIS SECTION HOLDS YOU. Nothing in the JS
+   derives it — the record's length in readings and its length in scroll are
+   independent, so cutting the table did not shorten the section by a pixel.
+
+   300vh is a viewport for the sticky stage plus 200vh of scrub, of which the
+   record takes 90% (`DRAW_SPAN`) and the alert being armed and caught takes the
+   rest. That is 12.9vh per reading against the old 12 — the PACE is what was
+   right about 420vh, and the total is what stopped being right when the table
+   went from twenty-four readings to fourteen. Pinning is a debt a section owes
+   the reader, and this one was borrowing against a story it no longer tells. */
+.reel-track { position: relative; height: 300vh; }
+.reel-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--night);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 14px;
-  border-radius: 999px;
-  box-shadow: var(--shadow-md);
-  white-space: nowrap;
+  overflow: hidden;
+  /* The room warms as the record fills in — a few percent of the green wash
+     mixed into the ground, tied to the same `--p` the canvas draws from. It is
+     only expressible because `--p` is registered as a <number>: an unregistered
+     custom property is a string, and a string cannot be multiplied by 55%. */
+  background: color-mix(in oklab, var(--ground-2), var(--accent-wash) calc(var(--p) * 55%));
 }
-.stage-caption .num { color: #86efac; }
-.play .stage-caption { animation: cap-in 0.6s var(--ease-settle) 2.5s backwards; }
-@keyframes cap-in {
-  from { transform: translateY(10px) scale(0.9); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
-}
-@media (max-width: 620px) {
-  .stage-caption { right: auto; left: 0; bottom: -20px; font-size: 11.5px; }
-}
-
-/* ── Reveals ─────────────────────────────────────────────────────────────── */
-.reveal { opacity: 0; transform: translateY(20px); }
-.reveal.in { opacity: 1; transform: none; transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); }
-.reveal.in.d1 { transition-delay: 0.07s; }
-.reveal.in.d2 { transition-delay: 0.14s; }
-
-/* ── How it works ────────────────────────────────────────────────────────────
-   Three steps on one horizontal rule, with the step numbers sitting ON the rule
-   like marks on a timeline — the same wire the hero's birds land on, reused as
-   structure. */
-.how { background: var(--paper-warm); border-block: 1px solid var(--hairline); }
-.steps {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: clamp(20px, 3vw, 40px);
-  margin-top: 52px;
-  position: relative;
-}
-.steps::before {
+/* The scrub drawn as what it actually is — a wire filling left to right across
+   eight months. Same `--p` as the chart, so the rail cannot drift from the
+   record above it, and it exists only while the stage is pinned, which is
+   exactly the span over which it means anything. */
+.reel-stage::before,
+.reel-stage::after {
   content: "";
   position: absolute;
-  left: 0; right: 0; top: 13px;
-  height: 1px;
-  background: var(--hairline);
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  pointer-events: none;
+  z-index: 2;
 }
-@media (max-width: 800px) {
-  .steps { grid-template-columns: 1fr; gap: 34px; }
-  .steps::before { display: none; }
+.reel-stage::before { background: var(--rule-soft); }
+.reel-stage::after {
+  /* Follows the chapter like everything else in the stage: the record crosses
+     into night partway through its own scrub, and a progress rule that stayed
+     the paper green would be the one element still lit for the old room. */
+  background: linear-gradient(90deg, var(--accent-line), var(--accent));
+  transform: scaleX(var(--p));
+  transform-origin: left center;
 }
-.step { position: relative; }
-/* The number sits ON the rule, so it needs to punch a hole in it — a bordered
-   circle over a line reads as a bead unless it fills with the ground colour.
-   Ink rather than grey: at 11px on a warm field the softer token disappeared
-   entirely, and these are the page's only wayfinding. */
-.step-n {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  position: relative;
-  z-index: 1;
-  font-variant-numeric: tabular-nums;
-  box-shadow: 0 0 0 5px var(--paper-warm);
-}
-.step h3 { font-size: 19px; font-weight: 650; margin-top: 18px; letter-spacing: -0.012em; }
-.step p { margin-top: 9px; color: var(--ink-soft); font-size: 15.5px; }
+/* ── The strip ───────────────────────────────────────────────────────────────
+   Eight months laid end to end and dragged leftward, so the axis you are pulling
+   IS the axis being drawn. Three registered lengths do all of it, and they are
+   registered rather than plain because JS has to READ them back: an unregistered
+   custom property computes to its own token stream, so `clamp(760px, 150vw,
+   2200px)` would come back as that literal string and every number derived from
+   it would be NaN. Typed, it computes to a resolved px value both sides agree on.
 
-/* ── Features ────────────────────────────────────────────────────────────── */
+   `--travel` is the one distance in here. Nothing computes its own: the leaf
+   takes all of it, the annotation plane takes `1 - --note-lag` of it, and the
+   playhead maths in `layoutReel` divides the same figure. That is what keeps a
+   beat over the reading it is about. */
+@property --travel { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --note-lag { syntax: "<number>"; inherits: true; initial-value: 0.72; }
+@property --head-frac { syntax: "<number>"; inherits: true; initial-value: 0.58; }
+/* There was a `--note-x` here, holding the beats' base offset, and it is gone
+   for a reason worth keeping written down. It was `var(--pad-x)`, which is the
+   page's PADDING — and the text column's left edge is the padding plus the
+   wrap's centring, 42.5px more at 1265 and nothing at all below the measure. So
+   the beats sat a gutter-width left of the heading they annotate, and at the far
+   end of their drift they crossed out of the page entirely. There is no token
+   for it because there is no constant: `layoutReel` measures the heading and
+   offsets by the widest drift, so the leftmost excursion lands ON the margin
+   rather than through it. (It also spent a session reading 0 — an unregistered
+   property computes to its own token stream, so copying `--pad-x` into it copied
+   the string "clamp(20px, 5.5vw, 64px)" and `parseFloat` answered NaN. That trap
+   is still live for `--travel`, `--note-lag` and `--head-frac` above, which is
+   why all three are registered.) */
+
+.reel-stage {
+  --travel: clamp(760px, 150vw, 2200px);
+  --note-lag: 0.72;
+  --head-frac: 0.58;
+  --leaf-h: clamp(196px, 28vh, 296px);
+  --leaf-padt: 14px;
+  --leaf-padb: 26px;
+  --band-leaf: clamp(248px, 36vh, 340px);
+  /* The nav rail is FIXED and 82px tall — measured, not assumed. The instrument
+     sat at 56 and spent 25px of its head row underneath it. The extra 4px over
+     the first corrected value is the read-out's own parallax: `.reel-panel`
+     carries translate3d(0, (0.5 - p) * 10px) and so sits 5px HIGHER than this
+     band at p = 1, which took the measured clearance down to 3.2px — a number
+     that is only nominally positive and would go negative on any nav that ever
+     grows. The token has to clear the rail at the panel's highest point, not at
+     its resting one. */
+  --band-top: clamp(94px, 11.5vh, 108px);
+  /* The gap under the calendar before the marginalia starts. Named because the
+     beats and the tag both measure from the leaf's floor and must agree. */
+  --band-gap: clamp(22px, 5vh, 56px);
+  /* The folio line's own inset from the stage floor. */
+  --band-foot: clamp(24px, 4.4vh, 46px);
+}
+
+/* THE INSTRUMENT. Pinned, because it is your reading of where you are rather
+   than a thing lying on the record — and because a scale that slid with the
+   terrain would be measuring nothing. */
+.reel-fixed {
+  position: absolute;
+  inset: var(--band-top) 0 auto;
+  z-index: 3;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(20px, 4vw, 56px);
+  align-items: start;
+  align-content: start;
+}
+.reel-head { min-width: 0; }
+.reel-head .h-section { font-size: clamp(26px, 3.4vw, 44px); }
+
+/* The price scale, and the only part of the chart that does not travel. Drawn as
+   DOM rather than into the leaf for exactly that reason: a horizontal rule is
+   unchanged by horizontal travel, but its FIGURE is not, and a price label
+   sliding off the side of the screen is an instrument that stops reading. */
+.reel-scale {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--band-leaf) + var(--leaf-padt));
+  height: calc(var(--leaf-h) - var(--leaf-padt) - var(--leaf-padb));
+  z-index: 0;
+  pointer-events: none;
+}
+.reel-scale i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--rule-soft);
+}
+.reel-scale b {
+  position: absolute;
+  /* The text column's left edge, published by `layoutReel` from the heading's
+     own rect. The rules under these figures are full-bleed and the figures are
+     not: they are instrument furniture and belong on the same margin as the
+     heading, the marginalia and the folio line. `--pad-x` is the page's padding
+     and lands 42px short of that margin at any width above the measure. */
+  left: var(--text-l, 0px);
+  bottom: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.reel-strip {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: calc(100% + var(--travel));
+  transform: translate3d(calc(var(--p) * var(--travel) * -1), 0, 0);
+  will-change: transform;
+}
+/* No card and no frame: the record is printed on the ground, the way the feature
+   chart is printed on the ledger leaf. */
+.reel-leaf {
+  position: absolute;
+  left: 0;
+  /* `width: 100%`, NOT `left: 0; right: 0` — a canvas is a REPLACED element, and
+     left/right do not stretch one. It keeps its intrinsic size and the offsets
+     merely position it, so the pair resolved to 480px (the 2:1 backing store
+     against the specified 240px height) inside a 1650px strip, and then held
+     there: `geom` sizes the backing store from the CSS box, which reproduces the
+     same ratio on every redraw. A self-consistent wrong answer, which is why it
+     showed up as a short leaf rather than as anything that looked like a fault. */
+  width: 100%;
+  top: var(--band-leaf);
+  height: var(--leaf-h);
+  display: block;
+}
+/* The time axis, in the same brass as the shelf-tag rail further down the page —
+   which is what lets the alert hang off it as a tag rather than float beside the
+   chart as a card. Sits exactly on the leaf's plot floor: JS publishes the one
+   `--leaf-padb` it also passes to `geom`, so the rule cannot drift off the
+   surface it is the bottom of. */
+.reel-axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--band-leaf) + var(--leaf-h) - var(--leaf-padb) - 1.5px);
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--brass) 62%, #000) 0%,
+    var(--brass-lit) 34%,
+    var(--brass) 72%,
+    color-mix(in oklab, var(--brass) 55%, #000) 100%
+  );
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  /* Earned, not given: the rail arrives with the first readings rather than
+     sitting there empty while the record is blank. */
+  opacity: clamp(0, calc(var(--p) * 14), 1);
+}
+
+/* THE ANNOTATION PLANE. Counter-translated, so it drifts against the terrain
+   instead of racing it. A beat pinned at full travel crosses ~260px while you
+   read it, which is a sentence nobody finishes; at `--note-lag` it crosses ~70
+   and still visibly belongs to the ground it is written on. */
+.reel-notes {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--p) * var(--travel) * var(--note-lag)), 0, 0);
+}
+
+/* One beat lit at a time. They overlap by design — each is pinned to its own
+   moment, and at this lag those moments are ~80px apart, so the arrival reads as
+   the next note sliding in from over the previous one. */
+/* Directly under the calendar, not pinned to the bottom of the stage — a caption
+   that floats 180px clear of the thing it captions has stopped being a caption,
+   and the space it left behind read as a hole in the composition rather than as
+   room. It shares that band with the alert tag, which is why the beat is capped
+   narrow enough that the two can never meet: the tag's leftmost position over
+   its whole life is 441px at 1265, the widest beat's right edge is 400px, and
+   the 41px between them is the design, not luck. */
+.beats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--band-leaf) + var(--leaf-h) + var(--band-gap));
+  height: 7.2em;
+}
+.beat {
+  position: absolute;
+  left: var(--bx, 0px);
+  top: 0;
+  /* `--beat-w` is the lane `layoutReel` measured between the text margin and the
+     tag's furthest-left position. The `min` keeps a wide viewport from stretching
+     marginalia into a body column — the budget is a ceiling, not a target. */
+  width: min(23em, var(--beat-w, 34vw));
+  font-size: 16px;
+  line-height: 1.58;
+  color: var(--ink-soft);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.45s var(--ease-out), transform 0.55s var(--ease-out);
+  pointer-events: none;
+}
+.beat.on { opacity: 1; transform: none; }
+/* A beat that has already been read leaves upward, so the plane reads as a strip
+   advancing rather than as text crossfading in place. */
+.beat.past { transform: translateY(-12px); }
+
+/* THE PAGE FOOT. A folio line: what the page covers, how far into it you are,
+   and a rule between the two that fills as the record is written. It answers the
+   question the pinned frame otherwise cannot — the calendar only ever shows the
+   months under the leaf, so from inside the scrub there is no way to see how
+   much record there is. It is also what gives the composition a bottom edge:
+   without it the marginalia ended 150px short of the stage floor and the gap
+   read as a hole rather than as margin. */
+.reel-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--band-foot);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2.4vw, 26px);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+  /* Earned on the same curve as the brass rule above it: page furniture for a
+     page with nothing on it is furniture for its own sake. */
+  opacity: clamp(0, calc(var(--p) * 14), 1);
+}
+.foot-span,
+.foot-read { white-space: nowrap; }
+.foot-span i { font-style: normal; opacity: 0.55; padding-inline: 2px; }
+.foot-read b { font-weight: 700; color: var(--ink-soft); }
+/* The reading number is the only string in this row whose WIDTH changes, and
+   the rail is a flex sibling of it — so at reading 9 → 10 the extra digit took
+   7.03px out of the rail and the nib hopped sideways under the hand, on the
+   scroll as well as on the drag. Measured, not guessed: the rail ran 314.81px
+   through reading 9 and 307.78px from 10 on. Two digits are reserved so the
+   number grows into space that was already spent. `ch` is exact here because
+   `.num` overrides the foot's 0.17em tracking with -0.01em, so a digit's
+   advance and `1ch` agree to a tenth of a pixel; centred rather than right-
+   aligned so the single-digit slack reads as two slightly wide word-spaces in
+   an already heavily tracked string, not as one 7px hole. */
+#footIndex {
+  display: inline-block;
+  min-width: 2ch;
+  text-align: center;
+}
+/* THE RAIL IS THE HANDLE. The foot stays click-through — it is furniture, and a
+   1px rule spanning the stage would otherwise eat every pointer event crossing
+   the middle of the screen — so the rail alone opts back in, and only once JS
+   has confirmed it can actually drive the scroll (`.live`). Without that class
+   this is exactly what it was: a progress readout.
+
+   The track moved onto a pseudo-element so it can thicken under the hand
+   without the nib coming with it: scaling `.foot-rail` would scale its
+   children, and a 7px dot at scaleY(3) is an ellipse. */
+.foot-rail {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  /* Transitioning the NUMBER rather than either transform, because the two
+     things that read it cannot both be transitioned: `.foot-fill`'s transform
+     is rewritten every frame from `--rec`, so a transition on it would fight
+     the scrub itself. Interpolating the shared input instead leaves one eased
+     value that both the track and the fill resolve against per frame — and it
+     only works because `--rail-t` is registered. */
+  transition: --rail-t 0.22s var(--ease-out);
+}
+.foot-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--hairline);
+  transform: scaleY(var(--rail-t));
+}
+/* A 1px line is not a drag target. This band is, and being a pseudo-element it
+   costs no node and cannot disturb the flex row it sits in. */
+.foot-rail.live::after {
+  content: "";
+  position: absolute;
+  inset: -11px 0;
+}
+.foot-rail.live {
+  pointer-events: auto;
+  /* Or a touch drag scrolls the page underneath the scrub it is performing. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grab;
+}
+.foot-rail.live.grabbing { cursor: grabbing; }
+.foot-rail.live.grabbing { --rail-t: 3; }
+@media (hover: hover) and (pointer: fine) {
+  .foot-rail.live:hover { --rail-t: 3; }
+}
+/* Ink, not the brass the rest of the instrument is drawn in. Brass measures
+   2.84:1 on paper — fine for a rule, and it was only ever a rule until this
+   became a control, but a focus indicator is a required-state indicator and
+   owes 3:1. Ink is 14.38:1, which is what a focus ring should be: the one thing
+   on the page you cannot miss. */
+.foot-rail.live:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 9px;
+  border-radius: 2px;
+}
+.foot-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--brass);
+  /* scaleX off a left origin, not a width — the rail is repainted every frame
+     from `--rec` and a width animation is a layout write per frame. */
+  transform: scaleX(var(--rec, 0)) scaleY(var(--rail-t));
+  transform-origin: 0 50%;
+}
+/* The nib rides the head of the fill, and it is a CARRIER with the dot on its
+   pseudo-element rather than the dot itself. Two reasons, both structural:
+   inside `.foot-fill` it would inherit the scale and stretch into a smear, and a
+   transform percentage resolves against the element's OWN box — so to travel the
+   rail's width by transform alone (never `left`, which is a layout write every
+   frame) the moving box has to BE the rail's width. `inset: 0` makes it so, and
+   100% of itself is then exactly 100% of the rail. */
+.foot-nib {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--rec, 0) * 100%), 0, 0);
+  /* …which means the carrier hangs `--rec × railWidth` PAST the right end of
+     the rail, and it did not matter for one second longer than the foot was
+     `pointer-events: none`. The moment the rail became a control, that overhang
+     inherited `auto` and became a live target sitting on top of "Reading 13 of
+     24" — hover thickened the rail from over the text (`:hover` matches an
+     ancestor of the hovered descendant, whatever its own box), and a click
+     there bubbled to the rail, clamped to 1 and threw the record to the end.
+     The carrier is decoration; the dot's own hit area is the rail's 22px band
+     underneath it, so nothing is lost by taking it out of hit-testing. */
+  pointer-events: none;
+}
+.foot-nib::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--green) 18%, transparent);
+  transition: transform 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out);
+}
+/* The nib answers the hand on its OWN transform, one level below the carrier's
+   travel — so growing it cannot disturb where it sits on the rail. */
+.foot-rail.live.grabbing .foot-nib::before {
+  transform: scale(1.45);
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--green) 22%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .foot-rail.live:hover .foot-nib::before {
+    transform: scale(1.34);
+    box-shadow: 0 0 0 5px color-mix(in oklab, var(--green) 20%, transparent);
+  }
+}
+
+.reel-hint {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 22px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: opacity 0.4s ease;
+}
+/* It has done its job the moment you scroll. */
+.reel.moved .reel-hint { opacity: 0; }
+.reel-hint-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: hint-pulse 2.4s var(--ease-in-out) infinite;
+}
+@keyframes hint-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.7); opacity: 0.45; }
+}
+
+/* The read-out. It carries no chart any more — the chart is the ground — so it
+   is what a field instrument actually is: the figures for wherever the needle
+   currently sits, and nothing else. */
+.reel-panel {
+  width: min(330px, 38vw);
+  box-shadow: var(--shadow-md);
+  /* The panel's own edge picks up the record's colour as it fills, so the
+     surface is part of the instrument rather than a frame around one. */
+  border-color: color-mix(in oklab, var(--hairline), var(--green) calc(var(--p) * 26%));
+  /* A hair of lift as the record fills, so the instrument reads as live. */
+  transform: translate3d(0, calc((0.5 - var(--p)) * 10px), 0);
+}
+.reel-panel .panel-chips { padding-bottom: 2px; }
+.reel-panel .panel-stats { border-top: 1px solid var(--hairline); }
+
+/* Chips arrive as the record earns them. They collapse rather than fade so that
+   an unearned chip leaves no gap — a row of three ghosts would read as a
+   loading state, which is exactly the wrong idea for a finished record. */
+.reel-panel .chip {
+  max-width: 0;
+  margin-right: 0;
+  padding-inline: 0;
+  border-color: transparent;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.55s var(--ease-out), opacity 0.3s ease 0.06s,
+    padding 0.4s var(--ease-out), margin 0.4s var(--ease-out), border-color 0.4s ease;
+}
+.reel-panel .chip.on {
+  max-width: 340px;
+  margin-right: 6px;
+  padding-inline: 10px;
+  opacity: 1;
+  border-color: var(--hairline);
+}
+.reel-panel .chip-good.on { border-color: var(--accent-line); }
+/* The age suffix writes on after the chip itself has settled — the figure
+   first, then the thing that makes the figure damning. */
+.chip-age {
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  vertical-align: bottom;
+  opacity: 0;
+  transition: max-width 0.5s var(--ease-out) 0.25s, opacity 0.3s ease 0.35s;
+}
+.chip-list.aged .chip-age { max-width: 180px; opacity: 1; }
+
+/* Hung from the brass rule at the moment you set it, and left there — so it
+   travels away down the record the way a tag on a rail does, rather than
+   following you. `--ax` is the strip position of that moment, written by
+   `layoutReel`; the annotation plane's slower travel is what keeps it on screen
+   through the last three tenths, when the price crosses it. */
+.reel-alert {
+  position: absolute;
+  left: var(--ax, 50%);
+  /* Below the month ticks the leaf prints in its own bottom padding, not on top
+     of them — the tag hangs from the rule, it does not obscure the calendar. */
+  top: calc(var(--band-leaf) + var(--leaf-h) - var(--leaf-padb) + 30px);
+  width: 258px;
+  margin-left: -129px;
+  /* A token rather than a literal in the rule below, because `layoutReel` has to
+     know it: the tag lands tilted about a pivot ABOVE its own top, so its
+     bottom-left corner swings ~2.3px further left than half its width, and the
+     beat's lane budget is struck against that rendered edge. Restating the angle
+     in JS would put a clearance guarantee one edit away from being wrong. */
+  --tilt: 0.8deg;
+  /* Its share of the page's hanging rule, at a quarter of the amplitude — and
+     the reason is geometric, not taste. This is the one hanging thing whose
+     swing sits inside ANOTHER element's clearance budget: `layoutReel` strikes
+     the beats' lane against this tag's rendered corner, so every degree it can
+     lean is a degree of lane the beats permanently lose, moving or not. So the
+     ceiling is named, `layoutReel` reads it back beside `--tilt`, and the bound
+     and the motion cannot disagree. Restated off `--scroll-vel` rather than
+     scaled off `--hang` so there is exactly one number here to change. */
+  --hang-max: 2.25deg;
+  --hang-own: calc(var(--scroll-vel, 0) * var(--hang-max) * -1);
+  transform-origin: 50% -30px;
+  opacity: 0;
+  /* The RESTING pose, live lean included, and the arrival below is an animation
+     rather than a transition precisely so this can be. A transitioned transform
+     would have to carry both, and re-targeting a 0.75s `--ease-settle` every
+     frame double-damps an already JS-smoothed signal — it reads as gum, not as
+     mass, and it is worst exactly here, because the record is PINNED: the whole
+     time this tag is on screen the page is being scrolled, so the velocity is
+     never resting. As an animation the swing owns 0.75s once and the lean stays
+     undamped underneath it. No fill needed: `to` is this same pose, so dropping
+     `.on` on a scrub-back leaves nothing to snap. */
+  transform: rotate(calc(var(--tilt) + var(--hang-own)));
+  transition: opacity 0.4s var(--ease-out);
+  pointer-events: none;
+}
+/* It swings to rest on its own hook, because that is what a tag does — the
+   origin is the ring 30px above it, so the settle is a pendulum rather than a
+   card straightening itself. `var()` inside the keyframes, for the reason the
+   rail tags below use it too: a running animation overrides the cascade, so a
+   lean declared on the element would be defeated for the swing's whole run. */
+.reel-alert.on { opacity: 1; animation: alert-hang 0.75s var(--ease-settle); }
+@keyframes alert-hang {
+  from { transform: rotate(calc(-4.5deg + var(--hang-own))); }
+  to { transform: rotate(calc(var(--tilt) + var(--hang-own))); }
+}
+/* Stem and ring: the two pieces that make this a thing hanging off the axis
+   rather than a card floating under it. Both on the tag and not on the rail,
+   because the hook belongs to what hangs, not to what holds. */
+.reel-alert::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -29px;
+  width: 2px;
+  height: 30px;
+  margin-left: -1px;
+  background: linear-gradient(180deg, var(--brass) 0%, var(--brass-lit) 40%, var(--brass) 100%);
+}
+.reel-alert::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -33px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border: 1.5px solid var(--brass-lit);
+  border-radius: 50%;
+  background: transparent;
+}
+.reel-alert .mini-card { box-shadow: var(--shadow-lg); }
+/* The card does not merely relabel when the target is met — it takes a knock,
+   the way the extension's own notification does. */
+.reel-alert.met .mini-card { animation: alert-hit 0.5s var(--ease-settle); }
+@keyframes alert-hit {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.045) rotate(-0.5deg); }
+  100% { transform: scale(1); }
+}
+/* And a single light travels the border, once. This is the delight budget of
+   the whole page spent in one place, on the one moment it has been building
+   toward — the flock catching your number.
+
+   It is also the one effect here that has no equivalent anywhere else: a conic
+   gradient's `from` angle is not animatable unless the angle behind it is a
+   REGISTERED property, so `@property --angle` is not a nicety, it is the entire
+   mechanism. The two-layer mask hollows the middle out so the gradient paints a
+   1px border rather than a filled card — border-image cannot take a conic, and
+   an extra element for it would put a decoration in the markup. */
+.reel-alert.met .mini-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--angle),
+    transparent 0deg,
+    var(--green) 34deg,
+    #86efac 52deg,
+    transparent 104deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  /* `forwards`, and not optional. With the default fill mode the sweep would
+     end and the element would snap back to its BASE state — `--angle: 0deg`,
+     opacity 1 — leaving a permanent quarter-arc of green welded to the border.
+     A one-shot effect has to be told where to stop. */
+  animation: sweep 0.95s linear forwards;
+  pointer-events: none;
+}
+@keyframes sweep {
+  from { --angle: 0deg; opacity: 1; }
+  85% { opacity: 1; }
+  to { --angle: 360deg; opacity: 0; }
+}
+
+@media (max-width: 900px) {
+  /* Slightly shorter again: a phone viewport is taller relative to its width, so
+     the same vh buys more scroll wheel. Same ratio to the desktop figure as the
+     400/420 it replaces. */
+  .reel-track { height: 286vh; }
+  /* The read-out drops under the heading and the strip gets the whole width. A
+     narrow screen also gets a shorter annotation drift: the same `--note-lag`
+     would push a beat most of the way across a 600px viewport. */
+  .reel-stage {
+    --note-lag: 0.87;
+    --head-frac: 0.5;
+    /* In one column the read-out is ABOVE the terrain rather than beside it, so
+       the band has to clear it — `--panel-b` is where `layoutReel` measured it
+       ending. `max` and not a replacement: on a tablet the token is still the
+       larger and the composition is unchanged, and the fallback keeps the token
+       in charge for the frames before the first measurement lands. */
+    --band-leaf: max(clamp(232px, 38vh, 320px), calc(var(--panel-b, 0px) + 14px));
+    --leaf-h: clamp(168px, 24vh, 240px);
+  }
+  .reel-fixed { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .reel-head .h-section { font-size: clamp(25px, 6vw, 34px); }
+  .reel-panel { width: 100%; }
+  .reel-panel .panel-stats { padding-block: 8px; }
+  /* One column is not wide enough to hold the beat and the tag side by side, so
+     here they STACK: the tag keeps its band under the calendar and the beats go
+     back to the foot of the stage. The lane rule above is a desktop rule.
+     Measured off `--band-foot` rather than off the stage floor, because the
+     folio line is now what sits on that floor and a bare `bottom: 24px` would
+     put the last line of a beat straight through the rail. */
+  .beats { top: auto; bottom: calc(var(--band-foot) + clamp(18px, 3.4vh, 34px)); }
+  /* Bottom-aligned inside that band, which is the whole reason the stack fits.
+     The band reserves the tallest beat and the lit one is usually shorter, so
+     top-aligning it left the spare lines as a gap ABOVE the text — pushing a
+     three-line beat up into the tag hanging off the rule while leaving 70px of
+     nothing beneath it. Anchored to the floor, the spare lines fall on the side
+     the tag is not. */
+  .beat { font-size: 14.5px; width: min(27em, 78vw); top: auto; bottom: 0; }
+  .reel-hint { display: none; }
+  .reel-alert { width: 218px; margin-left: -109px; }
+}
+/* Short and wide — a landscape phone or a half-height window. The composition is
+   the same one, compressed from both ends: the instrument loses its hint line to
+   the breakpoint above only when narrow, so it is dropped here on height too. */
+@media (max-height: 660px) and (min-width: 901px) {
+  .reel-stage {
+    --band-top: 88px;
+    --band-leaf: 232px;
+    --leaf-h: 168px;
+    --band-gap: 16px;
+    --band-foot: 18px;
+  }
+  .reel-head .h-section { font-size: clamp(24px, 2.6vw, 32px); }
+  .reel-hint { display: none; }
+}
+@media (max-width: 560px) {
+  /* A phone has to fit six stacked bands — heading, read-out, terrain, tag,
+     marginalia, folio — into about 760px under the nav, and the sum of their
+     natural sizes is over that. The leaf is what gives: it is the one band whose
+     job survives being shorter, where the tag and the read-out both lose content
+     if they shrink. `--band-foot` comes in too so the folio sits closer to the
+     floor than it does on a desktop, where there is height to spend on margin. */
+  .reel-stage {
+    --note-lag: 0.92;
+    --leaf-h: clamp(150px, 20vh, 190px);
+    /* 10 and not the 16 this was: the folio is the last band, so every pixel
+       between it and the floor is margin nothing else can use, while the pixels
+       above it are the tag's clearance. 10px still reads as a deliberate edge
+       at this size and hands 6px to the band that had none. */
+    --band-foot: 10px;
+  }
+  .beats { bottom: calc(var(--band-foot) + 34px); }
+  .reel-head .eyebrow { margin-bottom: 10px; }
+  /* Two rows, reserved whether or not the second one has anything in it yet.
+     One row is 25.6px and the gap 6, over the container's own 14.4px of padding
+     — measured, because the chips are sized from the type scale and there is no
+     token that states their height. The reserve is what makes `--panel-b` a
+     constant, and a constant is what the terrain below it needs: chips arrive
+     mid-scrub (the all-time low at its moment, the alert's at `ALERT_AT`), and a
+     band that tracked the panel live would step the whole record down 32px
+     underneath the reader. The cost is 31px of blank on the smallest screen
+     until the record has something to say, which is the right side to err on. */
+  .reel-panel .panel-chips { min-height: 71px; }
+  /* Wide enough for its own label. At 190 the header row put "Your alert" and
+     the status pill in the same 190px and the label truncated to "Your a…",
+     while the note under the meter wrapped to two lines — 20px of height spent
+     on a wrap that only existed because the card was narrow.
+
+     A FLAT 300 here was measured at 390 and asserted for every phone, and 320 is
+     where that stopped being true: `--travel` clamps to its 760px floor below
+     507px wide, so the plane moves FASTER the narrower the screen gets, and the
+     tag's drift over the armed window is ~30px at 320 rather than the 24 the old
+     note recorded. 300 + 30 does not fit 320, and the stage's `overflow: hidden`
+     turns that into a silently clipped card rather than a scrollbar — measured
+     at 10.5px off the left edge, with no symptom anywhere else. Hence the width
+     is a budget: viewport less 56px covers the drift and leaves ~13px each side,
+     resolving to 264 at 320 (nothing truncates, card height unchanged at 133)
+     and staying at the full 300 from 356px up, so every phone above the smallest
+     is untouched. `layoutReel` strikes the beat's lane budget against
+     `offsetWidth`, so it follows this rather than restating it. */
+  .reel-alert {
+    --tag-w: min(300px, calc(100vw - 56px));
+    width: var(--tag-w);
+    margin-left: calc(var(--tag-w) / -2);
+  }
+  /* Three items do not fit on one line here, and the span is the one that can
+     go: it is context, where the counter is the live reading. Below ~360px the
+     two of them plus the rail would still be squeezing, which is why the rail
+     is allowed to shrink to nothing rather than force an overflow. */
+  .foot-span { display: none; }
+  .foot-rail { min-width: 0; }
+  .beats { height: 8.4em; }
+}
+
+/* THE MERGED BAND — short phones.
+   ────────────────────────────────
+   Six stacked bands do not fit here. Measured at 360x740 the stack wants 810px:
+   nav 82, heading 93, read-out 214, terrain 164, tag 139, marginalia 86, folio
+   50 — so `need = 660 + clamp(150px, 20vh, 190px)` and it breaks below about
+   825px of viewport height. 390x844 was clearing it by 15px, which is luck, not
+   headroom. Shaving could not have reached it either: at 740 the tag and the
+   beat were overlapping by 69px, and at 667 the FIXED part alone is over the
+   viewport with the chart excluded entirely. A band has to go.
+
+   The heading is the one that can, because the section title and the running
+   commentary are the same voice at two different moments — so here they are one
+   band. The title stands until the record starts; then it lifts out as the first
+   beat rises into its place, and the eyebrow above stays put through both as the
+   band's label. That is the project's animation standard applied to a layout
+   problem: one thing becomes another, rather than one thing being deleted.
+
+   HEIGHT is the condition, not width — a 430x932 phone holds the full six-band
+   composition and keeps it. The width term is only there because above 900px the
+   read-out sits BESIDE the heading and the room already exists; the short-and-
+   wide case has its own block further up. */
+@media (max-width: 900px) and (max-height: 860px) {
+  /* The band that absorbs the merge, in both directions — and the terrain is the
+     right one to do it because it is the section's subject: it survives being
+     shorter, where the tag and the read-out lose content, and it is the only
+     band that reads BETTER for being taller.
+
+     Both directions matter, and the second was a real defect. Merging the
+     heading into the beat frees a whole band, and at 390x844 nothing took it —
+     the hole simply moved from the top of the composition to the bottom, 93.9px
+     of dead paper between the tag and the folio. So the terrain takes what the
+     merge freed: 26vh here against the desktop's own 28, which turns that into
+     219px of chart and 30.8px of gap.
+
+     The cap is DERIVED rather than picked, because the thing that squeezes this
+     band is not the viewport — it is the read-out card wrapping taller as the
+     screen narrows, which `--band-leaf` already tracks (`panel-b + 14`). At 320
+     that card is 427.2 tall against 360's 409.5, and those 18px land entirely on
+     the tag, which is what pushed it through the folio line. A width breakpoint
+     would have been a guess at where that happens; this is the arithmetic of
+     what is left. One expression covers both directions: `26vh` binds where
+     there is room and the chart grows into it, the subtraction binds where there
+     is not and the chart yields.
+
+     Read it as: the floor, less everything below the leaf that has a fixed size
+     — the tag's 30px hang (which prints in the leaf's own bottom padding, hence
+     `+ --leaf-padb` back), the tag, the folio line, its margin, and 16px of air.
+     `--tag-h` and `--foot-h` come from `layoutReel` for the same reason every
+     other contact point here does: a copy change that adds a line to the tag
+     must move this, not silently spend the clearance.
+
+     16 and not the 10 this was, because the tag is TILTED and the air is what
+     the reader sees, not what the box measures: 300px of card at its worst
+     visible pose puts the low corner ~4.6px under the layout box, so 10px of
+     budget read as 5.4px of gap at 360 — nearly touching, on a card that swings.
+     The term is a constant rather than `--tag-w * sin(worst pose)` because the
+     angle that matters is the one the card happens to be at when it crosses
+     opacity 0.5, which is a fact about the settle curve and not worth modelling
+     in CSS. Measured, not derived: 11.4 at 360, 13.1 at 320.
+
+     The 100px floor is a backstop and it is deliberately the LESSER evil rather
+     than a target: subtraction with no floor reaches zero and then goes negative,
+     which is a broken band rather than a cramped one, so past this point the tag
+     is allowed to close on the folio again. It measures 115 at 320x740, the
+     narrowest size supported, so nothing reaches the floor today — if something
+     ever does, the answer is another merged band, not more shaving. */
+  .reel-stage {
+    --leaf-h: max(
+      100px,
+      min(
+        clamp(132px, 26vh, 260px),
+        calc(100vh - var(--band-leaf) - 30px + var(--leaf-padb)
+             - var(--tag-h, 133px) - var(--foot-h, 17px) - var(--band-foot) - 16px)
+      )
+    );
+  }
+  /* The band reserves whichever of its two occupants is taller — `--beat-h` is
+     the tallest beat as `layoutReel` measured it, 3 lines and 69px at 360
+     against the heading's own 53. Without it the commentary runs 16px into the
+     read-out card underneath. */
+  .reel-head .h-section { min-height: var(--beat-h, 0px); }
+  /* Onto the heading's own top edge, taken from its layout position rather than
+     restated here as eyebrow-plus-margin: the two would part company the first
+     time the type scale moved, and this is a contact point, so it gets measured
+     like every other one. */
+  .beats {
+    top: calc(var(--band-top) + var(--head-lead, 0px));
+    bottom: auto;
+    height: auto;
+  }
+  .beat { top: 0; bottom: auto; }
+  /* THE HANDOVER, scrubbed rather than triggered — `.reel.moved` is set on the
+     first 40px of scroll ANYWHERE on the page, so by the time the record is on
+     screen the title would already have been gone for four sections. Driven off
+     `--p` it is the same gesture as the folio line's arrival and reads as one
+     move: the title leaves over exactly the span the commentary arrives in, so
+     the band is never empty and never doubled, and it runs backwards when you
+     scroll back up, which a class could not do. `--p` is registered as a
+     <number>, which is the only reason it can be multiplied at all.
+
+     The reveal is on the PLANE, not on the beat, and that is the difference
+     between choreography and text appearing: beat zero is lit from p=0 — it is
+     already standing behind the title — so its own entrance would have burned
+     invisibly under the heading before you ever scrolled. */
+  .reel-stage { --hand: clamp(0, calc(var(--p) * 14), 1); }
+  .reel-head .h-section {
+    opacity: calc(1 - var(--hand));
+    transform: translateY(calc(var(--hand) * -14px));
+  }
+  .beats {
+    opacity: var(--hand);
+    transform: translateY(calc((1 - var(--hand)) * 14px));
+  }
+}
+
+/* ── Reveals ─────────────────────────────────────────────────────────────────
+   Driven by native scroll-driven timelines, with no JS at all. Written in the
+   safe direction: the finished state is the DEFAULT, and only a browser that
+   understands `animation-timeline` opts into starting them hidden. A support
+   check written the other way round blanks half the page everywhere else. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal-up linear both;
+      animation-timeline: view();
+      animation-range: entry 4% entry 58%;
+    }
+    .reveal.d1 { animation-range: entry 12% entry 66%; }
+    .reveal.d2 { animation-range: entry 20% entry 74%; }
+
+    /* Each art panel drifts against its own copy for the whole time it is on
+       screen. Nested inside `.feature`'s reveal, so the two transforms compound
+       — the copy settles once, the art keeps moving, and the pair reads as two
+       planes rather than one card. Scrubbed by the scroll rather than played on
+       a timer, which is why it never feels like it is animating AT you. */
+    .art {
+      animation: art-drift linear both;
+      animation-timeline: view();
+      animation-range: entry 10% exit 90%;
+    }
+    /* Except the one that is PRINTED on the leaf. Its axis ticks are aligned to
+       the paper's ruling, and a figure that slides over its own stock as you
+       scroll is not printed on it — it is a sticker. The drift is what says
+       "laid on top", so the panel that isn't must not have it. */
+    .art-chart { animation: none; }
+    /* The steps sit on one rule, and the rule draws itself left to right as you
+       reach it — the same wire the birds land on, arriving the way a line is
+       drawn rather than the way a box fades in. */
+    .steps::before {
+      animation: draw-rule linear both;
+      animation-timeline: view();
+      animation-range: entry 8% entry 62%;
+    }
+  }
+}
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes art-drift {
+  from { transform: translateY(14px); }
+  to { transform: translateY(-14px); }
+}
+@keyframes draw-rule {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ── Features ────────────────────────────────────────────────────────────────
+   Each art panel keeps a resting state, so the page goes on breathing after the
+   pinned section lets go. */
+.features { margin-top: 56px; }
 .feature {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
@@ -592,7 +2783,7 @@ a:focus-visible, button:focus-visible {
 .feature + .feature { margin-top: clamp(64px, 8vw, 104px); }
 .feature-flip .feature-copy { order: 2; }
 @media (max-width: 860px) {
-  .feature { grid-template-columns: 1fr; gap: 28px; }
+  .feature { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   .feature-flip .feature-copy { order: 0; }
 }
 .feature h3 { font-size: clamp(23px, 2.5vw, 30px); font-weight: 650; letter-spacing: -0.018em; line-height: 1.16; }
@@ -608,102 +2799,952 @@ a:focus-visible, button:focus-visible {
 }
 
 .art {
-  background: var(--paper-warm);
+  position: relative;
+  background: var(--ground-2);
   border: 1px solid var(--hairline);
   border-radius: 18px;
   padding: 20px;
   box-shadow: var(--shadow-sm);
 }
-.art-chart canvas { width: 100%; border-radius: 10px; background: #fff; border: 1px solid var(--hairline); }
+.art-chart canvas {
+  width: 100%;
+  height: 188px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
 .art-legend { display: flex; gap: 16px; margin-top: 12px; font-size: 11.5px; color: var(--ink-soft); flex-wrap: wrap; }
 .art-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .art-legend i { width: 14px; height: 2px; border-radius: 2px; display: inline-block; }
 
+/* The resting state: the all-time low keeps a slow pulse. Its position comes
+   from the canvas geometry via --px/--py rather than being guessed, so it stays
+   on the point through every resize. */
+.art-pulse {
+  position: absolute;
+  left: var(--px, 50%);
+  top: var(--py, 50%);
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--green);
+  opacity: 0;
+  pointer-events: none;
+}
+.art-pulse.on { animation: atl-pulse 3.4s var(--ease-out) infinite; }
+@keyframes atl-pulse {
+  0% { transform: scale(0.6); opacity: 0; }
+  22% { opacity: 0.75; }
+  70% { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
 /* Alert card */
-.mini-card { background: #fff; border: 1px solid var(--hairline); border-radius: 12px; padding: 15px; box-shadow: var(--shadow-sm); }
+.mini-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.35s ease, background 0.4s ease;
+}
 .mini-card + .mini-card { margin-top: 10px; }
+/* The card reads its own contents. The price crossing the target is already
+   expressed in the DOM — `:has()` picks it up there instead of asking JS to
+   put a second class on the parent saying the same thing twice. One state, one
+   place it is written down. */
+.mini-card:has(.mini-price.met) {
+  border-color: var(--green-line);
+  background: linear-gradient(180deg, #fff 30%, var(--green-wash));
+}
+.mini-card:has(.mini-price.met) .mini-meter i {
+  background: linear-gradient(90deg, var(--green), var(--green-deep));
+}
 .mini-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 /* Same `min-width: auto` trap one level down: without this the ellipsis never
    engages, because the flex item refuses to shrink below its text. */
 .mini-name { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.mini-badge { flex: 0 0 auto; }
-.mini-price { font-size: 21px; font-weight: 700; }
+.mini-price { font-size: 21px; font-weight: 700; transition: color 0.3s ease; }
 .mini-price.met { color: var(--green-deep); }
 .mini-badge {
+  flex: 0 0 auto;
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
-  color: var(--green-deep); border: 1px solid rgba(22, 163, 74, 0.3);
+  color: var(--green-deep); border: 1px solid var(--green-line);
   background: var(--green-wash); border-radius: 999px; padding: 3px 9px; white-space: nowrap;
+  transition: color 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
 }
+.mini-badge-quiet { color: var(--muted); border-color: var(--hairline); background: var(--surface); }
 .mini-meter { height: 5px; border-radius: 4px; background: rgba(120, 130, 145, 0.16); margin: 12px 0 8px; overflow: hidden; }
 .mini-meter i { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, rgba(22, 163, 74, 0.5), var(--green)); }
-.in .mini-meter i { transition: width 1.1s var(--ease-out) 0.25s; }
 .mini-sub { font-size: 11.5px; color: var(--muted); }
 
+/* The bell rings only when an alert is armed — motion as state, which is the
+   extension's own rule for its header icons. Rare on purpose: an idle animation
+   you can predict is one you start ignoring. */
+.art-bell {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 19px;
+  height: 19px;
+  color: var(--green-deep);
+  opacity: 0.5;
+  transform-origin: 50% 12%;
+}
+.art-bell svg { width: 100%; height: 100%; }
+.in-view .art-bell { animation: bell-ring 13s var(--ease-out) 2s infinite; }
+@keyframes bell-ring {
+  0%, 88%, 100% { transform: rotate(0deg); }
+  90% { transform: rotate(12deg); }
+  92% { transform: rotate(-9deg); }
+  94% { transform: rotate(6deg); }
+  96% { transform: rotate(-3deg); }
+  98% { transform: rotate(1deg); }
+}
+
 /* Thread */
-.mini-comment { background: #fff; border: 1px solid var(--hairline); border-radius: 12px; padding: 13px 15px; display: flex; gap: 12px; box-shadow: var(--shadow-sm); }
+.mini-comment { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 13px 15px; display: flex; gap: 12px; box-shadow: var(--shadow-sm); }
 .mini-comment + .mini-comment { margin-top: 10px; }
 .mini-nested { margin-left: 30px; }
 .mini-vote { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 12px; font-weight: 700; color: var(--green-deep); font-variant-numeric: tabular-nums; }
 .mini-vote svg { width: 11px; height: 11px; }
+.mini-vote b { font-weight: 700; }
 .mini-comment p { font-size: 14px; color: var(--ink-soft); }
 .mini-comment b { color: var(--ink); font-weight: 650; }
 .mini-verified { width: 12px; height: 12px; display: inline-block; vertical-align: -1px; margin-left: 3px; color: var(--green); }
 .mini-when { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
 
-/* ── Privacy ─────────────────────────────────────────────────────────────── */
-.privacy { background: var(--paper-deep); border-block: 1px solid var(--hairline); }
-.privacy-grid { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: clamp(30px, 5vw, 72px); align-items: start; }
-@media (max-width: 860px) { .privacy-grid { grid-template-columns: 1fr; gap: 30px; } }
-.privacy-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.privacy-list li { padding: 16px 0; border-top: 1px solid rgba(22, 35, 58, 0.09); font-size: 15.5px; color: var(--ink-soft); }
-.privacy-list li:last-child { border-bottom: 1px solid rgba(22, 35, 58, 0.09); }
-.privacy-list b { display: block; color: var(--ink); font-weight: 650; font-size: 16px; margin-bottom: 3px; }
+/* ── How it works ────────────────────────────────────────────────────────────
+   Three steps on one horizontal rule, with the step numbers sitting ON the rule
+   like marks on a timeline — the same wire the birds land on, reused as
+   structure. */
+.how { background: var(--ground); }
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(20px, 3vw, 40px);
+  margin-top: 52px;
+  position: relative;
+}
+.steps::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 13px;
+  height: 1px;
+  background: var(--hairline);
+  transform-origin: left center;
+}
+/* The flock stands ON that rule. Stretched over it rather than sized in the
+   grid, so it costs the steps no layout and cannot push the copy around when
+   the canvas resizes; `pointer-events: none` because the birds are scenery, not
+   controls. It reaches 74px above the rule to give an arriving bird room to
+   descend inside its own bounds — a canvas clips, so a flight authored off the
+   top edge would simply not be drawn — and that is still short of the heading's
+   52px margin plus its own leading, so nothing ever flies through the h2.
+
+   BEHIND the step numbers on purpose (`z-index: 0` under their 1): the discs are
+   marks printed on the rule and the birds are standing on it, so a bird crossing
+   one should pass behind. The perch layout keeps a clearance around each disc
+   anyway, but that only holds for the settled flock — an arriving one flies the
+   whole width. */
+.how-wire {
+  position: absolute;
+  /* TWO DECLARATIONS, TWO SEPARATE BUGS, AND EITHER ONE ALONE LEAVES THE CANVAS
+     296px WIDE AGAINST A RULE SPANNING 741.
+     `grid-column` fixes the CONTAINING BLOCK: an absolutely positioned child of
+     a grid container resolves it from the grid AREA it is auto-placed into, not
+     from the container's padding box, so without this the box is measured
+     against column 1. Spanning every column restores the padding box, and it
+     holds under the single-column layout too.
+     `width` fixes the SIZE, and it is the half that is easy to miss, because
+     `left: 0; right: 0` looks like it should already have done the job. It
+     doesn't: a <canvas> is a REPLACED element, and for an absolutely positioned
+     replaced box `width: auto` resolves to the intrinsic width — here the
+     `width` attribute the drawing code sets — with the over-constrained
+     direction absorbed by `right` instead of stretching the box. So the canvas
+     sized itself from its own backing store, which the JS had sized from the
+     canvas: a feedback loop that settles wherever it started and never widens.
+     `.cta-wire` above carries the same pair for the same reason. */
+  grid-column: 1 / -1;
+  left: 0;
+  right: 0;
+  width: 100%;
+  top: -74px;
+  height: 148px;
+  z-index: 0;
+  pointer-events: none;
+}
+@media (max-width: 800px) {
+  .steps { grid-template-columns: minmax(0, 1fr); gap: 34px; }
+  /* Single column: the steps stack and there is no rule left to stand on, so
+     the flock goes with it rather than perching on a line that isn't drawn. The
+     staggered reveal is what carries the section at this width. */
+  .steps::before, .how-wire { display: none; }
+}
+.step { position: relative; }
+/* The number sits ON the rule, so it needs to punch a hole in it — a bordered
+   circle over a line reads as a bead unless it fills with the ground colour.
+   Ink rather than grey: at 11px on a warm field the softer token disappeared
+   entirely, and these are the page's only wayfinding. */
+.step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  /* Ink with the ground showing through it, and BOTH halves have to be chapter
+     tokens or the badge inverts only halfway. `color: #fff` against `--ink` is
+     correct exactly while `--ink` is dark: the moment the chapter turns over,
+     `--ink` becomes #f0f4fa and the white sits on it at 1.1:1. `#how` is a paper
+     section so this is only on screen during the 900ms cross-fade and at narrow
+     widths where the boundary and the section overlap — brief, and a disappearing
+     step number either way. Same defect the CTA block above says it fixed.
+     The halo is the ground for the same reason: it is the hole the connecting
+     line is punched through, so it is whatever the page is standing on. */
+  background: var(--ink);
+  color: var(--ground);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  position: relative;
+  z-index: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 5px var(--ground);
+}
+.step h3 { font-size: 19px; font-weight: 650; margin-top: 18px; letter-spacing: -0.012em; }
+.step p { margin-top: 9px; color: var(--ink-soft); font-size: 15.5px; }
+
+/* ── Privacy ─────────────────────────────────────────────────────────────────
+   The one section where the motion IS the argument rather than an escort for
+   it: the things Jackdaw never takes strike themselves through as you reach
+   them, and the four it does keep write themselves on beside. Nothing is
+   asserted in the copy that the strike does not also demonstrate. */
+.privacy { background: var(--ground-3); border-block: 1px solid var(--hairline); }
+.privacy-grid { display: grid; grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr); gap: clamp(30px, 5vw, 72px); align-items: start; }
+.privacy-copy .h-section { font-size: clamp(28px, 3.5vw, 42px); }
+@media (max-width: 900px) { .privacy-grid { grid-template-columns: minmax(0, 1fr); gap: 34px; } }
 .privacy-actions { margin-top: 26px; }
 
-/* ── CTA ─────────────────────────────────────────────────────────────────────
-   The one dark room on the page. It arrives after the privacy band, which is
-   the argument, so the ink reads as the conclusion. */
-.cta { background: var(--night); color: #fff; position: relative; overflow: hidden; }
-.cta-inner { position: relative; z-index: 1; text-align: center; display: grid; justify-items: center; gap: 18px; }
-.cta .h-display { font-size: clamp(40px, 6.4vw, 82px); }
-.cta .h-display em { color: #86efac; }
-.cta-sub { color: rgba(255, 255, 255, 0.72); max-width: 30em; font-size: 17px; }
-.cta .btn-primary { background: #fff; color: var(--ink); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34); }
-.cta-note { font-size: 13px; color: rgba(255, 255, 255, 0.58); }
-.cta-note a { color: rgba(255, 255, 255, 0.85); }
-/* A wire across the dark, with the flock settled on it — the hero's idea
-   restated as a closing image rather than repeated as a chart. */
-.cta-wire { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.5; }
-@media (hover: hover) and (pointer: fine) {
-  .cta .btn-primary:hover { background: #f2faf5; box-shadow: 0 14px 44px rgba(0, 0, 0, 0.42); }
+.privacy-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(22px, 3vw, 40px); }
+@media (max-width: 620px) { .privacy-cols { grid-template-columns: minmax(0, 1fr); gap: 30px; } }
+.pcol { min-width: 0; }
+.pcol-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 4px;
+}
+.strike-list, .keep-list { list-style: none; margin: 0; padding: 0; }
+.strike-list li { padding: 11px 0; font-size: 15px; color: var(--ink-soft); }
+.strike-list li + li { border-top: 1px solid var(--rule-soft); }
+.strike span { position: relative; display: inline; }
+/* Two boxes, so the rule survives a wrap. `decoration-clone` keeps a struck
+   phrase struck on both lines instead of drawing one bar across the gap. */
+.strike span::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 52%;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 2px;
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+.strike-list li:nth-child(1) { --i: 0; }
+.strike-list li:nth-child(2) { --i: 1; }
+.strike-list li:nth-child(3) { --i: 2; }
+.strike-list li:nth-child(4) { --i: 3; }
+.strike-list li:nth-child(5) { --i: 4; }
+.strike-list li:nth-child(6) { --i: 5; }
+
+.keep-list li {
+  padding: 11px 0;
+  font-size: 15px;
+  color: var(--muted);
+  display: grid;
+  gap: 1px;
+}
+.keep-list li + li { border-top: 1px solid var(--rule-soft); }
+.keep-list b { color: var(--ink); font-weight: 650; font-size: 15.5px; }
+.keep-list span { font-size: 13.5px; }
+.keep-list li:nth-child(1) { --i: 0; }
+.keep-list li:nth-child(2) { --i: 1; }
+.keep-list li:nth-child(3) { --i: 2; }
+.keep-list li:nth-child(4) { --i: 3; }
+.pcol-note { margin-top: 16px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .strike span::after {
+      animation: strike-through linear both;
+      animation-timeline: view();
+      animation-range: entry calc(6% + var(--i) * 7%) entry calc(46% + var(--i) * 7%);
+    }
+    .strike span {
+      animation: strike-fade linear both;
+      animation-timeline: view();
+      animation-range: entry calc(6% + var(--i) * 7%) entry calc(52% + var(--i) * 7%);
+    }
+    .keep-list li {
+      animation: keep-on linear both;
+      animation-timeline: view();
+      animation-range: entry calc(10% + var(--i) * 8%) entry calc(52% + var(--i) * 8%);
+    }
+  }
+}
+@keyframes strike-through {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes strike-fade {
+  from { opacity: 1; }
+  to { opacity: 0.55; }
+}
+@keyframes keep-on {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
 }
 
-/* ── Footer ──────────────────────────────────────────────────────────────── */
+/* ── CTA ─────────────────────────────────────────────────────────────────────
+   Night again, and by then it is the chapter the page is already standing in
+   rather than a band that paints itself dark. It used to be the one dark room;
+   now it is the room you came in through, which is a better close: the page
+   goes out the way it came in, and the paper middle was the part where the
+   argument got made.
+
+   Nothing here sets a literal white any more. Every value below is a chapter
+   token, so this section is legible if the arc is ever re-cut and the close
+   lands on paper instead — which is exactly the property the old
+   `color: #fff` did not have. */
+/* Tall enough for a landing. The flock comes in from off-frame right and well
+   above the wire, and the canvas is the section — anything drawn outside it is
+   not clipped, it is never drawn, so a short band would have the birds simply
+   appearing at its top edge instead of arriving from somewhere. */
+.cta { position: relative; overflow: hidden; min-height: min(94vh, 780px); display: grid; align-items: center; }
+.cta-inner { position: relative; z-index: 1; text-align: center; display: grid; justify-items: center; gap: 18px; }
+.cta .h-display { font-size: clamp(40px, 6.4vw, 82px); }
+/* The `em` override that used to live here is gone: it set `--accent-deep` on
+   one instance of a rule whose base was wrong, so it read as a local design
+   choice and hid the defect everywhere else it applied — the hero headline and
+   the nav price both carried a paper green across the night chapters for as
+   long as this line existed. Fixed at the source instead. */
+.cta-sub { color: var(--ink-soft); max-width: 30em; font-size: 17px; }
+/* The button is the post the wire is strung to, and both halves of that follow.
+   The margin is the band the wire runs through: its height is MEASURED off this
+   element (see `measureCta`), so the air here is not decoration — it is the only
+   thing keeping a perched bird, which stands about 26px tall, out of the line of
+   copy above it. Change this and the flock moves with it; change the flock's
+   size and this has to answer.
+
+   The halo is the wire disappearing INTO the post rather than behind a shape
+   that happens to be in front of it. It is the ground colour at 62%, so the line
+   fades out as it approaches instead of being cut, and it costs nothing on
+   paper because `--ground` swaps with the chapter like everything else here. */
+.cta .btn-primary {
+  margin-block: clamp(30px, 5vh, 52px) 14px;
+  background: var(--ink);
+  color: var(--ground);
+  border-color: transparent;
+  box-shadow:
+    0 10px 34px rgba(0, 0, 0, 0.34),
+    0 0 0 9px color-mix(in srgb, var(--ground) 62%, transparent);
+}
+.cta .btn-primary:hover { background: var(--ink); color: var(--ground); }
+/* `.cta-narrow` is set by `measureCta` below 640px, where the wire either side of
+   the button no longer holds two perches and the wire lifts clear of it rather
+   than being strung to it.
+   The band above then has to hold the entire picture instead of just the air
+   around a line: the hang over the button, the rise to the ends, and a bird
+   standing on top of each. Measured at 320 before this rule existed — the ends'
+   birds topped out 58px above the button against a 54px band, so the flock stood
+   in the paragraph. Keyed off the class rather than a media query on purpose:
+   the breakpoint is the CANVAS width and this is the VIEWPORT width, and the two
+   differ by the scrollbar, so a query here could open the band on one side of the
+   threshold while the script strung the wire for the other. */
+.cta-narrow .btn-primary { margin-block: clamp(84px, 13vh, 104px) 14px; }
+.cta-note { font-size: 13px; color: var(--muted); }
+.cta-note a { color: var(--ink-soft); }
+/* A wire across the dark with the flock arriving onto it — the hero's image
+   closing rather than repeating: there it assembles a price line, here it is
+   just a flock, and the one thing it is missing is you.
+
+   Masked at both ends so the wire and its birds thin out into the dark instead
+   of being sheared off by the viewport edge. A hard cut says "this image ran
+   out"; a fade says the flock continues past what you can see, which is the
+   more truthful of the two things this picture is claiming.
+
+   Full opacity, unlike the version this replaces: those were 26 anonymous
+   specks and dimming them was the only thing keeping them from reading as
+   dirt. These are birds struck in the chapter's own ink at the same weight as
+   the headline, which is the point — the alpha that shapes them now lives in
+   the canvas, per element, where the wire can be faint and the flock solid. */
+.cta-wire {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+/* Paper has tooth, and a band this large reads as printer output rather than as
+   flat fill once it does. One tiled feTurbulence: visible as texture at arm's
+   length, never resolvable as noise. Static, so it costs nothing after the first
+   paint, and it sits under the content on both bands. */
+.privacy, .cta { position: relative; }
+.privacy::after, .cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--tooth-o);
+  background-image: var(--tooth);
+}
+/* The dark band needs a touch more of it — noise reads weaker against ink. */
+.cta::after { opacity: 0.07; }
+.privacy > .wrap { position: relative; z-index: 1; }
+@media (hover: hover) and (pointer: fine) {
+  /* Hover is when your bird is on its way to the open perch, so the post lifts
+     to meet it. The halo is carried through rather than dropped — losing it here
+     would cut the wire back to a hard edge at exactly the moment the section is
+     asking to be looked at.
+
+     THE LIFT IS THE STATE CHANGE HERE, NOT THE COLOUR, and unlike the generic
+     `.btn-primary:hover` above that is deliberate. That one steps 12% toward
+     `--ground` because colour is all it has; this one already moves the halo
+     9px → 11px, the shadow 34px/.34 → 44px/.42, the gap 9 → 13 and the arrow
+     3px, so a colour step of the same size would be the fourth thing shouting.
+     Measured: rgb(240,244,250) → rgb(230,243,243), a 1.03:1 change — under the
+     12% threshold on purpose, and a tint rather than a shift. Toward `--accent`,
+     not toward the ground: it is the brand green arriving on the control you
+     are about to press, which is why the mix is `srgb` (the tint stays green)
+     where the generic one is `oklab` (a lightness step wants perceptual). Label
+     contrast rides 17.08 → 16.55, so nothing is spent to get it. */
+  .cta .btn-primary:hover {
+    background: color-mix(in srgb, var(--ink) 94%, var(--accent));
+    box-shadow:
+      0 14px 44px rgba(0, 0, 0, 0.42),
+      0 0 0 11px color-mix(in srgb, var(--ground) 62%, transparent);
+  }
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────────
+   The bird's last state: asleep. Slower than a pulse and barely visible, which
+   is the point — it is the only motion below the fold and it should read as
+   something resting rather than something waiting. */
 .footer { border-top: 1px solid var(--hairline); padding-block: 40px 44px; }
 .footer-inner { display: flex; flex-wrap: wrap; gap: 18px 32px; align-items: center; justify-content: space-between; }
 .footer-brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; }
+.footer-dot { animation: doze 7s var(--ease-in-out) infinite; }
+@keyframes doze {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.86); opacity: 0.55; }
+}
 .footer-links { display: flex; gap: 22px; font-size: 14px; }
-.footer-links a { color: var(--ink-soft); text-decoration: none; }
+.footer-links a { color: var(--ink-soft); text-decoration: none; transition: color 0.22s ease, opacity 0.22s ease; }
 .footer-fine { margin-top: 24px; font-size: 12px; color: var(--muted); max-width: 62em; line-height: 1.55; }
-@media (hover: hover) and (pointer: fine) { .footer-links a:hover { color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) {
+  .footer-links a:hover { color: var(--ink); }
+  /* Same group-focus idea as the nav, one last time on the way out. */
+  .footer-links:has(a:hover) a:not(:hover) { opacity: 0.5; }
+}
+
+/* ── Material: the ledger ────────────────────────────────────────────────────
+   THE CHAPTER COMMENT AT THE TOP OF THIS FILE HAS SAID "ruled ledger stock"
+   SINCE THE CHAPTER SYSTEM LANDED, AND UNTIL NOW THE PAPER CHAPTER WAS A FLAT
+   FILL. This is the half that was promised: the middle of the page is a leaf
+   from a field ledger, and everything on it — the charts, the alert cards, the
+   thread — is a retail artifact pasted onto that leaf.
+
+   Which settles a question the section styles kept re-asking: what is a card,
+   and why does it have a shadow? On flat ground a card is a floating rectangle
+   and the shadow is a convention. On ruled stock it is a piece of paper lying on
+   another piece of paper, the shadow is the reason you can tell them apart, and
+   the ruling running underneath it is the proof that the page continues behind.
+
+   THE RULING IS NOT DECORATION AND IT IS NOT A BITMAP. Two gradients and a
+   generated tooth — nothing to fetch, nothing to scale, and every value is a
+   token so the whole material turns over with the chapter. */
+
+.section[data-ground="paper"] { position: relative; }
+/* Above both material layers. The ruling is stock; the words are what is on it. */
+.section[data-ground="paper"] > .wrap { position: relative; z-index: 1; }
+
+.section[data-ground="paper"]::before,
+.section[data-ground="paper"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+/* The horizontals, plus — where there is room for it — the margin rule.
+   ORDER MATTERS: the margin rule is declared first so it paints OVER the feints,
+   which is the way a ledger is actually printed (the margin goes down in a
+   second pass) and the only way the crossings read as ink rather than as a
+   grid. */
+.section[data-ground="paper"]::before {
+  opacity: var(--ruling);
+  /* Crosses with the room. Not a fade-in — the ruling is simply not visible once
+     the light goes, and it comes back as the light does, on the same 900ms every
+     other surface uses. */
+  transition: opacity 900ms var(--ease-out);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--feint-line) 0 1px,
+    transparent 1px var(--ledger-pitch)
+  );
+  /* A leaf has a head and a foot. Without this the rules run straight into the
+     section seam and the two bands read as one continuously ruled roll — which
+     is wallpaper, not a page. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 96px, #000 calc(100% - 96px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 96px, #000 calc(100% - 96px), transparent);
+}
+/* The tooth, on its own layer because it needs its own opacity — a background
+   layer cannot carry one, and baking alpha into a turbulence bitmap is not
+   something CSS can do to a data URI. */
+.section[data-ground="paper"]::after {
+  opacity: var(--tooth-o);
+  background-image: var(--tooth);
+}
+
+/* THE MARGIN RULE ONLY EXISTS WHERE THERE IS A MARGIN TO PUT IT IN. Below the
+   measure the wrap runs edge to edge on `--pad-x`, which bottoms out at 20px —
+   a sanguine double rule 6px from the viewport edge is not a margin, it is a
+   stripe. So it appears at the width where the wrap has stopped growing and the
+   page has gutters to spare, and a narrower screen simply reads as a notebook
+   with no printed margin. Positioned off the CENTRE, because that is where the
+   measure is anchored: 590px is half of `--measure`, and 26px is how far the
+   rule stands off the text's own left edge. */
+@media (min-width: 1180px) {
+  .section[data-ground="paper"]::before {
+    background-image:
+      linear-gradient(
+        90deg,
+        var(--sanguine-line) 0 1px,
+        transparent 1px 4px,
+        var(--sanguine-line) 4px 5px
+      ),
+      repeating-linear-gradient(
+        to bottom,
+        var(--feint-line) 0 1px,
+        transparent 1px var(--ledger-pitch)
+      );
+    background-repeat: no-repeat, repeat;
+    background-size: 5px 100%, auto;
+    background-position: calc(50% - 590px + var(--pad-x) - 26px) 0, 0 0;
+  }
+}
+
+/* Ink bites into stock. A serif this large printed on paper spreads a hair at
+   the edges, and the difference between type that was PRINTED and type that was
+   composited is most of what a page like this is trying to claim.
+
+   Kept to 0.4px and a third of the ink's own strength: enough to lose the
+   vector-perfect edge, not enough to read as a blur or to thicken the face.
+
+   SCOPED BY THE SECTION'S OWN GROUND, not by `data-chapter`. The chapter
+   attribute is where the READER is; `data-ground` is what the section is printed
+   on, and a section is printed on the same stock whether or not you are looking
+   at it. Keying the bleed to the chapter would have let a night band's heading
+   pick up ink bleed during the 900ms crossing, which on dark ground reads as
+   glow — a different material claim entirely, and one `--glow` already makes. */
+[data-ground="paper"] .h-section {
+  text-shadow: 0 0 0.4px color-mix(in oklab, currentColor 34%, transparent);
+}
+
+/* ── The three feature panels, each made of what it actually is ──────────────
+   THEY WERE ALL THE SAME OBJECT AND NONE OF THEM IS. Three rounded panels with
+   one background, one radius and one shadow, holding a chart, a pair of alerts
+   and a comment thread — which on ruled stock reads as three app screenshots
+   pasted onto a ledger, the exact failure the material was supposed to fix.
+
+   So each takes the material of the thing it is. A chart on ruled paper is
+   PLOTTED, not framed. A price on a hook at a store is a SHELF TAG, which this
+   page already knows how to make — the hero hangs one. A note from a stranger
+   is a SLIP, torn off and stuck in. None of the three is a card, and after this
+   none of them is drawn as one.
+
+   This is the house rule from the banner applied to static material: one thing
+   becomes another, rather than one thing being decorated to look like another. */
+
+/* ── 1. The chart is printed on the leaf ─────────────────────────────────────
+   No panel, no canvas ground, no radius, no shadow — the ruling underneath IS
+   the grid, and main.js's `ledgerFrame` puts the axis ticks on the rules rather
+   than near them. Anything that paints here would cover the very thing the
+   figure is being plotted on. */
+.art.art-chart {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.art-chart canvas {
+  height: auto;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+/* The legend is a key written under a figure, not a row of chips under a card. */
+.art-chart .art-legend { margin-top: 14px; padding-left: 6px; }
+
+/* ── 2. The alerts hang on a rail ────────────────────────────────────────────
+   The hero's tag on its wire, twice, on a brass rail: an alert IS a price on a
+   hook in a building, and the page has already built that object once. Reusing
+   its material rather than its markup — the hero tag hangs from a swaying wire
+   and carries a laminate sheen driven by the pointer; these hang from a fixed
+   rail and do not, because two tags on one rail sweeping in sync would read as
+   a carousel rather than as two objects in a room. */
+.art.art-alert {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 26px 4px 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(10px, 2.5vw, 26px);
+  align-items: start;
+}
+/* The rail. Three stops rather than two: a rod lit from above has a highlight
+   BELOW its top edge, not at it, and a two-stop gradient always reads as a
+   gradient rather than as metal. */
+.art-alert::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--brass) 62%, #000) 0%,
+    var(--brass-lit) 34%,
+    var(--brass) 72%,
+    color-mix(in oklab, var(--brass) 55%, #000) 100%
+  );
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+.art-alert .mini-card {
+  position: relative;
+  margin: 0;
+  padding: 15px 12px 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  /* The hero tag's stock, lit from the same corner. Held as literals rather
+     than tokens for the same reason the hero's is: a tag is an object made of
+     card sitting in the room, not a surface the site is painting, so it must
+     not turn over with the chapter. */
+  background: linear-gradient(154deg, #fffdf8 0%, #f7f3ea 54%, #ece5d7 100%);
+  color: #17222e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.07),
+    0 1px 2px rgba(0, 0, 0, 0.16),
+    0 10px 20px rgba(0, 0, 0, 0.1);
+  /* Hung, so the pivot is the hook and not the card's own middle. */
+  transform-origin: 50% -14px;
+  transition: none;
+}
+.art-alert .mini-card + .mini-card { margin-top: 0; }
+/* Each on its own phase and its own amplitude. Two tags on one rail swinging
+   together is one object with two halves; the whole point of a rail is that the
+   things on it are separate. */
+.art-alert .mini-card:nth-child(1) { animation: rail-sway-a 8.4s var(--ease-in-out) infinite; }
+.art-alert .mini-card:nth-child(2) { animation: rail-sway-b 9.9s var(--ease-in-out) -3.2s infinite; }
+/* The page's hanging rule composed INTO the keyframes, not declared on the
+   element: a running animation overrides the cascade, so a `transform` set
+   alongside an infinite sway is dead the moment the sway starts. Added to each
+   frame rather than multiplied, so the idle swing and the scroll lean sum the
+   way two small angles about one pivot actually do. */
+@keyframes rail-sway-a {
+  0%, 100% { transform: rotate(calc(-0.62deg + var(--hang))); }
+  50% { transform: rotate(calc(0.62deg + var(--hang))); }
+}
+@keyframes rail-sway-b {
+  0%, 100% { transform: rotate(calc(0.5deg + var(--hang))); }
+  50% { transform: rotate(calc(-0.5deg + var(--hang))); }
+}
+/* Hook and punch, drawn on the card rather than added to the markup: a hole and
+   a wire are material, and material belongs in the stylesheet. The punch shows
+   the SECTION's ground through the card, so it stays a hole through the chapter
+   crossing instead of becoming a printed grey circle at night. */
+.art-alert .mini-card::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -14px;
+  width: 1px;
+  height: 14px;
+  margin-left: -0.5px;
+  background: linear-gradient(180deg, var(--brass-lit), var(--brass));
+}
+.art-alert .mini-card::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--ground);
+  box-shadow:
+    inset 0 1.5px 2px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.8);
+}
+/* A shelf tag is read top to bottom at arm's length: what it is, then what it
+   costs, then the small print. Side by side is a dashboard row. */
+.art-alert .mini-top { display: block; padding-top: 6px; }
+.art-alert .mini-name { white-space: normal; font-size: 11px; line-height: 1.3; color: #4c5566; }
+.art-alert .mini-price { font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -0.025em; margin-top: 5px; }
+/* #146c34 and #625a4a are the hero tag's inks, chosen against the DARKEST stop
+   of that same gradient — the card resizes, so the gradient's endpoints travel
+   under the type and the lit corner's ratio is the one that means nothing. */
+.art-alert .mini-price.met { color: #146c34; }
+.art-alert .mini-badge {
+  display: inline-block;
+  margin-top: 7px;
+  border-radius: 2px;
+  padding: 2px 6px;
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  color: #146c34;
+  border-color: rgba(20, 108, 52, 0.35);
+  background: rgba(20, 108, 52, 0.08);
+}
+.art-alert .mini-badge-quiet {
+  color: #625a4a;
+  border-color: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+}
+.art-alert .mini-meter { margin: 10px 0 7px; height: 4px; background: rgba(0, 0, 0, 0.1); }
+.art-alert .mini-sub { font-size: 9.5px; line-height: 1.35; color: #625a4a; }
+/* The card is stock now, so `:has()` must not repaint it as a green UI surface
+   — the met state says so in the ink, the badge and the meter, which is how a
+   tag says anything at all. */
+.art-alert .mini-card:has(.mini-price.met) {
+  background: linear-gradient(154deg, #fffdf8 0%, #f7f3ea 54%, #ece5d7 100%);
+  border-color: rgba(20, 108, 52, 0.3);
+}
+.art-alert .mini-card:has(.mini-price.met) .mini-meter i {
+  background: linear-gradient(90deg, #2c8b4e, #146c34);
+}
+/* Off the panel's corner and onto the rail's end, where a bell in a shop hangs. */
+.art-alert .art-bell { top: -2px; right: 2px; color: var(--brass); opacity: 0.85; }
+
+/* ── 3. The notes are slips ──────────────────────────────────────────────────
+   Torn off and stuck in. Three things make it read as paper rather than as a
+   card with a jagged border: the tear is IRREGULAR (a hand-drawn edge tiled
+   horizontally, not a row of identical teeth), the slips sit at slightly
+   different angles because nothing pasted by hand is square, and the shadow is
+   a CONTACT shadow — a slip lies on the page, it does not float above it.
+
+   The tear is a mask, so the box-shadow would be masked away with it. Hence a
+   `filter: drop-shadow` on the slip and the mask on its ::before: filter runs
+   over the element's rendered result, so the shadow follows the torn alpha
+   instead of being clipped to a rectangle that is no longer there. */
+.art.art-thread {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 6px 2px 14px;
+}
+.art-thread .mini-comment {
+  position: relative;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 14px 16px 22px;
+  color: #1d2634;
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.09))
+    drop-shadow(0 6px 11px rgba(0, 0, 0, 0.07));
+}
+.art-thread .mini-comment::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  /* Slip stock: cooler and plainer than the tag's card, because a note is
+     written on whatever was to hand. */
+  background: linear-gradient(168deg, #fffefb 0%, #faf7f0 62%, #f2eee4 100%);
+  -webkit-mask-image: linear-gradient(#000 0 0), var(--tear);
+  mask-image: linear-gradient(#000 0 0), var(--tear);
+  -webkit-mask-size: 100% calc(100% - 9px), 260px 10px;
+  mask-size: 100% calc(100% - 9px), 260px 10px;
+  -webkit-mask-position: left top, left bottom;
+  mask-position: left top, left bottom;
+  -webkit-mask-repeat: no-repeat, repeat-x;
+  mask-repeat: no-repeat, repeat-x;
+  /* Union of the two layers. WebKit's prefixed property takes the Porter-Duff
+     names for the same operation. */
+  -webkit-mask-composite: source-over;
+  mask-composite: add;
+}
+/* Pasted by hand: two different angles, neither of them a round number, and
+   both under a degree — a slip you can measure the tilt of reads as a design
+   choice rather than as a slip. */
+.art-thread .mini-comment:nth-of-type(1) { transform: rotate(-0.5deg); }
+.art-thread .mini-comment:nth-of-type(2) { transform: rotate(0.75deg); }
+/* They overlap, because a reply stuck on afterwards goes over the first. */
+.art-thread .mini-comment + .mini-comment { margin-top: -6px; z-index: 1; }
+.art-thread .mini-nested { margin-left: clamp(16px, 5%, 38px); }
+.art-thread .mini-comment p { color: #3a4557; }
+.art-thread .mini-comment b { color: #16233a; }
+/* 4.62:1 on the slip's darkest stop. The panel's --muted was picked against the
+   page ground, and the slip is a different, warmer surface. */
+.art-thread .mini-when { color: #6a6154; }
+.art-thread .mini-vote { color: #146c34; }
+/* One affirmative green across the ledger material, not two. This mark had its
+   own lighter one and measured 3.69:1 on the slip's darkest stop — clear of the
+   3:1 a graphic owes, but the tick is a 1.7px stroke sitting beside 13.57:1 body
+   ink, so "passes" and "reads" were not the same answer. Same value as the vote
+   arrow and the tag badge: 5.62:1 here, 5.2:1 on the tag's darker stock. */
+.art-thread .mini-verified { color: #146c34; }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────────
    Everything animated above resolves to its finished state. The page must be
-   COMPLETE without motion, not merely still: `.reveal` in particular starts at
-   opacity 0, so failing to reset it here would blank half the page. */
+   COMPLETE without motion, not merely still — which for the pinned record means
+   giving up the pin entirely: a 420vh track that no longer moves anything is
+   four screens of nothing. The stage becomes an ordinary block, and main.js
+   draws the record finished. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
-  .reveal { opacity: 1; transform: none; }
+  /* The `*` rule above only shortens an animation, it does not undo it — it
+     forces one iteration at 0.001ms, so a tag LANDS on its 100% keyframe and
+     hangs at a permanent 0.62deg lean, which reads as a mistake rather than as
+     stillness. The resting pose has to be written down, because the keyframes'
+     last frame is not it (same reason `.tag-card` has an explicit reset below).
+     `!important` because the sway is set on `.art-alert .mini-card:nth-child(1)`
+     — (0,3,0) — and this reset is (0,2,0), so source order alone loses. Matching
+     the specificity instead would leave the same trap for whoever adds a third
+     tag; the `*` rule directly above is `!important` for the same reason. */
+  .art-alert .mini-card { animation: none !important; transform: none !important; }
+  .reel-track { height: auto; }
+  /* `display` is the one property the release list below cannot reach, and
+     leaving it out undid the entire block silently. The stage is a centred flex
+     ROW, so its three children went on being flex ITEMS however thoroughly each
+     was released from `absolute` — heading and panel, strip, and folio line
+     stood side by side in three content-width columns at three different
+     heights. It cascades too: `.foot-rail` is `flex: 1` inside a foot that was
+     itself a content-sized flex item, so the rail contributed 0 to its parent's
+     max-content width and resolved to 0px — `--rec: 1` filling a rail that was
+     not there. Everything else here was already correct and none of it could be
+     seen. */
+  .reel-stage { position: static; display: block; height: auto; overflow: visible; padding-block: var(--gap-section); }
+  /* The rail measures a scrub that no longer exists. With the stage unpinned it
+     would also lose its containing block and land at the top of the track,
+     drawing a full-width green line across nothing. */
+  .reel-stage::before, .reel-stage::after { display: none; }
+  /* With no scrub there is no strip: every layer comes out of its absolute band
+     and stacks in normal flow, at the natural width. `--travel: 0` is not
+     enough on its own — the layers would still be positioned out of the page —
+     but it IS what makes `layoutReel` fall back to ordinary chart padding
+     instead of dividing a playhead offset by a travel distance of nothing. */
+  .reel-stage { --travel: 0px; --note-lag: 0; }
+  .reel-fixed,
+  .reel-strip,
+  .reel-notes,
+  .reel-leaf,
+  .reel-scale,
+  .beats,
+  .reel-foot,
+  .reel-alert {
+    position: static;
+    inset: auto;
+    width: auto;
+    height: auto;
+    transform: none;
+  }
+  /* The strip is the only one of the three that is not a `.wrap`, so in ordinary
+     flow it would run full-bleed while the heading above it and the folio line
+     below it stayed inside the measure — the chart wider than the column that
+     explains it. Give it the same metrics rather than making it a `.wrap` in the
+     markup, which would drag the pinned layout's containing block with it. */
+  .reel-strip { max-width: var(--measure); margin-inline: auto; padding-inline: var(--pad-x); }
+  /* The folio line survives — the span it states is a fact about the record, not
+     about the scrub — but its rail is now measuring a finished thing, which is
+     exactly what `--rec: 1` makes it say. It has to be released from `absolute`
+     with the rest or it would hang off `.reel-track` at the bottom of a section
+     that is no longer pinned to anything. */
+  .reel-foot { margin-top: 26px; opacity: 1; }
+  .foot-nib { display: none; }
+  .reel-fixed { display: block; }
+  .reel-scale, .reel-axis { display: none; }
+  .reel-panel { width: 100%; margin-top: 18px; }
+  .reel-leaf { display: block; width: 100%; height: 220px; margin-top: 20px; }
+  /* The stem and ring hang off a rail that is no longer there. */
+  .reel-alert::before, .reel-alert::after { display: none; }
+  /* `margin-left` is reset HERE and not in the release list above, because the
+     tag is the only one of those elements that centres itself with a negative
+     margin — `.reel-fixed` and `.reel-foot` are `.wrap`s, whose `margin: 0 auto`
+     a blanket `margin-left: 0` was quietly cancelling, leaving both flush left
+     of a column the strip between them still centred. */
+  .reel-alert { width: 100%; margin: 16px 0 0; opacity: 1; --tilt: 0.6deg; }
+  /* The tilt is material, not motion, so it stays — but its origin was 30px
+     above the tag, where the ring used to be. Rotating about a point outside a
+     now-static block translates it sideways; re-centre the origin and the lean
+     is a lean again. (0,2,0) to match `.reel-alert.on`, which is what writes it;
+     a bare `.reel-alert` here would lose to that no matter where it sat.) */
+  .reel-alert.on { transform: rotate(var(--tilt)); transform-origin: 50% 50%; }
+  /* Only the last beat is the true one once the story cannot play — and the
+     others have to be REMOVED, not hidden. `opacity: 0` on a static element
+     still occupies its line box, so the rail rendered the final beat under
+     180px of hole where the other five were standing invisibly. `display` also
+     sidesteps the specificity problem: `.beat.on`, which the scrub writes, is
+     (0,2,0) and outranks a bare `.beat` rule wherever it sits in the file. */
+  /* The merged band is an accommodation for a composition that does not exist
+     here: in ordinary flow the heading and the marginalia have their own rows
+     again. It has to be undone explicitly because `--p` is pinned at 1, which
+     resolves the handover to "title fully gone" — the section would lose its
+     own heading on any short phone with reduced motion on. */
+  .reel-head .h-section { min-height: 0; opacity: 1; transform: none; }
+  .beats { opacity: 1; }
+  .beat { position: static; left: auto; width: auto; }
+  .beat:not(:last-child) { display: none; }
+  .beats .beat:last-child { opacity: 1; transform: none; }
+  .beats { margin-top: 20px; }
+  .reel-hint { display: none; }
+  .reel-panel .chip { max-width: 340px; margin-right: 6px; padding-inline: 10px; opacity: 1; border-color: var(--hairline); }
+  .chip-age { max-width: 180px; opacity: 1; }
   .nav-brand .brand-flit { display: none; }
   .nav-brand .nav-dot { transform: scale(1); }
+  .nav-perch { transform: none; }
+  /* The scheduler already refuses to add these classes while the preference is
+     set, so this is the belt to that braces — but it has to be `!important` to
+     be worth writing at all: `.nav-brand.hop .nav-dot` is (0,3,0) against the
+     reset directly above at (0,2,0), and an animation overrides the cascade
+     regardless. Every set here ends on its resting pose, so the `*` rule's
+     0.001ms would land correctly anyway; the tags do not, which is why they
+     needed the same treatment. */
+  .nav-brand.shift .nav-dot,
+  .nav-brand.peck .nav-dot,
+  .nav-brand.hop .nav-dot,
+  .nav-brand.peck .nav-word i:first-child { animation: none !important; }
+  .art-pulse { display: none; }
   /* The meters are deliberately NOT pinned here. Their widths come from
-     `data-meter` via the reveal observer, which runs regardless of motion
-     preference, so killing the transition above is enough — and an earlier
-     `width: var(--meter, 84%) !important` here actively broke them, because
-     `!important` outranks the inline width JS had just set correctly and every
-     meter collapsed to the same wrong fallback. */
+     `data-meter` via JS, which runs regardless of motion preference, so killing
+     the transition above is enough — and an earlier `width: var(--meter, 84%)
+     !important` here actively broke them, because `!important` outranks the
+     inline width JS had just set correctly and every meter collapsed to the
+     same wrong fallback. */
 }

@@ -20,39 +20,56 @@
     <meta name="twitter:image" content="https://jackdaws.app/og.png" />
     <meta name="theme-color" content="#fcfbf9" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- No fonts.googleapis.com. Instrument Serif is served from this origin —
+         a site that promises it does not report you to anyone cannot open every
+         page load by telling Google you arrived. See site/vendor/NOTICE.md.
+         Preloaded because the @font-face lives inside styles.css, so the browser
+         cannot discover it until the stylesheet has parsed. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="vendor/fonts/instrument-serif-latin.woff2"
+      crossorigin
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <a class="skip" href="#how">Skip to content</a>
+    <a class="skip" href="#record">Skip to content</a>
 
     <!-- ══ Nav ══════════════════════════════════════════════════════════════
          A floating pill. The brand mark is a cycle rather than a logo: the dot
          becomes the bird, flies the width of the word, and lands back as the
-         dot — and the letters duck as it passes over them. -->
+         dot — and the letters duck as it passes over them. It has states: it
+         looks toward your cursor, and hovering it launches the flight now
+         rather than making you wait for the idle cycle. -->
     <div class="nav-rail">
       <nav class="nav" id="nav">
-        <a class="nav-brand" href="#top" aria-label="Jackdaw, back to top">
-          <span class="nav-dot"></span>
-          <svg class="brand-flit" viewBox="8 2 76 96" fill="currentColor" aria-hidden="true">
+        <a class="nav-brand" id="navBrand" href="#top" aria-label="Jackdaw, back to top">
+          <!-- The lean toward the cursor lives on the wrapper, not the dot: the
+               dot's squash-and-stretch is a running animation, and a running
+               animation overrides the cascade. Two transforms, two elements. -->
+          <span class="nav-perch" id="navPerch"><span class="nav-dot"></span></span>
+          <!-- Overhead flying silhouette, drawn to the measured proportion
+               rather than by eye: a jackdaw's wingspan is ~2x its body length,
+               and the two blades carry ~3.5x the body's area. The first version
+               had a long heavy lozenge and stubby swept wings — a ratio of 1.2
+               — which at this size rendered as a dark smudge with spikes. Wings
+               are drawn first so the body overlaps their roots. -->
+          <svg class="brand-flit" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true">
             <g class="brand-flit-wings">
               <path
-                d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"
+                d="M63 45.6 C61.5 34 56.5 19.5 49.5 6.5 L46.2 15.2 L42.8 10.2 L41.2 19.4 L37.4 16.4 L36.8 25.8 L32.8 24.2 L34 33.2 C38.4 38.4 43 42.4 46 45.6 Z"
               />
               <path
-                d="M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"
+                d="M63 54.4 C61.5 66 56.5 80.5 49.5 93.5 L46.2 84.8 L42.8 89.8 L41.2 80.6 L37.4 83.6 L36.8 74.2 L32.8 75.8 L34 66.8 C38.4 61.6 43 57.6 46 54.4 Z"
               />
             </g>
             <path
-              d="M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"
+              d="M38 47 L23 41.4 L25.4 45.8 L20.6 44.8 L23.2 48.8 L19.2 50 L23.2 51.2 L20.6 55.2 L25.4 54.2 L23 58.6 L38 53 Z"
             />
             <path
-              d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"
+              d="M79 50 C73.5 46.2 67 44.8 59 44.6 C51 44.4 43 45.6 37.5 47.2 L37.5 52.8 C43 54.4 51 55.6 59 55.4 C67 55.2 73.5 53.8 79 50 Z"
             />
           </svg>
           <span class="nav-word" aria-hidden="true"
@@ -60,12 +77,24 @@
             ><i style="--i: 4">d</i><i style="--i: 5">a</i><i style="--i: 6">w</i></span
           >
         </a>
-        <div class="nav-links">
-          <a href="#how">How it works</a>
-          <a href="#features">What you get</a>
-          <a href="#privacy">Privacy</a>
-          <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">Source</a>
+
+        <!-- The chrome reads the record. While the pinned section is on screen
+             the nav pill swaps its links for the date and price the scroll is
+             currently sitting on — the page's own instrument. -->
+        <div class="nav-mid">
+          <div class="nav-links">
+            <a href="#record">The record</a>
+            <a href="#features">What you get</a>
+            <a href="#privacy">Privacy</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">Source</a>
+          </div>
+          <div class="nav-readout" id="navReadout" aria-hidden="true">
+            <span class="nav-readout-when" id="navWhen">Jan 6</span>
+            <span class="nav-readout-rule"></span>
+            <span class="nav-readout-price num" id="navPrice">$129.99</span>
+          </div>
         </div>
+
         <a class="btn btn-primary nav-cta" href="#install">
           <span class="btn-label">Add to Chrome</span>
           <span class="btn-arrow" aria-hidden="true">→</span>
@@ -73,12 +102,29 @@
       </nav>
     </div>
 
-    <!-- ══ Hero ═════════════════════════════════════════════════════════════
-         The signature moment. The chart line is a wire and every price point is
-         a sighting that flies in and lands on it — the flock assembling the
-         record. The figures are the shape of a real tracked part. -->
-    <header class="hero" id="top">
-      <div class="hero-copy">
+    <!-- ══ Hero — the night title card ═══════════════════════════════════════
+         NOT a screenshot. The product interface is one scroll away, where it is
+         pinned and scrubbed and gets a real entrance; putting a static copy of
+         it up here would spend that reveal in the first second and leave the
+         opening frame saying nothing the page does not repeat better below.
+
+         What the frame says instead is the whole thesis in one image: a wire
+         strung across the dark that IS the price line — the same fourteen
+         readings the record plays out — with the flock arriving to become its
+         marks, and one shelf tag hanging off the far end at today's number.
+         Every figure on screen is computed from that series, so the picture
+         cannot drift from the story below it. -->
+    <header class="hero" id="top" data-ground="night">
+      <div class="hero-lamp" aria-hidden="true"></div>
+      <canvas class="hero-sky" id="heroSky" aria-hidden="true"></canvas>
+      <p class="sr">
+        An illustration: a price history drawn as a wire across a night sky,
+        with jackdaws arriving to land on it as its readings. The same record is
+        drawn as a chart further down the page.
+      </p>
+
+      <div class="hero-inner">
+        <p class="hero-eyebrow"><span>Micro Center price history</span></p>
         <h1 class="h-display">
           <span class="line" style="--l: 0"><span>Every price</span></span>
           <span class="line" style="--l: 1"><span>has a <em>history</em>.</span></span>
@@ -89,12 +135,12 @@
           whether today is actually a good day to drive over.
         </p>
         <div class="hero-actions">
-          <a class="btn btn-primary btn-lg" href="#install">
-            <span>Add to Chrome</span>
+          <a class="btn btn-primary btn-lg" href="#install" data-magnet="0.22">
+            <span data-magnet-label>Add to Chrome</span>
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
-          <a class="btn btn-ghost btn-lg" href="#how">
-            <span>See how it works</span>
+          <a class="btn btn-ghost btn-lg" href="#record" data-magnet="0.18">
+            <span data-magnet-label>Watch it fill</span>
           </a>
         </div>
         <p class="hero-note">
@@ -104,90 +150,221 @@
         </p>
       </div>
 
-      <div class="stage" id="stage">
-        <div class="panel" id="panel">
-          <div class="panel-head">
-            <span class="panel-dot" aria-hidden="true"></span>
-            <span class="panel-title">ASUS XG-C100C 10G Network Adapter</span>
-          </div>
-          <div class="panel-chips">
-            <span class="chip chip-good">All-time low</span>
-            <span class="chip">Advertised list: <span class="num">$129.99</span></span>
-            <span class="chip">Last seen: 6 at Duluth</span>
-          </div>
-          <canvas id="chart" class="panel-chart" aria-hidden="true"></canvas>
-          <p class="sr">
-            A price history chart. This part has ranged from $124.99 down to
-            $94.99 over the tracked period, and is currently at its lowest
-            recorded price.
-          </p>
-          <div class="panel-stats">
-            <div class="stat stat-lead"><b class="num">$94.99</b><span>Current</span></div>
-            <div class="stat"><b class="num">$109.99</b><span>Typical</span></div>
-            <div class="stat"><b class="num">$124.99</b><span>Highest seen</span></div>
-          </div>
-        </div>
-        <div class="stage-caption" id="stageCaption">
-          <span><span class="num" id="sightCount">0</span> sightings on this part</span>
-        </div>
+      <!-- The retail artifact, hanging off the record's newest reading. Its
+           position is not authored — main.js measures the wire at the tag's own
+           x and hands the y over, because the wire dips under the birds sitting
+           on it and a hardcoded offset would float or bite depending on where
+           the flock happened to land. -->
+      <div class="hero-tag" id="heroTag">
+        <span class="tag-hook" aria-hidden="true"></span>
+        <span class="tag-card">
+          <span class="tag-punch" aria-hidden="true"></span>
+          <span class="tag-eyebrow">Last seen</span>
+          <span class="tag-price num">$94.99</span>
+          <span class="tag-delta">
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 10.5 1.6 4h8.8Z" /></svg>
+            <span class="num">$35.00</span> since January
+          </span>
+          <span class="tag-meta">
+            ASUS XG-C100C &middot; Duluth &middot;
+            <!-- Hard space, and it earns its keep at every width EXCEPT the
+                 narrowest — which is the reverse of the way this reads. The line
+                 sets in two at every card size (208 down to the 168 phone
+                 floor); what changes is where the second one starts. Swapped for
+                 an ordinary space in a detached clone: at 174, 178, 190 and 208
+                 the count is pulled up onto line one and "readings" is stranded
+                 alone below it, and only at 168 is "63" itself too wide to
+                 follow. So the roomier the card, the worse the break — a count
+                 ending line one reads as part of the store name beside it, and a
+                 bare noun opening line two reads as a new field. -->
+            <!-- Measured in a clone appended to BODY, not to #heroTag: the tag
+                 hangs off a transformed, swaying parent, and a clone left inside
+                 it inherits the tilt. Every character then reports its own line
+                 top and the wrap cannot be read at all. -->
+            <span class="num" id="tagReads">0</span>&nbsp;readings
+          </span>
+          <span class="tag-code" aria-hidden="true"></span>
+          <span class="tag-sheen" aria-hidden="true"></span>
+        </span>
       </div>
+
+      <a class="scroll-cue" href="#record" aria-label="Scroll to the record">
+        <span class="scroll-cue-label">Keep going</span>
+        <span class="scroll-cue-rail" aria-hidden="true"><i></i></span>
+      </a>
     </header>
 
-    <!-- ══ How ══════════════════════════════════════════════════════════════ -->
-    <section class="section how" id="how">
-      <div class="wrap">
-        <p class="eyebrow">How it works</p>
-        <h2 class="h-section">The flock does the remembering</h2>
-        <div class="steps">
-          <article class="step reveal">
-            <span class="step-n">01</span>
-            <h3>You browse, as usual</h3>
-            <p>
-              Open a Micro Center product page, or a page of search results.
-              Jackdaw reads the prices already on your screen. Nothing is
-              scraped, nothing is crawled, and not one extra request is made.
-            </p>
-          </article>
-          <article class="step reveal d1">
-            <span class="step-n">02</span>
-            <h3>Everyone's visits add up</h3>
-            <p>
-              A product page adds one price point. A page of results adds every
-              card on it. Thousands of ordinary shopping trips become a record
-              none of us had alone.
-            </p>
-          </article>
-          <article class="step reveal d2">
-            <span class="step-n">03</span>
-            <h3>You see the whole story</h3>
-            <p>
-              A chart, a verdict, and notes from people who were just in the
-              aisle&mdash;right on the page, before you commit to the drive.
-            </p>
-          </article>
+    <!-- ══ The record — pinned, scrubbed by scroll ═══════════════════════════
+         THE PAGE'S ONE IDEA. Scroll is time: the vertical axis you are dragging
+         IS the price-history axis. Eight months of one real-shaped part play
+         out as you descend — shoppers arrive, the chart assembles, the "sale"
+         is exposed as eight weeks old, you name a price, and the flock catches
+         it. Scroll up and it rewinds, because a record is a thing you can read
+         in both directions.
+
+         Every mark is a reading and the counter counts the same marks. The
+         motion is the argument, not a coat of paint on one. -->
+    <section class="reel" id="record" data-ground="paper" aria-labelledby="recordHeading">
+      <div class="reel-track" id="reelTrack">
+        <div class="reel-stage" id="reelStage">
+          <!-- The price scale, built once from the same ticks the leaf is drawn
+               against. Behind the strip and outside it, because a horizontal
+               rule survives horizontal travel but its figure does not. -->
+          <div class="reel-scale" id="reelScale" aria-hidden="true"></div>
+
+          <!-- THE INSTRUMENT. Does not travel: it is your reading of where you
+               are, not a thing lying on the record. Everything in here is
+               rewritten every frame from the same `--p` the leaf is drawn from,
+               so the read-out and the ground under it cannot disagree. -->
+          <div class="wrap reel-fixed">
+            <div class="reel-head">
+              <p class="eyebrow">The record</p>
+              <h2 class="h-section" id="recordHeading">
+                A price nobody was<br />writing down
+              </h2>
+              <p class="reel-hint" id="reelHint" aria-hidden="true">
+                <span class="reel-hint-dot"></span> Scroll to advance &mdash; or drag the rail
+              </p>
+            </div>
+
+            <div class="panel reel-panel" id="reelPanel">
+              <div class="panel-head">
+                <span class="panel-dot" aria-hidden="true"></span>
+                <span class="panel-title">ASUS XG-C100C 10G Network Adapter</span>
+                <span class="panel-when num" id="reelWhen">Jan 6</span>
+              </div>
+              <div class="panel-chips">
+                <span class="chip chip-list" id="chipList"
+                  >Advertised list: <span class="num">$129.99</span
+                  ><!-- A NON-BREAKING space, and it has to be: the suffix is an
+                    inline-block (it reveals by max-width), which makes its
+                    leading space the first thing on its own first line box and
+                    therefore collapsible away entirely. A plain space here
+                    rendered "$129.99&middot; unchanged 62 days". --><span
+                    class="chip-age" id="chipAge">&nbsp;&middot; unchanged 62 days</span></span
+                >
+                <span class="chip chip-good chip-atl" id="chipAtl">All-time low</span>
+                <span class="chip chip-seen" id="chipSeen">Last seen: 6 at Duluth</span>
+              </div>
+              <div class="panel-stats">
+                <div class="stat stat-lead"><b class="num" id="reelNow">$129.99</b><span>Current</span></div>
+                <div class="stat"><b class="num" id="reelTypical">$129.99</b><span>Typical</span></div>
+                <div class="stat"><b class="num" id="reelCount">1</b><span>Sightings</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- THE TERRAIN. Eight months laid end to end, travelling left as you
+               descend, so the axis you are dragging IS the axis being drawn.
+               `--travel` is the one distance every layer in here is a fraction
+               of; nothing computes its own, which is what keeps the marginalia
+               over the reading it annotates. -->
+          <div class="reel-strip" id="reelStrip">
+            <!-- The leaf itself: no card, no frame. Price line, wash, sightings
+                 and month ticks are all drawn into it, so nothing it measures
+                 can drift from it. -->
+            <canvas id="reelChart" class="reel-leaf" aria-hidden="true"></canvas>
+
+            <!-- The time axis, in the same brass as the shelf-tag rail below. -->
+            <div class="reel-axis" aria-hidden="true"></div>
+
+            <!-- THE ANNOTATION PLANE. Marginalia pinned to the readings they are
+                 about, but travelling at a fraction of the leaf's rate: a
+                 sentence that slides the strip's full distance is a sentence
+                 nobody finishes. Parallax buys the connection without the drift
+                 — a beat crosses ~70px over its own life rather than ~260. -->
+            <div class="reel-notes" id="reelNotes">
+            <ol class="beats" id="beats">
+              <li class="beat" data-from="0" data-to="0.13">
+                <span>One shopper opens a product page. Jackdaw reads the number already on their screen and writes it down.</span>
+              </li>
+              <li class="beat" data-from="0.13" data-to="0.30">
+                <span>Then somebody else. Then a page of search results, which is every card on it at once &mdash; dozens of readings from one afternoon.</span>
+              </li>
+              <li class="beat" data-from="0.30" data-to="0.50">
+                <span>Nobody made a special trip. The shape appears anyway, because enough ordinary trips add up to one.</span>
+              </li>
+              <li class="beat" data-from="0.50" data-to="0.68">
+                <span>And the &ldquo;$129.99 list&rdquo; printed beside today's price? It hasn't moved in sixty-two days. That isn't a sale.</span>
+              </li>
+              <li class="beat" data-from="0.68" data-to="0.87">
+                <span>So you name the number you'd actually pay, close the tab, and get on with your life.</span>
+              </li>
+              <li class="beat" data-from="0.87" data-to="1.01">
+                <span>Somebody you'll never meet walks past it in an aisle in Ohio. Your browser tells you before they've left the store.</span>
+              </li>
+            </ol>
+
+              <!-- Hung from the brass rule at the moment you set it, and left
+                   there — so it travels away down the record the way a tag on a
+                   rail does. Same tag stock as the shelf tags further down. -->
+              <div class="reel-alert" id="reelAlert">
+                <div class="mini-card">
+                  <div class="mini-top">
+                    <span class="mini-name">Your alert</span>
+                    <span class="mini-badge" id="alertBadge">Watching</span>
+                  </div>
+                  <div class="mini-price num" id="alertPrice">$104.99</div>
+                  <div class="mini-meter"><i id="alertMeter"></i></div>
+                  <div class="mini-sub" id="alertSub">
+                    <span class="num">$9.99</span> above your target
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PAGE FURNITURE, and the one element that states the record's
+               EXTENT. The calendar cannot: it only ever shows the months
+               currently under the leaf, so from inside the scrub there is no
+               way to tell a record eight months long from one that never ends.
+               Instrument, not terrain — it does not travel — and it is driven
+               by `--rec` rather than `--p`, because the readings stop at
+               DRAW_SPAN while the scroll carries on to the flock catching it. A
+               rail that filled to the end on a record that stopped earlier
+               would be counting scroll and calling it readings. -->
+          <div class="wrap reel-foot" aria-hidden="true">
+            <span class="foot-span">Jan 6 <i>&rarr;</i> Aug 15</span>
+            <span class="foot-rail"><i class="foot-fill"></i><i class="foot-nib"></i></span>
+            <span class="foot-read">Reading <b class="num" id="footIndex">1</b> of <b class="num">14</b></span>
+          </div>
         </div>
       </div>
+
+      <p class="sr">
+        An illustration of one part's price history from January to August:
+        fourteen price readings, drawn from two hundred and fifty sightings,
+        falling from $129.99 to $94.99; an advertised list price of $129.99 that
+        did not change for sixty-two days; and a price alert set at $95.00 that
+        is met by the final reading.
+      </p>
     </section>
 
-    <!-- ══ Features ═════════════════════════════════════════════════════════ -->
-    <section class="section" id="features">
+    <!-- ══ Features ═════════════════════════════════════════════════════════
+         Each one is a live miniature with its own resting state, so the page
+         keeps breathing after the pinned section lets go. -->
+    <section class="section" id="features" data-ground="paper">
       <div class="wrap">
         <p class="eyebrow">What you get</p>
         <h2 class="h-section">Everything a price tag won't tell you</h2>
 
-        <div style="margin-top: 56px">
+        <div class="features">
           <div class="feature reveal">
             <div class="feature-copy">
               <span class="feature-tag">Price history</span>
               <h3>Every point is somebody's visit</h3>
               <p>
                 Not an estimate and not a scrape&mdash;a timestamped sighting by
-                a real shopper. Filter by store, and watch the amber line for
+                a real shopper. Filter by store, and watch the amber marks for
                 open-box prices, the ones that never make it into any ad.
               </p>
             </div>
             <div class="feature-art art art-chart">
               <canvas id="fchart" aria-hidden="true"></canvas>
+              <!-- The resting state: a slow ring off the all-time low. Its
+                   position comes from the canvas geometry, not a guess, so it
+                   stays on the point through every resize. -->
+              <i class="art-pulse" id="fpulse" aria-hidden="true"></i>
               <div class="art-legend">
                 <span><i style="background: #16a34a" aria-hidden="true"></i> New</span>
                 <span><i style="background: #d97706" aria-hidden="true"></i> Open box</span>
@@ -220,12 +397,20 @@
               <div class="mini-card">
                 <div class="mini-top">
                   <span class="mini-name">Corsair RM850x Power Supply</span>
-                  <span class="mini-badge" style="color: var(--muted); border-color: var(--hairline); background: #fff">Watching</span>
+                  <span class="mini-badge mini-badge-quiet">Watching</span>
                 </div>
                 <div class="mini-price num">$134.99</div>
                 <div class="mini-meter"><i data-meter="62"></i></div>
                 <div class="mini-sub"><span class="num">$15.00</span> above your target &middot; Duluth</div>
               </div>
+              <!-- The bell only rings when an alert is armed. Motion as state,
+                   which is the extension's own rule for its header icons. -->
+              <span class="art-bell" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5" />
+                  <path d="M13.7 19.5a2 2 0 0 1-3.4 0" />
+                </svg>
+              </span>
             </div>
           </div>
 
@@ -245,7 +430,7 @@
               <div class="mini-comment">
                 <span class="mini-vote">
                   <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 10 8H2z" fill="currentColor"/></svg>
-                  12
+                  <b data-count="12">12</b>
                 </span>
                 <div>
                   <p>
@@ -259,7 +444,7 @@
               <div class="mini-comment mini-nested">
                 <span class="mini-vote">
                   <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5 10 8H2z" fill="currentColor"/></svg>
-                  4
+                  <b data-count="4">4</b>
                 </span>
                 <div>
                   <p><b>DanFromDenver</b> Seconding this. Mine came with both brackets.</p>
@@ -272,15 +457,59 @@
       </div>
     </section>
 
-    <!-- ══ Privacy ══════════════════════════════════════════════════════════ -->
-    <section class="section privacy" id="privacy">
+    <!-- ══ How ══════════════════════════════════════════════════════════════
+         Three steps on one rule — the wire again, reused as structure, and this
+         time something stands on it. The rule draws itself left to right, and
+         the flock lands on the part that already exists: sparse at 01, gathering
+         through 02 where the copy says the visits add up, full by 03. -->
+    <section class="section how" id="how" data-ground="paper">
+      <div class="wrap">
+        <p class="eyebrow">How it works</p>
+        <h2 class="h-section">The flock does the remembering</h2>
+        <div class="steps">
+          <canvas class="how-wire" id="howWire" aria-hidden="true"></canvas>
+          <article class="step reveal">
+            <span class="step-n">01</span>
+            <h3>You browse, as usual</h3>
+            <p>
+              Open a Micro Center product page, or a page of search results.
+              Jackdaw reads the prices already on your screen. Nothing is
+              scraped, nothing is crawled, and not one extra request is made.
+            </p>
+          </article>
+          <article class="step reveal d1">
+            <span class="step-n">02</span>
+            <h3>Everyone's visits add up</h3>
+            <p>
+              A product page adds one price point. A page of results adds every
+              card on it. Thousands of ordinary shopping trips become a record
+              none of us had alone.
+            </p>
+          </article>
+          <article class="step reveal d2">
+            <span class="step-n">03</span>
+            <h3>You see the whole story</h3>
+            <p>
+              A chart, a verdict, and notes from people who were just in the
+              aisle&mdash;right on the page, before you commit to the drive.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ Privacy ══════════════════════════════════════════════════════════
+         The inversion, and the one section where the motion IS the argument:
+         the things we never take strike themselves through as you reach them,
+         and the four things we do keep write themselves on. -->
+    <section class="section privacy" id="privacy" data-ground="night">
       <div class="wrap privacy-grid">
-        <div>
+        <div class="privacy-copy">
           <p class="eyebrow">Built to know nothing about you</p>
-          <h2 class="h-section">No account. No tracking. No catch.</h2>
-          <p class="lede" style="margin-top: 18px">
-            A price tracker that watched you would be worth less than the prices
-            it tracked. So this one doesn't.
+          <h2 class="h-section">A tracker that watched you back<br />would be worth less than the prices.</h2>
+          <p class="lede" style="margin-top: 20px">
+            So this one doesn't. Not as a policy that could change&mdash;as a
+            shape the code is in, which you are welcome to go and read.
           </p>
           <div class="privacy-actions">
             <a class="btn btn-ghost" href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">
@@ -288,41 +517,58 @@
             </a>
           </div>
         </div>
-        <ul class="privacy-list">
-          <li>
-            <b>No sign-up.</b>
-            Every feature works anonymously. An optional account syncs alerts
-            across browsers and lets you claim a handle&mdash;nothing requires it.
-          </li>
-          <li>
-            <b>We never learn what you searched for.</b>
-            On a results page Jackdaw records the products that were displayed,
-            never the query that displayed them. The address of the page is not
-            sent at all.
-          </li>
-          <li>
-            <b>Nowhere but Micro Center.</b>
-            The extension runs on product, search, and category pages and is
-            inert everywhere else on the web.
-          </li>
-          <li>
-            <b>No ads, no data sales.</b>
-            Not now, not later. The licence says so and the source proves it.
-          </li>
-        </ul>
+
+        <div class="privacy-cols">
+          <div class="pcol pcol-never">
+            <p class="pcol-head">Never leaves your browser</p>
+            <ul class="strike-list">
+              <li class="strike"><span>The words you searched for</span></li>
+              <li class="strike"><span>The address of the page</span></li>
+              <li class="strike"><span>The filters you had on</span></li>
+              <li class="strike"><span>Anything outside Micro Center</span></li>
+              <li class="strike"><span>Your name</span></li>
+              <li class="strike"><span>A password &mdash; there isn't one</span></li>
+            </ul>
+          </div>
+          <div class="pcol pcol-keep">
+            <p class="pcol-head">All that's written down</p>
+            <ul class="keep-list">
+              <li><b>The product</b><span>Which item was on screen</span></li>
+              <li><b>The price</b><span>What it said, to the cent</span></li>
+              <li><b>The store</b><span>So open box and stock make sense</span></li>
+              <li><b>The moment</b><span>Because a price without a date is a rumour</span></li>
+            </ul>
+            <p class="pcol-note">
+              Tied to a random ID your browser made up, which you can throw away
+              at any time.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- ══ CTA ══════════════════════════════════════════════════════════════ -->
-    <section class="section cta" id="install">
+    <!-- ══ CTA ══════════════════════════════════════════════════════════════
+         The hero's wire returns, empty, and the flock arrives to fill it —
+         except for one perch, left open beside the button. "Join the flock" is
+         the label on that gap, and hovering or pressing the button is what
+         sends a bird to take it. The button is strung INTO the wire rather than
+         placed near it: it is the post the line is anchored to, which is why
+         nothing perches on it and why it is the only thing here that never
+         moves. -->
+    <section class="section cta" id="install" data-ground="night">
       <canvas class="cta-wire" id="ctaWire" aria-hidden="true"></canvas>
+      <p class="sr">
+        A wire strung across the dark with a flock of jackdaws settled along it,
+        and one empty perch beside the install button.
+      </p>
       <div class="wrap cta-inner">
+        <p class="eyebrow">One perch still open</p>
         <h2 class="h-display">Join the <em>flock</em></h2>
         <p class="cta-sub">
           One click, then shop exactly like you always did. The remembering
           happens on its own.
         </p>
-        <a class="btn btn-primary btn-lg" href="#" id="installBtn">
+        <a class="btn btn-primary btn-lg" href="#" id="installBtn" data-magnet="0.2" data-magnet-label>
           <span>Add to Chrome</span>
           <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
@@ -337,7 +583,7 @@
       <div class="wrap">
         <div class="footer-inner">
           <span class="footer-brand">
-            <span class="nav-dot" aria-hidden="true"></span>
+            <span class="nav-dot footer-dot" aria-hidden="true"></span>
             Jackdaw
           </span>
           <nav class="footer-links" aria-label="Footer">
@@ -348,12 +594,21 @@
         </div>
         <p class="footer-fine">
           Not affiliated with, endorsed by, or sponsored by Micro Center.
-          Product names and trademarks belong to their owners. Prices shown on
-          this page are illustrative of the interface, not a live quote.
+          Product names and trademarks belong to their owners. Prices and
+          figures shown on this page are illustrative of the interface, not a
+          live quote.
         </p>
       </div>
     </footer>
 
+    <!-- Vendored, not CDN-loaded: a <script src="cdn…"> tells a third party the
+         visitor's IP before the page has drawn. See site/vendor/NOTICE.md.
+         Order matters — ScrollTrigger registers against the gsap global, and
+         motion.js must own the scroll before main.js reads it. -->
+    <script src="vendor/gsap.min.js"></script>
+    <script src="vendor/ScrollTrigger.min.js"></script>
+    <script src="vendor/lenis.min.js"></script>
+    <script src="motion.js"></script>
     <script src="main.js"></script>
     <script src="favicon.js"></script>
   </body>
