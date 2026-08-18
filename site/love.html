@@ -159,32 +159,50 @@
           </section>
 
           <!-- ══ The signature ═══════════════════════════════════════════════
-               One stroke that draws itself and lets a bird go at the lift. The
-               silhouette is the one brand.js flies in the nav, so the letter is
-               signed by the mark at the top of the page. -->
+               "Jackdaws", hand-lettered stroke by stroke, and the S's exit
+               thins into a trail that releases the bird — the owner's ask
+               (2026-08-17): the signature says Jackdaws and the s trails off
+               into the bird. The silhouette is the one brand.js flies in the
+               nav, so the letter is signed by the mark at the top of the
+               page. -->
           <section class="doc-sec letter-sign">
             <p>With respect and thanks,</p>
-            <svg class="sign-mark" viewBox="0 0 300 75" aria-hidden="true">
-              <!-- Not a sine wave, which the first attempt was: a flourish that
-                   is symmetrical about its own middle reads as a graphic, and
-                   the thing a written mark has that a graphic does not is an
-                   accelerating exit. The amplitude grows left to right and the
-                   last segment climbs 21 units in 34 — the pen leaving the
-                   paper, which is the moment the bird is released on. -->
-              <path
-                class="sign-stroke"
-                pathLength="1"
-                d="M6 54 C26 54 34 48 52 46 C74 44 86 60 108 60 C132 60 142 30 168 30 C192 30 200 54 222 51 C236 49 246 42 256 30"
-              />
-              <!-- The positioning is an ATTRIBUTE on a group the CSS never
-                   touches, because a CSS `transform` replaces the attribute
-                   outright rather than composing with it. -->
-              <g transform="translate(255 3) scale(0.34)">
-                <g class="sign-bird">
-                  <path d="M63 45.6 C61.5 34 56.5 19.5 49.5 6.5 L46.2 15.2 L42.8 10.2 L41.2 19.4 L37.4 16.4 L36.8 25.8 L32.8 24.2 L34 33.2 C38.4 38.4 43 42.4 46 45.6 Z" />
-                  <path d="M63 54.4 C61.5 66 56.5 80.5 49.5 93.5 L46.2 84.8 L42.8 89.8 L41.2 80.6 L37.4 83.6 L36.8 74.2 L32.8 75.8 L34 66.8 C38.4 61.6 43 57.6 46 54.4 Z" />
-                  <path d="M38 47 L23 41.4 L25.4 45.8 L20.6 44.8 L23.2 48.8 L19.2 50 L23.2 51.2 L20.6 55.2 L25.4 54.2 L23 58.6 L38 53 Z" />
-                  <path d="M79 50 C73.5 46.2 67 44.8 59 44.6 C51 44.4 43 45.6 37.5 47.2 L37.5 52.8 C43 54.4 51 55.6 59 55.4 C67 55.2 73.5 53.8 79 50 Z" />
+            <svg class="sign-mark" viewBox="0 -22 440 150" aria-hidden="true">
+              <!-- "Jackdaws", written. Drawn against a Homemade Apple underlay
+                   rather than from memory (CONVENTIONS.md's reference rule),
+                   authored stroke by stroke and judged at 3x zoom until every
+                   letter survived reading. Seven paths, one per pen-down: J,
+                   ackd, aws (the w ends on a small rising flick and the pen
+                   lifts), a printed swash S whose bottom bowl unwinds into the
+                   tail, and three taper segments that thin 2.4 - 1.7 - 1.1 -
+                   0.6 as the pen leaves the paper. The final S is PRINTED, not
+                   cursive, deliberately: five rounds of Palmer-style loops
+                   read as "e" or "z"; the letterform itself is the only
+                   construction that stays legible at signature speed.
+                   The skew is the hand's slant (7 degrees), an ATTRIBUTE on
+                   the group because a CSS transform would replace it. -->
+              <g transform="matrix(1 0 -0.1228 1 12 0)">
+                <path class="sign-stroke st-j" pathLength="1"
+                  d="M 20 62 C 27 44 38 27 50 25 C 57 24 59 31 58 40 C 56 60 53 84 48 102 C 45 114 34 118 28 111 C 24 105 27 96 34 90 C 42 84 52 82 60 78" />
+                <path class="sign-stroke st-ackd" pathLength="1"
+                  d="M 60 78 C 68 68 78 58 86 57 C 76 55 66 62 65 72 C 64 82 70 89 78 88 C 84 87 87 78 88 62 C 88 74 89 84 92 87 C 96 86 100 80 104 74 C 110 62 118 56 124 57 C 116 54 109 60 108 71 C 108 82 114 89 121 88 C 126 87 130 82 133 77 C 140 68 148 48 152 34 C 154 26 159 22 160 27 C 160 36 156 62 152 86 C 154 70 160 57 166 56 C 171 56 171 62 166 63 C 164 66 172 80 181 87 C 186 89 191 83 193 77 C 199 66 208 58 214 57 C 205 55 197 62 196 72 C 195 82 201 89 209 88 C 214 87 216 70 218 32 C 218 52 217 72 218 84 C 220 88 226 84 230 78" />
+                <path class="sign-stroke st-aws" pathLength="1"
+                  d="M 230 78 C 236 68 246 58 254 57 C 244 55 236 62 235 72 C 234 82 240 89 248 88 C 254 87 256 78 256 62 C 256 74 258 84 261 87 C 263 88 265 85 267 79 C 270 66 272 58 274 56 C 275 68 276 80 279 86 C 282 90 285 82 286 70 C 286.5 62 287 58 288 57 C 289 68 290 80 293 86 C 295 89.5 297 88 299 82 C 300 79 301 76 303 74" />
+                <path class="sign-stroke st-s" pathLength="1"
+                  d="M 318 47 C 314 41 305 42 303 49 C 302 55 307 59 311 63 C 316 67 318 73 315 79 C 312 86 303 89 299 85 C 295 81 294 89 300 92 C 308 96 322 90 332 80 C 342 70 348 61 354 52" />
+                <path class="sign-stroke st-t1" pathLength="1" d="M 354 52 C 360 45 365 38 370 31" />
+                <path class="sign-stroke st-t2" pathLength="1" d="M 370 31 C 373 26 376 22 378 19" />
+                <path class="sign-stroke st-t3" pathLength="1" d="M 378 19 C 380 16 381.5 14 383 12" />
+                <!-- The bird leaves at the trail tip, inside the skew so it
+                     shares the word's lean. Positioning stays an ATTRIBUTE on
+                     a group the CSS never touches. -->
+                <g transform="translate(376.45 -16.5) scale(0.45)">
+                  <g class="sign-bird">
+                    <path d="M63 45.6 C61.5 34 56.5 19.5 49.5 6.5 L46.2 15.2 L42.8 10.2 L41.2 19.4 L37.4 16.4 L36.8 25.8 L32.8 24.2 L34 33.2 C38.4 38.4 43 42.4 46 45.6 Z" />
+                    <path d="M63 54.4 C61.5 66 56.5 80.5 49.5 93.5 L46.2 84.8 L42.8 89.8 L41.2 80.6 L37.4 83.6 L36.8 74.2 L32.8 75.8 L34 66.8 C38.4 61.6 43 57.6 46 54.4 Z" />
+                    <path d="M38 47 L23 41.4 L25.4 45.8 L20.6 44.8 L23.2 48.8 L19.2 50 L23.2 51.2 L20.6 55.2 L25.4 54.2 L23 58.6 L38 53 Z" />
+                    <path d="M79 50 C73.5 46.2 67 44.8 59 44.6 C51 44.4 43 45.6 37.5 47.2 L37.5 52.8 C43 54.4 51 55.6 59 55.4 C67 55.2 73.5 53.8 79 50 Z" />
+                  </g>
                 </g>
               </g>
             </svg>

@@ -107,6 +107,16 @@
 
   /* The backstop. Anything still hidden after this was not going to be revealed
      by scrolling either — an observer that silently never fires would otherwise
-     take the document with it. */
-  setTimeout(showAll, 2500);
+     take the document with it. The SIGNATURE is exempt: its draw-on is the
+     letter's finale and the backstop was completing it off-screen at t=2.5s,
+     which for any reader slower than a skim meant arriving at a signature that
+     had already signed itself invisibly. It can afford to trust the observer
+     because it is the one section whose absence is guarded four other ways —
+     the no-JS base state is drawn, reduced motion forces it drawn, print
+     forces it drawn, and a missing IntersectionObserver reveals it up top. */
+  setTimeout(function () {
+    for (var i = 0; i < secs.length; i++) {
+      if (!secs[i].classList.contains("letter-sign")) secs[i].classList.add("in");
+    }
+  }, 2500);
 })();

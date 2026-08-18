@@ -11,6 +11,7 @@
   --jd-hairline: #e6e4e0;
   --jd-paper: #fcfbf9;
   --jd-notice-text: #646b78;
+  --wel-love: #b4432c;
 }
 body.dark {
   --jd-ink: #e6eaf2;
@@ -19,6 +20,7 @@ body.dark {
   --jd-hairline: #253049;
   --jd-paper: #0f1726;
   --jd-notice-text: var(--jd-muted);
+  --wel-love: #d9634a; /* the site's night value: same hue, lifted for the dark */
 }
 
 * { box-sizing: border-box; }
@@ -175,7 +177,48 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
 }
 .wel-foot a { color: var(--jd-muted); text-decoration: underline; text-underline-offset: 2px; }
 .wel-foot a:hover { color: var(--jd-ink); }
-.wel-foot-sep { margin: 0 6px; }
+.wel-foot-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+.wel-foot-love { display: inline-flex; align-items: center; gap: 7px; }
+.wel-foot-fine { margin: 12px 0 0; }
+
+/* The site footer's heart, ported. Stroke width is in SCREEN pixels
+   (non-scaling-stroke takes it out of the coordinate system), overflow is
+   visible because the ripples leave the box by design, and fill-box keeps
+   all three copies scaling about the heart's own centre. The core is the
+   love red on paper and white on dark — the site's night footer exactly. */
+.wel-heart {
+  --wel-heart-stroke: 1.5;
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.wel-heart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.wel-heart path { transform-box: fill-box; transform-origin: center; }
+.wel-heart-core { fill: var(--wel-love); }
+body.dark .wel-heart-core { fill: #fff; }
+.wel-heart-ring {
+  fill: none;
+  stroke: var(--wel-love);
+  stroke-width: var(--wel-heart-stroke);
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+}
+/* Hover cannot use transform — the running beat would defeat it — so the
+   pointer gets stroke-width and filter, which the keyframes never touch. */
+@media (hover: hover) and (pointer: fine) {
+  .wel-foot-love:hover .wel-heart-ring { stroke-width: calc(var(--wel-heart-stroke) + 0.6); }
+  .wel-foot-love:hover .wel-heart-core {
+    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--wel-love) 75%, transparent));
+  }
+}
 
 /* ---------- Entrance ---------- */
 /* The arrival, in the banner's language: the bird flies in from off-left,
@@ -234,6 +277,22 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
   .wel-consent-note { animation: wel-up 0.45s var(--ease-out) 4.11s backwards; }
 
   .wel-foot { animation: wel-in 0.5s var(--ease-out) 4.3s backwards; }
+
+  /* The heart beats — an idle loop, so joining it mid-cycle after the
+     footer's entrance is natural, not a missed reveal. */
+  .wel-heart-core { animation: wel-heart-beat 4.4s var(--ease-out) infinite; }
+  .wel-heart-ring-a { animation: wel-heart-ripple 4.4s var(--ease-out) infinite; }
+  .wel-heart-ring-b { animation: wel-heart-ripple 4.4s var(--ease-out) 0.26s infinite; }
+  @keyframes wel-heart-beat {
+    0%, 24%, 100% { transform: scale(1); }
+    5%            { transform: scale(1.16); }
+    11%           { transform: scale(1.02); }
+    15%           { transform: scale(1.09); }
+  }
+  @keyframes wel-heart-ripple {
+    0%        { transform: scale(1); opacity: 0.55; }
+    36%, 100% { transform: scale(2.6); opacity: 0; }
+  }
 
   /* ---------- Idle repertoire ---------- */
   /* After the arrival, welcome.js marks the scene settled (.settled on the

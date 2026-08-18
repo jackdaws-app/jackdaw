@@ -102,49 +102,90 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-/* The salutation is set in the display face because a letter's opening line is
-   the one string in it that is written rather than typed. `line-height` stays
-   on the pitch, so a 26px serif still lands on the rule the 17px sans does. */
-.letter-hail {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-weight: 400;
-  font-size: 26px;
-  line-height: var(--ledger-pitch);
-  letter-spacing: -0.012em;
+
+
+/* ── The hands (CHOSEN, 2026-08-18) ───────────────────────────────────────────
+   Two hands, picked by the owner from the seven-face audition that briefly set
+   each stretch of the letter in a different face. CAVEAT writes the letter —
+   salutation, body, postscript — named as "the font of the first paragraph";
+   LA BELLE AURORE writes the date, named as "the font that the date is set
+   to". A letter and its dateline reading as two acts of writing is why both
+   stay. The five unchosen faces are gone — files, @font-face blocks and
+   licence rows alike (vendor/NOTICE.md records the pick). The typed strings
+   stay typed on purpose: the eyebrows are the ledger's furniture, and
+   .sign-name is the typewritten name under a signature.
+
+   Both faces are vendored like every other font on the site (latin subset,
+   self-hosted, never a CDN — vendor/NOTICE.md says why that is a privacy
+   decision, not a build one). Sizes are tuned to the optical size of the type
+   they replaced (24px Caveat ≈ the 17px sans; 19px La Belle Aurore ≈ the
+   date's 13.5px), and `line-height` is inherited — the ledger pitch — so
+   every line sits ON the ruling. Handwriting whose descenders cross a rule is
+   what written-on ledger paper looks like; that is the charm, not a bug. */
+@font-face {
+  font-family: "Caveat";
+  src: url("vendor/fonts/caveat-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
 }
+@font-face {
+  font-family: "La Belle Aurore";
+  src: url("vendor/fonts/la-belle-aurore-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.letter-date { font-family: "La Belle Aurore", cursive; font-size: 19px; }
+.letter-body > p { font-family: "Caveat", cursive; font-size: 24px; }
+/* A letter's opening line is louder than its prose — one size step up, same
+   hand. `line-height` holds the pitch, so the 30px hail lands on the same
+   rule the 24px body does. */
+.letter-body > p.letter-hail { font-size: 30px; line-height: var(--ledger-pitch); }
+/* The valediction is the letter's closing line — same hand as the prose. The
+   .sign-name below it stays typed on purpose: it is the typewritten name under
+   a signature, not more handwriting. */
+.letter-sign > p:not(.sign-name),
+.letter-ps p:not(.eyebrow), .ps-list { font-family: "Caveat", cursive; font-size: 24px; }
 
 /* ── The signature ───────────────────────────────────────────────────────────
-   ONE CONTINUOUS STROKE THAT RELEASES A BIRD, and what it is not is a
-   hand-lettered "Jackdaw". CONVENTIONS.md's rule is to draw from references
-   rather than from memory, and a script signature drawn from memory is a
-   forgery of handwriting nobody has — it would read as a font pretending to be
-   a hand, which is the one thing a signature cannot be. A flourish is honest:
-   it is a mark, it claims to be nothing else, and the typed name sits under it
-   the way it does on a real letter.
+   "JACKDAWS", WRITTEN, AND THE S LETS A BIRD GO. This section used to argue
+   that a hand-lettered signature is a forgery of handwriting nobody has, and
+   that a flourish was the honest mark. The owner overruled the flourish on
+   2026-08-17 — the letter should be signed with the name — and the objection
+   was answered the way CONVENTIONS.md answers everything: the word was drawn
+   AGAINST A REFERENCE, not from memory. Every stroke was authored over a
+   Homemade Apple underlay, rendered, zoomed, and re-cut until each letter
+   survived being read cold (the final s took thirteen constructions; the
+   loops all read as "e" or "z", and the printed swash-S is what stayed
+   legible). What ships is a drawing of writing that was actually judged as
+   writing, which is the difference between a signature and a font.
 
-   The stroke draws left to right, lifts at the end, and the lift is where the
-   bird leaves — the project's continuity rule (one thing becomes another; the
-   pen's exit velocity is the bird's entry velocity). It is the same silhouette
-   `brand.js` flies in the nav, so the letter is signed by the mark at the top
-   of every page.
+   Seven strokes, drawn in pen order with pen-lift gaps in the delays. The
+   trail thins over three segments as the pen leaves the paper, and the lift
+   is where the bird goes — the project's continuity rule (one thing becomes
+   another; the pen's exit velocity is the bird's entry velocity). It is the
+   same silhouette `brand.js` flies in the nav, so the letter is signed by the
+   mark at the top of every page.
 
-   `pathLength="1"` NORMALISES THE GEOMETRY so the dash animation needs no
-   measurement — the browser reports the path as one unit long whatever its
-   actual length, which means the offset is a fraction and JavaScript never has
-   to call `getTotalLength()`. Edit the `d` and the timing is unchanged. */
+   `pathLength="1"` NORMALISES EVERY GEOMETRY so the dash choreography needs
+   no measurement — each stroke is one unit long whatever its actual length,
+   the offset is a fraction, and JavaScript never calls `getTotalLength()`.
+   Edit a `d` and only the felt pen speed changes. */
 .letter-sign { text-align: left; }
 .sign-mark {
   display: block;
-  /* 240 × 60 is two pitches tall exactly (the viewBox is 300 × 75, so the mark
-     renders at 0.8), which keeps the typed name below it on the rules. Below
-     240px of measure the height goes off-grid, which happens on no viewport
-     this page has — `.doc` is 280px wide at a 320px window. */
-  width: min(240px, 100%);
+  /* 352 x 120 renders the 440 x 150 viewBox at 0.8 exactly — the same scale
+     the flourish used — so the height is four ledger pitches and the typed
+     name below stays on the rules. Below 352px of measure the mark clamps to
+     100% and the grid gives way, which the flourish accepted too. */
+  width: min(352px, 100%);
   height: auto;
-  /* Negative left by the stroke's own inset: the path starts at x=6, which is
-     4.8px once rendered, and a signature that begins indented from the line
-     above it reads as misaligned rather than as written. */
-  margin: 2px 0 4px -5px;
+  /* Negative left by the ink's own inset: the J's entry sits at x = 23 user
+     units once the slant is applied, 18.4px at the 0.8 render — a signature
+     that begins indented from the line above it reads as misaligned rather
+     than as written. */
+  margin: 2px 0 4px -18px;
   overflow: visible;
 }
 .sign-stroke {
@@ -156,35 +197,53 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* The trail is the pen leaving: three short segments sharing endpoints, each
+   thinner than the last. Width is per-path because a stroke cannot taper. */
+.st-t1 { stroke-width: 1.7; }
+.st-t2 { stroke-width: 1.1; }
+.st-t3 { stroke-width: 0.6; }
 .sign-bird { fill: var(--ink); }
 .sign-name { font-weight: 650; }
 
-/* THE DRAWN STATE IS THE BASE STATE. Hiding the stroke in the base rule and
-   revealing it with a class is the version where a script that never runs
+/* THE DRAWN STATE IS THE BASE STATE. Hiding the strokes in the base rule and
+   revealing them with a class is the version where a script that never runs
    leaves an unsigned letter — the same failure `doc.css` guards the clauses
    against, and a signature is the one element on this page whose absence is
-   silent. So the hidden state is scoped to `html.reveal`, which only the inline
-   one-liner in <head> sets. */
+   silent. So the hidden state is scoped to `html.reveal`, which only the
+   inline one-liner in <head> sets.
+
+   The delays are the writing rhythm: each stroke starts where the previous
+   ends, with ~60ms pen-lift gaps and a 100ms lift before the S (the one
+   deliberate break in the word — a Palmer loop-s kept reading as "e", so the
+   pen lifts and prints the letterform). Strokes ease in-out like a hand;
+   the tapers ease IN only, because the exit accelerates. */
 html.reveal .sign-stroke {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  transition: stroke-dashoffset 1.45s var(--ease-out) 0.2s;
 }
+html.reveal .st-j    { transition: stroke-dashoffset 0.55s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.2s; }
+html.reveal .st-ackd { transition: stroke-dashoffset 1.15s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.81s; }
+html.reveal .st-aws  { transition: stroke-dashoffset 1s    cubic-bezier(0.45, 0.05, 0.55, 0.95) 2.02s; }
+html.reveal .st-s    { transition: stroke-dashoffset 0.5s  cubic-bezier(0.45, 0.05, 0.55, 0.95) 3.12s; }
+html.reveal .st-t1   { transition: stroke-dashoffset 0.12s cubic-bezier(0.5, 0, 1, 1) 3.62s; }
+html.reveal .st-t2   { transition: stroke-dashoffset 0.08s cubic-bezier(0.5, 0, 1, 1) 3.74s; }
+html.reveal .st-t3   { transition: stroke-dashoffset 0.06s cubic-bezier(0.5, 0, 1, 1) 3.82s; }
 html.reveal .letter-sign.in .sign-stroke { stroke-dashoffset: 0; }
 
 /* A CSS TRANSFORM ON AN SVG CHILD IS IN ITS OWN USER UNITS, NOT IN CSS PIXELS.
-   The bird sits inside a group carrying `scale(0.26)` as an attribute, so `px`
-   here is 0.26 of a rendered pixel — the offsets below are ~7px and ~7px on
-   screen. Two more traps in the same three lines: a CSS `transform` REPLACES an
-   element's `transform` attribute outright, which is why the positioning lives
-   on a parent group this rule cannot reach; and the delay is tuned to the
-   stroke's own finish, so the bird leaves the nib rather than beside it. */
+   The bird sits inside a group carrying `scale(0.45)` as an attribute, so `px`
+   here is 0.36 of a rendered pixel. The start offset is back down the trail's
+   own vector (the trail climbs 40 units over 29 to the right), so the bird
+   continues the pen's line rather than arriving beside it; the delay lands on
+   the last taper's finish. A CSS transform would REPLACE the positioning
+   attribute outright, which is why positioning lives on a parent group this
+   rule cannot reach. */
 html.reveal .sign-bird {
   opacity: 0;
   transform-box: fill-box;
   transform-origin: center;
-  transform: translate(-28px, 24px) scale(0.5);
-  transition: opacity 0.55s var(--ease-out) 1.3s, transform 0.8s var(--ease-out) 1.3s;
+  transform: translate(-40px, 55px) scale(0.55);
+  transition: opacity 0.45s var(--ease-out) 3.86s, transform 0.7s var(--ease-out) 3.86s;
 }
 html.reveal .letter-sign.in .sign-bird { opacity: 1; transform: none; }
 
