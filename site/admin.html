@@ -1,62 +1,108 @@
 <!doctype html>
-<html lang="en">
+<!-- NIGHT, and not because dark panels are fashionable. Every other page on
+     this site is something you read; this is something you operate, and the
+     two want different objects. The marketing pages are paper under a lamp.
+     This is an instrument in a dark room: machined plates, hairline-etched
+     bezels, values sitting slightly proud of their surface because they are
+     backlit rather than printed. Same brand, different job.
+
+     `data-chapter="night"` is authored rather than left to motion.js — there
+     is no chapter arc here to cross, the page is one room, and a chapter that
+     arrives a frame late would flash the paper palette on an ops console. -->
+<html lang="en" data-chapter="night">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Admin · Jackdaw</title>
     <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#0a1120" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+    <!-- This was the last page on the site still fetching Instrument Serif from
+         fonts.googleapis.com, months after styles.css started self-hosting it.
+         Three requests to two third-party origins, on the one page whose whole
+         reason for existing is that nobody else should be watching it. -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="vendor/fonts/instrument-serif-latin.woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="admin.css" />
   </head>
   <body class="admin-body">
-    <nav class="nav">
-      <a class="nav-brand" href="index.html">
-        <span class="nav-dot"></span>
-        <span class="nav-word"
-          ><i style="--i: 0">J</i><i style="--i: 1">a</i><i style="--i: 2">c</i><i style="--i: 3">k</i
-          ><i style="--i: 4">d</i><i style="--i: 5">a</i><i style="--i: 6">w</i></span
-        >
-      </a>
-      <div class="nav-links"><span class="admin-tag">Admin</span></div>
-      <button class="btn btn-ghost" id="signOut" hidden>Sign out</button>
-    </nav>
+    <a class="skip" href="#panelWrap">Skip to the panel</a>
 
-    <!-- Gate -->
+    <div class="nav-rail">
+      <nav class="nav admin-nav" id="nav">
+        <!-- The landing page's mark, unchanged. One bird moves at a time
+             page-wide, so this one and the footer's take turns — brand.js owns
+             the scheduler and this page just supplies two perches. -->
+        <span class="nav-lead">
+          <a class="brand-mark" href="index.html" aria-label="Jackdaw, home">
+            <span class="brand-perch"><span class="brand-dot"></span></span>
+            <span class="brand-word">Jackdaw</span>
+          </a>
+          <span class="admin-tag">Admin</span>
+        </span>
+        <div class="nav-mid">
+          <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="admin-policies.html">Policies</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">Source</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost nav-cta" id="signOut" hidden>
+          <span class="btn-label">Sign out</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- ── Gate ──────────────────────────────────────────────────────────────
+         The console before it is on. The lamp is dark, the plate is unlit, and
+         unlocking is a power-on rather than a page swap: see `.gate.leaving`
+         and `.panel-wrap.booting` in admin.css. -->
     <section class="gate" id="gate">
-      <h1 class="h-section">Admin access</h1>
-      <p class="gate-sub">Enter the admin key. It is kept for this browser session only.</p>
-      <form class="gate-form" id="gateForm">
-        <input
-          class="gate-input"
-          id="keyInput"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Admin key"
-          aria-label="Admin key"
-        />
-        <button class="btn btn-primary" type="submit"><span>Unlock</span><span class="btn-arrow">→</span></button>
-      </form>
-      <p class="gate-error" id="gateError" hidden></p>
+      <div class="gate-plate">
+        <div class="gate-lamp" aria-hidden="true"><i></i></div>
+        <p class="eyebrow">Restricted</p>
+        <h1 class="h-section">Admin access</h1>
+        <p class="gate-sub">Enter the admin key. It is kept for this browser session only.</p>
+        <form class="gate-form" id="gateForm">
+          <input
+            class="gate-input"
+            id="keyInput"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Admin key"
+            aria-label="Admin key"
+          />
+          <button class="btn btn-primary" type="submit">
+            <span class="btn-label">Unlock</span><span class="btn-arrow" aria-hidden="true">→</span>
+          </button>
+        </form>
+        <p class="gate-error" id="gateError" hidden></p>
+      </div>
     </section>
 
-    <!-- Panel -->
+    <!-- ── Panel ─────────────────────────────────────────────────────────── -->
     <main class="panel-wrap" id="panelWrap" hidden>
       <header class="admin-head">
         <div>
           <p class="eyebrow">Reach &amp; impact</p>
           <h1 class="h-section">The numbers behind the flock</h1>
         </div>
-        <button class="btn btn-ghost" id="refresh"><span>Refresh</span><span class="btn-arrow">↻</span></button>
+        <button class="btn btn-ghost" id="refresh">
+          <span class="btn-label">Refresh</span><span class="btn-arrow admin-spin" aria-hidden="true">↻</span>
+        </button>
       </header>
 
       <div class="kpis" id="kpis"></div>
 
-      <section class="admin-card">
+      <section class="admin-card" data-plate>
         <div class="admin-card-head">
           <h2>Observations, last 30 days</h2>
           <span class="admin-note" id="trendNote"></span>
@@ -65,18 +111,18 @@
       </section>
 
       <div class="admin-cols">
-        <section class="admin-card">
+        <section class="admin-card" data-plate>
           <div class="admin-card-head"><h2>By store</h2><span class="admin-note">Regional reach</span></div>
           <div id="stores" class="stores"></div>
         </section>
 
-        <section class="admin-card">
+        <section class="admin-card" data-plate>
           <div class="admin-card-head"><h2>By category</h2><span class="admin-note">Sighting mix</span></div>
           <div id="categories" class="stores"></div>
         </section>
       </div>
 
-      <section class="admin-card">
+      <section class="admin-card" data-plate>
         <div class="admin-card-head">
           <h2>Category price movement</h2>
           <div class="idx-head">
@@ -109,7 +155,7 @@
         <h2 class="admin-section-title">Is any of this still working?</h2>
       </div>
 
-      <section class="admin-card" id="signalsCard" hidden>
+      <section class="admin-card" id="signalsCard" data-plate hidden>
         <div class="admin-card-head">
           <h2>Health signals</h2>
           <span class="admin-note" id="signalsNote"></span>
@@ -125,7 +171,7 @@
         nothing throws no error.
       -->
 
-      <section class="admin-card" id="selectorsCard" hidden>
+      <section class="admin-card" id="selectorsCard" data-plate hidden>
         <div class="admin-card-head">
           <h2>Selector health</h2>
           <span class="admin-note" id="selectorsNote"></span>
@@ -135,7 +181,7 @@
       </section>
 
       <div class="admin-cols">
-        <section class="admin-card">
+        <section class="admin-card" data-plate>
           <div class="admin-card-head">
             <h2>Data health</h2>
             <span class="admin-note" id="healthNote"></span>
@@ -143,7 +189,7 @@
           <div id="health"></div>
         </section>
 
-        <section class="admin-card">
+        <section class="admin-card" data-plate>
           <div class="admin-card-head">
             <h2>Moderation queue</h2>
             <span class="admin-note" id="modNote"></span>
@@ -151,6 +197,22 @@
           <div id="flagged" class="flagged"></div>
         </section>
       </div>
+
+      <!--
+        Operations, not reach — which is the test this page applies to every
+        card. What is live in front of readers, and is it the text that is in
+        git? The editor itself is a separate page: a policy amendment should
+        never be one mis-click away from a number you were only reading.
+      -->
+      <section class="admin-card" id="policyCard" data-plate>
+        <div class="admin-card-head">
+          <h2>Published policies</h2>
+          <a class="admin-link" href="admin-policies.html">
+            <span>Open the editor</span><span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+        <div id="policies" class="policies"></div>
+      </section>
 
       <p class="admin-fine">
         Counters are maintained incrementally on write, so totals stay accurate without scanning the database.
@@ -176,7 +238,31 @@
       </p>
     </main>
 
+    <footer class="footer admin-foot" data-lit>
+      <div class="wrap">
+        <div class="footer-inner">
+          <a class="brand-mark" href="index.html" aria-label="Jackdaw, home">
+            <span class="brand-perch"><span class="brand-dot"></span></span>
+            <span class="brand-word">Jackdaw</span>
+          </a>
+          <nav class="footer-links" aria-label="Footer">
+            <a href="index.html">Home</a>
+            <a href="admin-policies.html">Policies</a>
+            <a href="privacy.html">Privacy</a>
+            <a href="terms.html">Terms</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
+          </nav>
+        </div>
+        <p class="footer-fine">
+          Not affiliated with, endorsed by, or sponsored by Micro Center.
+          Product names and trademarks belong to their owners.
+        </p>
+      </div>
+    </footer>
+
+    <script src="brand.js"></script>
     <script src="config.js"></script>
     <script src="admin.js"></script>
+    <script src="lit.js"></script>
   </body>
 </html>

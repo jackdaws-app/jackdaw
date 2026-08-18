@@ -26,6 +26,19 @@
   const signOut = $("signOut");
 
   let adminKey = sessionStorage.getItem(KEY_STORE) || "";
+  // Every animation on this page is gated on this ONE query rather than each
+  // one testing for itself, so a stale gate cannot leave half the choreography
+  // running. The CSS half is in admin.css's own `reduce` block; a JS check
+  // cannot substitute for it (media queries are evaluated by the engine, not
+  // by us) and neither can substitute for the other — both halves are needed.
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // The boot choreography plays once, on the transition from gate to panel.
+  // Refresh redraws the same plates; replaying their entrance on every poll
+  // would make a routine refresh look like a page load.
+  let booted = false;
+  let lastStats = null;
+  const kpiPrev = new Map();
+  let trendRun = 0;
 
   // ── Convex HTTP ──
   async function call(kind, path, args) {
@@ -82,10 +95,39 @@
   }
 
   function showPanel() {
-    gate.hidden = true;
     gateError.hidden = true;
     panelWrap.hidden = false;
     signOut.hidden = false;
+    if (gate.hidden) return;
+    // Power-on, not a page swap. The lamp goes green, the gate plate drops
+    // away, and the console's own plates come up BEHIND it rather than after
+    // it — the overlap is the point, and it is the same continuity rule the
+    // bird arrival is built on: one stage hands its mass to the next.
+    gate.classList.remove("checking");
+    gate.classList.add("opened");
+    panelWrap.classList.add("booting");
+    const finish = () => {
+      gate.hidden = true;
+      gate.classList.remove("opened", "leaving");
+    };
+    if (still.matches) {
+      finish();
+      return;
+    }
+    gate.classList.add("leaving");
+    // The plates start at 240ms, while the gate is still fading: the two
+    // overlap by ~180ms. Sequenced by timer rather than by `animationend`
+    // because the gate's own exit is what we are deliberately NOT waiting for.
+    setTimeout(finish, 430);
+  }
+
+  // Boot state is a class on the wrapper, dropped once the last plate has
+  // landed. Leaving it on would keep an inert `::before` element on every card
+  // and, worse, would mean a later re-render inherits a finished animation —
+  // which never restarts under the same name.
+  function bootDone() {
+    panelWrap.classList.remove("booting");
+    booted = true;
   }
 
   gateForm.addEventListener("submit", async (e) => {
@@ -93,7 +135,9 @@
     const val = keyInput.value.trim();
     if (!val) return;
     adminKey = val;
+    gate.classList.add("checking");
     const ok = await load();
+    gate.classList.remove("checking");
     if (ok) {
       sessionStorage.setItem(KEY_STORE, adminKey);
       keyInput.value = "";
@@ -105,6 +149,8 @@
   signOut.addEventListener("click", () => {
     sessionStorage.removeItem(KEY_STORE);
     adminKey = "";
+    booted = false;
+    gate.classList.remove("opened", "leaving", "checking");
     showGate();
   });
 
@@ -123,9 +169,10 @@
       ["Shoppers sent", t.alertsClicked, "alert clicks to a product page", true],
       [
         "Watched value",
-        money(stats.watchedValue),
+        stats.watchedValue,
         stats.watchedValueTruncated ? "inventory awaited (floor)" : "inventory awaited",
         true,
+        money,
       ],
       // Split, not summed. One product-page sighting is one shopper on one
       // product; one catalog sighting is one card on a page of up to 96, so a
@@ -136,29 +183,70 @@
       // content box and wraps. The subs carry the disambiguation.
       [
         "Page sightings",
-        fmt(Math.max(0, t.observations - t.observationsCatalog)),
+        Math.max(0, t.observations - t.observationsCatalog),
         "one shopper, one product",
       ],
       [
         "Grid sightings",
-        fmt(t.observationsCatalog),
+        t.observationsCatalog,
         `across ${fmt(t.catalogBatches)} result pages`,
       ],
-      ["Products", fmt(t.products), "tracked at least once"],
-      ["Contributors", fmt(t.devices), "browsers feeding the flock"],
-      ["Alerts armed", fmt(t.alertsArmed), `${fmt(t.alertsFired)} fired`],
-      ["Comments", fmt(t.comments), `${fmt(t.commentsHidden || 0)} hidden`],
-      ["Reports", fmt(t.reports), "community flags raised"],
+      ["Products", t.products, "tracked at least once"],
+      ["Contributors", t.devices, "browsers feeding the flock"],
+      ["Alerts armed", t.alertsArmed, `${fmt(t.alertsFired)} fired`],
+      ["Comments", t.comments, `${fmt(t.commentsHidden || 0)} hidden`],
+      ["Reports", t.reports, "community flags raised"],
     ];
-    for (const [label, value, sub, accent] of cards) {
+    // Every tile now carries a NUMBER and its formatter, where two of them used
+    // to arrive pre-formatted. That is what makes both behaviours below
+    // possible at all: you cannot count a string up, and you cannot tell
+    // "$41,204" from "$41,205" without parsing back out of the presentation.
+    for (const [label, value, sub, accent, format = fmt] of cards) {
       const card = el("div", "kpi" + (accent ? " kpi-accent" : ""));
-      card.append(
-        el("div", "kpi-label", label),
-        el("div", "kpi-value", typeof value === "number" ? fmt(value) : value),
-        el("div", "kpi-sub", sub),
-      );
+      const val = el("div", "kpi-value", format(value));
+      const prev = kpiPrev.get(label);
+      if (!booted && !still.matches && !document.hidden && typeof value === "number") {
+        countUp(val, value, format);
+      } else if (prev != null && prev !== value && !still.matches) {
+        // A refresh redraws nine tiles at once; without this the one that moved
+        // is indistinguishable from the eight that didn't. The flash is the
+        // whole point of pressing Refresh, so it survives — it is state, not
+        // decoration — but it is still motion, so reduced motion drops it.
+        val.classList.add("changed");
+        val.dataset.dir = value > prev ? "up" : "down";
+      }
+      if (typeof value === "number") kpiPrev.set(label, value);
+      card.append(el("div", "kpi-label", label), val, el("div", "kpi-sub", sub));
       wrap.append(card);
     }
+  }
+
+  // Counts to the real figure through the SAME formatter the final value uses,
+  // so the digits never reflow at the end and a thousands separator appears
+  // where it belongs the whole way up. Values under 3 are not animated: a
+  // count-up from 0 to 2 reads as a glitch, not as a gauge coming up.
+  //
+  // Not started at all in a backgrounded tab — the caller checks
+  // `document.hidden` for the same reason renderTrend does. rAF does not fire
+  // there, so a run begun in the background would paint `format(0)` and stop:
+  // nine tiles reading zero, on a console whose whole job is to be trusted.
+  // An ops page opened and left in a background tab is the ordinary case, not
+  // an edge one.
+  function countUp(node, target, format) {
+    if (!(target > 2)) return;
+    const dur = 900;
+    let t0 = null;
+    node.textContent = format(0);
+    const step = (t) => {
+      if (t0 == null) t0 = t;
+      const k = Math.min(1, (t - t0) / dur);
+      // Same curve as --ease-out, so a number arriving beside a plate that is
+      // still settling shares its deceleration.
+      const e = 1 - Math.pow(1 - k, 3);
+      node.textContent = format(Math.round(target * e));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   function renderCategories(cats) {
@@ -493,15 +581,34 @@
       // one colour it must never be: the whole point of this table is that a
       // reader finding nothing is the failure it cannot otherwise announce.
       // Untinted says "not enough to judge", which is the truth at n=1.
+      //
+      // UNREADABLE IS JUDGED AS A RATE, not as a boolean. This read
+      // `if (s.recentBad > 0) tone = "bad"` and therefore painted `.clearance`
+      // red at 5,120 of 5,120 found — one card in five thousand carrying a
+      // phrasing we don't parse, tinting the healthiest possible reading with
+      // the one colour reserved for a reader that has stopped working. The
+      // caveat this table is built on is that `bad` CLIMBING means the wording
+      // changed; a single instance is not a climb, and a verdict that cannot be
+      // supported by the number it is attached to trains the operator to
+      // discount the colour everywhere else on the page.
+      //
+      // It escalates from whatever the found-rate concluded, including from
+      // untinted: an element that was there and could not be parsed is an
+      // observation in its own right, and it does not need a yardstick to be
+      // worth reporting.
+      const BAD_ALARM = 0.02; // ~2 cards on a 96-card page — no longer a one-off
       let tone = "";
       if (recentRate !== null) {
         const target = expect !== null ? expect : lifeRate;
         const judgeable = target !== null && target > 0;
-        if (s.recentBad > 0) tone = "bad";
-        else if (!judgeable) tone = "";
+        if (!judgeable) tone = "";
         else if (recentRate < target * 0.5) tone = "bad";
         else if (recentRate < target * 0.9) tone = "warn";
         else tone = "good";
+
+        const badRate = s.recentSeen > 0 ? s.recentBad / s.recentSeen : 0;
+        if (badRate >= BAD_ALARM) tone = "bad";
+        else if (s.recentBad > 0 && tone !== "bad") tone = "warn";
       }
 
       const pct = (r) => (r === null ? "—" : (r * 100).toFixed(0) + "%");
@@ -509,7 +616,23 @@
         lifeRate === null
           ? "nothing recorded"
           : `${pct(lifeRate)} of ${fmt(s.seen)} all time`;
-      const bad = s.bad > 0 ? ` · ${fmt(s.bad)} unreadable` : "";
+      // The RECENT unreadable count has to be on screen, because it is now the
+      // thing that can turn this row amber or red. The sub-line reported the
+      // lifetime figure alone, which was survivable while unreadable was a
+      // footnote and is not survivable now that it is a verdict: `openBox`
+      // could go red on 3 of 96 in the window while the row said nothing at
+      // all about 3. A colour whose evidence is off-screen is the defect this
+      // whole card exists to catch, one level up.
+      //
+      // `max` because the lifetime counter is the superset in real data and a
+      // client sending otherwise should not make the row print "0 unreadable,
+      // 3 in 7d".
+      const badTotal = Math.max(s.bad, s.recentBad);
+      let bad = "";
+      if (badTotal > 0) {
+        bad = ` · ${fmt(badTotal)} unreadable`;
+        if (s.recentBad > 0) bad += `, ${fmt(s.recentBad)} in ${recentDays}d`;
+      }
       row.append(
         el("div", "health-label", label),
         el("div", "health-value " + tone, `${pct(recentRate)} · ${recentDays}d`),
@@ -601,39 +724,39 @@
     const max = Math.max(1, ...daily.map((d) => d.observations));
     const bw = (w - padL - padR) / daily.length;
 
-    // gridlines
-    ctx.font = "10px ui-monospace, Menlo, monospace";
-    ctx.strokeStyle = "rgba(120,130,145,0.16)";
-    ctx.fillStyle = "#9aa1ab";
-    for (let g = 0; g <= 2; g++) {
-      const v = (max * g) / 2;
-      const y = padT + (1 - v / max) * (h - padT - padB);
-      ctx.beginPath();
-      ctx.moveTo(padL, y);
-      ctx.lineTo(w - padR + 4, y);
-      ctx.stroke();
-      ctx.fillText(String(Math.round(v)), w - padR + 8, y + 3);
-    }
     // ONE hue at two weights, not two hues: grid sightings are a SHARE of the
     // bar, not a second series beside it, and a contrasting colour would read
     // as an independent quantity. The weight is carried by ALPHA rather than by
-    // a second colour because it has to be — measured over this card, ANY two
+    // a second colour because it has to be — measured over this plate, ANY two
     // colours drawn at the same low alpha composite to within ~1.1:1 of each
-    // other (alpha compression toward white flattens the luminance gap, and no
-    // hue escapes it), so the first draft's mint-on-deep-green stack was a
-    // boundary nobody could see. Solid on pale measures 3.18:1.
-    // Grey is reserved for the days that predate the split, where the
-    // composition is genuinely unknown.
-    const HUE = "14,122,55";       // --green-deep
-    const PAGE_A = 0.36;           // 1.77:1 against the card
-    const GRID_A = 1;              // 5.44:1 against the card, 3.18:1 against PAGE
-    const UNKNOWN = "107,114,128"; // --muted
-    // Heavier than it looks like it needs to be: at 0.5 the grey composited to
-    // within 1.16:1 of the pale page fill, so the "we never counted this"
-    // caveat was the one thing on the chart you couldn't see. 0.78 puts it
-    // 1.87:1 from the page fill and 1.71:1 from the grid fill — roughly
-    // equidistant from both, which is what a third state should be.
-    const UNKNOWN_A = 0.78;
+    // other, so a mint-on-deep-green stack is a boundary nobody can see.
+    //
+    // These are NOT the paper figures re-tinted. Alpha on paper compresses
+    // toward white and here it compresses toward black, which inverts every
+    // margin, and the base hue had to change with it: --accent (#4ade80) spans
+    // only 9.63:1 against this plate, so a pale/solid split off it tops out at
+    // 3.21 / 3.00 with the second number sitting exactly on the floor.
+    // --accent-deep is the LIGHTER of the night pair ("deep" means more
+    // emphatic, not darker — see the token block in styles.css) and spans
+    // 11.95:1, which is what buys both weights a real margin.
+    //
+    // PAGE_A is specified against the PLATE and not merely against GRID_A
+    // because on any day with zero grid sightings the pale fill is the entire
+    // bar. The paper version missed that: its 0.36 measured 1.77:1 against the
+    // card, so an all-product-page day was drawn below the 3:1 a meaningful
+    // graphic owes, and the defect was invisible precisely on the days the
+    // chart had the least to say.
+    const HUE = "134,239,172";     // --accent-deep
+    const PAGE_A = 0.42;           // 3.19:1 on the plate, 3.06 at its lit top
+    const GRID_A = 1;              // 11.95:1 on the plate, 3.75:1 over PAGE
+    const UNKNOWN = "154,168,189"; // --muted
+    // Grey is reserved for days that predate the split, where the composition
+    // is genuinely unknown — and it has to sit clear of BOTH greens, not just
+    // be visible. At 0.92 it measures 1.91:1 from the pale fill and 1.96:1 from
+    // the solid: near-equidistant, which is what a third state should be.
+    const UNKNOWN_A = 0.92;
+    const AXIS = "#9aa8bd";                  // --muted, 6.96:1 on the plate
+    const GRIDLINE = "rgba(255,255,255,0.10)"; // reference ruling, not data
 
     const bwi = Math.max(bw - 2, 1);
     const r = Math.min(3, bwi / 2 - 0.5);
@@ -657,61 +780,112 @@
       ctx.fill();
     };
 
-    // bars
     const plot = h - padT - padB;
-    daily.forEach((d, i) => {
-      const bh = Math.max((d.observations / max) * plot, d.observations > 0 ? 1 : 0);
-      const x = padL + i * bw;
-      if (!isSplit(d)) {
-        seg(x, h - padB - bh, bh, UNKNOWN, UNKNOWN_A, true);
-        return;
-      }
-      // A single grid sighting on a 500-sighting day rounds to nothing, so a
-      // nonzero share always keeps a 2px cap — and the page portion gives up
-      // that height rather than the bar growing to accommodate it.
-      const g = gridOf(d);
-      const gridH = g > 0 ? Math.min(Math.max((g / max) * plot, 2), bh) : 0;
-      seg(x, h - padB - (bh - gridH), bh - gridH, HUE, PAGE_A, gridH === 0);
-      seg(x, h - padB - bh, gridH, HUE, GRID_A, true);
-    });
-    // Recency used to be carried by alpha too (every bar but the newest at
-    // 0.42), which is the channel the split now needs. Moved to a rule under
-    // the newest bar so the two encodings cannot collide — a heavily-sampled
-    // grid day and "today" are different facts and must not look alike.
-    ctx.fillStyle = `rgba(${HUE},1)`;
-    ctx.fillRect(padL + (daily.length - 1) * bw, h - padB + 3, bwi, 2);
-
-    // legend
-    {
-      // A key for colours that aren't on the chart is worse than no key: before
-      // the first batch every day is grey, and listing the two greens there
-      // would invite the reader to hunt for a split that was never recorded.
-      const items =
-        unsplitDays === daily.length
-          ? [["Composition not counted", UNKNOWN, UNKNOWN_A]]
-          : [
-              ["Product pages", HUE, PAGE_A],
-              ["Grid pages", HUE, GRID_A],
-              ...(unsplitDays ? [["Before split", UNKNOWN, UNKNOWN_A]] : []),
-            ];
-      let lx = padL;
+    // `k` runs 0 → 1 for the first draw only. The frame — gridlines, ticks,
+    // legend, dates — is painted at full strength from the first frame: the
+    // instrument is already there, and what arrives is the trace on it.
+    const paint = (k) => {
+      ctx.clearRect(0, 0, w, h);
       ctx.font = "10px ui-monospace, Menlo, monospace";
-      for (const [label, rgb, alpha] of items) {
-        ctx.fillStyle = `rgba(${rgb},${alpha})`;
+      ctx.strokeStyle = GRIDLINE;
+      ctx.fillStyle = AXIS;
+      for (let g = 0; g <= 2; g++) {
+        const v = (max * g) / 2;
+        const y = padT + (1 - v / max) * plot;
         ctx.beginPath();
-        ctx.rect(lx, padT - 17, 8, 8);
-        ctx.fill();
-        ctx.fillStyle = "#6b7280";
-        ctx.fillText(label, lx + 12, padT - 10);
-        lx += 12 + ctx.measureText(label).width + 16;
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR + 4, y);
+        ctx.stroke();
+        ctx.fillText(String(Math.round(v)), w - padR + 8, y + 3);
       }
+
+      const n = daily.length;
+      const span = 0.55; // each bar's own rise, as a fraction of the run
+      daily.forEach((d, i) => {
+        const t0 = (i / Math.max(n - 1, 1)) * (1 - span);
+        const kb = Math.min(1, Math.max(0, (k - t0) / span));
+        const grow = 1 - Math.pow(1 - kb, 3); // matches --ease-out
+        if (grow <= 0) return;
+        const full = Math.max((d.observations / max) * plot, d.observations > 0 ? 1 : 0);
+        const bh = full * grow;
+        const x = padL + i * bw;
+        if (!isSplit(d)) {
+          seg(x, h - padB - bh, bh, UNKNOWN, UNKNOWN_A, true);
+          return;
+        }
+        // A single grid sighting on a 500-sighting day rounds to nothing, so a
+        // nonzero share always keeps a 2px cap — and the page portion gives up
+        // that height rather than the bar growing to accommodate it.
+        const g = gridOf(d);
+        const gridH = g > 0 ? Math.min(Math.max((g / max) * plot, 2), full) * grow : 0;
+        seg(x, h - padB - (bh - gridH), bh - gridH, HUE, PAGE_A, gridH === 0);
+        seg(x, h - padB - bh, gridH, HUE, GRID_A, true);
+      });
+
+      // Recency used to be carried by alpha too (every bar but the newest at
+      // 0.42), which is the channel the split now needs. Moved to a rule under
+      // the newest bar so the two encodings cannot collide — a heavily-sampled
+      // grid day and "today" are different facts and must not look alike.
+      ctx.fillStyle = `rgba(${HUE},1)`;
+      ctx.fillRect(padL + (n - 1) * bw, h - padB + 3, bwi * k, 2);
+
+      // legend
+      {
+        // A key for colours that aren't on the chart is worse than no key:
+        // before the first batch every day is grey, and listing the two greens
+        // there would invite the reader to hunt for a split never recorded.
+        const items =
+          unsplitDays === daily.length
+            ? [["Composition not counted", UNKNOWN, UNKNOWN_A]]
+            : [
+                ["Product pages", HUE, PAGE_A],
+                ["Grid pages", HUE, GRID_A],
+                ...(unsplitDays ? [["Before split", UNKNOWN, UNKNOWN_A]] : []),
+              ];
+        let lx = padL;
+        for (const [label, rgb, alpha] of items) {
+          ctx.fillStyle = `rgba(${rgb},${alpha})`;
+          ctx.beginPath();
+          ctx.rect(lx, padT - 17, 8, 8);
+          ctx.fill();
+          ctx.fillStyle = AXIS;
+          ctx.fillText(label, lx + 12, padT - 10);
+          lx += 12 + ctx.measureText(label).width + 16;
+        }
+      }
+
+      // first/last date labels
+      ctx.fillStyle = AXIS;
+      const short = (iso) => iso.slice(5).replace("-", "/");
+      ctx.fillText(short(daily[0].date), padL, h - 8);
+      const lastLabel = short(daily[n - 1].date);
+      ctx.fillText(lastLabel, w - padR - ctx.measureText(lastLabel).width, h - 8);
+    };
+
+    // The trace is drawn on once, on the first load, left to right — the same
+    // "data-true, drawn on" gesture the landing page's sparkline uses. A
+    // refresh or a resize repaints finished, because a chart that re-animates
+    // every time you touch the window is a toy.
+    //
+    // `document.hidden` is not a nicety: rAF does not fire in a backgrounded
+    // tab, so starting a run there would leave the canvas at k=0 — an empty
+    // chart — until the tab was fronted. Same gotcha the panel's bar widths hit.
+    trendRun++;
+    if (booted || still.matches || document.hidden) {
+      paint(1);
+      return;
     }
-    // first/last date labels
-    ctx.fillStyle = "#9aa1ab";
-    const short = (iso) => iso.slice(5).replace("-", "/");
-    ctx.fillText(short(daily[0].date), padL, h - 8);
-    const lastLabel = short(daily[daily.length - 1].date);
-    ctx.fillText(lastLabel, w - padR - ctx.measureText(lastLabel).width, h - 8);
+    const run = trendRun;
+    const dur = 820;
+    let t0 = null;
+    const step = (t) => {
+      if (run !== trendRun) return; // a refresh landed mid-draw; it owns the canvas now
+      if (t0 == null) t0 = t;
+      const k = Math.min(1, (t - t0) / dur);
+      paint(k);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   function renderFlagged(rows) {
@@ -762,12 +936,193 @@
     }
   }
 
+  // ── Published policies ──
+  // The one card on this page that reads two sources and compares them. It is
+  // NOT a copy of the policy text — it answers "is what readers see the text
+  // that is in git", which is the question the live-publish design creates and
+  // nothing else on the site can answer.
+  //
+  // Both queries are public and unauthenticated on purpose: `policy:current` is
+  // what every reader's browser calls to hydrate privacy.html. Sending the
+  // admin key with them would add nothing and widen where it travels.
+  const POLICY_DOCS = [
+    { slug: "privacy", label: "Privacy Policy", page: "privacy.html" },
+    { slug: "terms", label: "Terms of Service", page: "terms.html" },
+  ];
+  const HOST = String(CONVEX_URL).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0].toLowerCase();
+  const DAY = 86400000;
+
+  function ago(ts) {
+    const d = Math.floor((Date.now() - ts) / DAY);
+    if (d <= 0) return "today";
+    if (d === 1) return "yesterday";
+    if (d < 30) return `${d} days ago`;
+    return new Date(ts).toISOString().slice(0, 10);
+  }
+
+  // The committed floor, read out of the shipped page itself rather than out of
+  // a build manifest — the page IS the artefact, so nothing can drift between
+  // what this reports and what a no-JavaScript reader receives.
+  //
+  // Version numbers are per-deployment counters, so one stamped by a different
+  // deployment is not a floor here: dev v9 says nothing about prod. Same rule
+  // policy-sync.js applies; if the two disagreed, one of them would be lying.
+  async function readFloor(page) {
+    try {
+      const res = await fetch(page, { cache: "no-store" });
+      if (!res.ok) return { version: 0, unknown: true };
+      const html = await res.text();
+      const tag = /<main class="doc"[^>]*>/.exec(html);
+      if (!tag) return { version: 0, unknown: true };
+      const dep = (/data-policy-deployment="([^"]*)"/.exec(tag[0]) || [, ""])[1];
+      const ver = Number((/data-policy-version="(\d+)"/.exec(tag[0]) || [, "0"])[1]);
+      if (dep && dep !== HOST) return { version: 0, foreign: dep };
+      return { version: ver };
+    } catch {
+      return { version: 0, unknown: true };
+    }
+  }
+
+  // The only renderer on the page that awaits before it paints, and therefore
+  // the only one two overlapping `load()`s can interleave. `#refresh` calls
+  // `load()` with no re-entry guard, so a double-click on a slow reply ran this
+  // twice: both cleared, both appended, four policy rows. The generation token
+  // makes a superseded run drop its own result, and the clear moved BELOW the
+  // await so the card holds the previous answer while a refresh is in flight
+  // rather than blanking — this card reports whether the live text matches git,
+  // and an empty gap reads as "nothing published", which is a different claim.
+  let policyRun = 0;
+  async function renderPolicies() {
+    const run = ++policyRun;
+    const wrap = $("policies");
+    let rows;
+    try {
+      rows = await Promise.all(
+        POLICY_DOCS.map(async (d) => ({
+          ...d,
+          live: await query("policy:current", { slug: d.slug }),
+          floor: await readFloor(d.page),
+        })),
+      );
+    } catch {
+      if (run !== policyRun) return;
+      wrap.textContent = "";
+      wrap.append(el("div", "flag-empty", "Couldn't read the published policies."));
+      return;
+    }
+    if (run !== policyRun) return;
+    wrap.textContent = "";
+
+    let behind = 0;
+    for (const r of rows) {
+      const row = el("div", "policy-row");
+      const version = el("div", "policy-version");
+      const sub = el("div", "policy-sub");
+
+      if (!r.live) {
+        // Nothing published is the ordinary state before the first amendment,
+        // and it is not drift: the committed text is what readers get, which is
+        // exactly what the static floor is for.
+        version.textContent = "—";
+        sub.textContent = "Nothing published from the panel; readers see the committed text.";
+      } else if (r.live.version > r.floor.version) {
+        behind++;
+        version.textContent = `v${r.live.version}`;
+        version.classList.add("warn");
+        sub.append(
+          document.createTextNode(
+            `Live since ${ago(r.live.publishedAt)}, ` +
+              // v0 is the state of a page that has never been stamped, which is
+              // every page today. "git has v0" invites the reading that some
+              // zeroth version was published; nothing was.
+              (r.floor.version
+                ? `git has v${r.floor.version}. `
+                : `git carries no published version. `) +
+              `The repository, the printed page and readers without JavaScript still ` +
+              `show the older text — run `,
+          ),
+          el("code", "policy-cmd", "node site/policy-sync.js --write"),
+          document.createTextNode(", then commit."),
+        );
+      } else {
+        version.textContent = `v${r.live.version}`;
+        version.classList.add("ok");
+        sub.textContent = `Published ${ago(r.live.publishedAt)} and committed.`;
+      }
+      if (r.floor.foreign) {
+        sub.append(
+          document.createTextNode(
+            ` The committed stamp came from ${r.floor.foreign}, a different deployment, so it is not a floor here.`,
+          ),
+        );
+      } else if (r.floor.unknown) {
+        sub.append(document.createTextNode(" The committed page could not be read."));
+      }
+
+      row.append(el("div", "policy-name", r.label), version, sub);
+      wrap.append(row);
+    }
+    // The card earns attention only when something is actually behind it. A
+    // permanent badge is a badge nobody reads.
+    $("policyCard").classList.toggle("has-drift", behind > 0);
+  }
+
+  // ── Plate order and the idle sweep ──
+  // The entrance stagger is stamped in DOCUMENT order over what is actually on
+  // screen. Two cards start `hidden` (health signals, selector health) and are
+  // revealed only when they have something to say, so a static index authored
+  // in the HTML would leave gaps in the cascade — a 62ms beat with two silent
+  // rests in it reads as jank, not as rhythm.
+  function plates() {
+    return Array.from(panelWrap.querySelectorAll(".kpi, [data-plate]")).filter(
+      (n) => !n.hidden && !n.closest("[hidden]"),
+    );
+  }
+  function stampPlates() {
+    plates().forEach((n, i) => n.style.setProperty("--plate-i", String(i)));
+  }
+
+  // One plate at a time, page-wide — the same rule brand.js applies to the
+  // birds, for the same reason: a console where six surfaces glint at once
+  // reads as a screensaver. Only plates on screen are eligible, so the sweep is
+  // never spent on something nobody is looking at.
+  let sweepTimer = null;
+  function scheduleSweep() {
+    clearTimeout(sweepTimer);
+    if (still.matches) return;
+    sweepTimer = setTimeout(() => {
+      scheduleSweep();
+      if (document.hidden || panelWrap.hidden) return;
+      const vh = window.innerHeight;
+      const eligible = plates().filter((n) => {
+        if (!n.classList.contains("admin-card")) return false;
+        const r = n.getBoundingClientRect();
+        return r.top < vh - 40 && r.bottom > 40;
+      });
+      if (!eligible.length) return;
+      const card = eligible[Math.floor(Math.random() * eligible.length)];
+      // A finished animation never restarts under the same name, so the class
+      // is removed on the way out rather than left on the winner.
+      card.classList.remove("sweep");
+      void card.offsetWidth;
+      card.classList.add("sweep");
+      setTimeout(() => card.classList.remove("sweep"), 2200);
+    }, 9000 + Math.random() * 7000);
+  }
+  still.addEventListener("change", () => {
+    if (still.matches) clearTimeout(sweepTimer);
+    else scheduleSweep();
+  });
+
   // ── Load ──
   async function load() {
     if (!adminKey) {
       showGate();
       return false;
     }
+    // Drives the refresh arrow's spin. Set before the await so the button
+    // responds to the click and not to the reply.
+    panelWrap.classList.add("loading");
     try {
       // Three queries, not one. The index reads price points and costs roughly
       // 7k documents; folding it into `stats` would put the counters — which
@@ -777,6 +1132,7 @@
         query("dashboard:flagged", { adminKey }),
         query("dashboard:categoryIndex", { adminKey, days: indexDays }),
       ]);
+      lastStats = stats;
       showPanel();
       renderKpis(stats);
       renderStores(stats.stores);
@@ -791,17 +1147,43 @@
       renderHealth(stats.health);
       renderTrend(stats.daily, stats.gridSplitFrom ?? null);
       renderFlagged(flagged);
+      // Stamped AFTER every renderer, because two of the cards decide whether
+      // they are hidden while rendering.
+      stampPlates();
+      // Its own request, deliberately not awaited with the three above: it hits
+      // a different (public) endpoint and reads two files off this origin, and
+      // a slow policy read must not hold the numbers back.
+      renderPolicies();
+      if (!booted) {
+        // The last plate's contents finish at index*62 + 200 + 420.
+        setTimeout(bootDone, plates().length * 62 + 700);
+        scheduleSweep();
+      }
       return true;
     } catch (e) {
       if (e.code === "UNAUTHORIZED") showGate("That key was rejected.");
       else if (e.code === "RATE_LIMITED") showGate("Too many attempts. Wait a minute and try again.");
       else showGate("Couldn't reach the backend. Check your connection.");
       return false;
+    } finally {
+      panelWrap.classList.remove("loading");
     }
   }
 
+  // The canvas is sized from its client width, so it genuinely has to be
+  // redrawn on resize — but it was doing that by re-running `load()`, which
+  // fires three Convex queries per resize tick, one of them the ~7k-document
+  // category index. Dragging a window edge was a sustained query storm against
+  // the deployment, from the page whose own footnote explains why reads here
+  // are kept bounded. Redraw from the stats already in hand instead; nothing
+  // else on the page measures in JavaScript.
+  let resizeTimer = null;
   window.addEventListener("resize", () => {
-    if (!panelWrap.hidden) load();
+    if (panelWrap.hidden || !lastStats) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      renderTrend(lastStats.daily, lastStats.gridSplitFrom ?? null);
+    }, 120);
   });
 
   if (adminKey) load();

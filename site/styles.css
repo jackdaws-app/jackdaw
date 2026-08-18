@@ -576,13 +576,30 @@ img, svg, canvas { display: block; max-width: 100%; }
 .num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
 /* ── Accessibility ──────────────────────────────────────────────────────── */
+/* Chapter-INDEPENDENT, and it has to be. This was `background: var(--ink)`
+   with white text, which is a dark chip on paper and — the moment the chapter
+   under it is night, where `--ink` is the near-white `#f0f4fa` — white on
+   near-white at 1.10:1. Every page that opens in night (index.html's hero,
+   love.html, admin.html throughout) put its first tab stop there, illegible,
+   and the usual silence applied: the link is off-screen until focused, so
+   nothing on any screenshot was ever wrong.
+   Same rule as the extension's orphan notice, for the same reason: a surface
+   that can appear over any ground states both of its colours outright rather
+   than borrowing a token whose meaning flips. 18.85:1 on either chapter, and
+   the green `:focus-visible` ring is the state indicator, not the edge, on a
+   ground it is otherwise the exact colour of — night's `--ground` IS `#0a1120`,
+   so the chip needs an edge of its own there: a fixed white hairline at 0.36,
+   3.28:1 against that ground, which is the 3:1 a meaningful graphic owes. */
 .skip {
   position: absolute;
   left: 12px;
   top: -60px;
   z-index: 100;
-  background: var(--ink);
+  background: #0a1120;
   color: #fff;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.36),
+    0 8px 22px rgba(0, 0, 0, 0.4);
   padding: 10px 16px;
   border-radius: 8px;
   font-size: 14px;
