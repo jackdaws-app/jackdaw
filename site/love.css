@@ -143,24 +143,25 @@
 .letter-ps p:not(.eyebrow), .ps-list { font-family: "La Belle Aurore", cursive; font-size: 24px; }
 
 /* ── The signature ───────────────────────────────────────────────────────────
-   "JACKDAWS", WRITTEN, AND THE S LETS A BIRD GO. This section used to argue
-   that a hand-lettered signature is a forgery of handwriting nobody has, and
-   that a flourish was the honest mark. The owner overruled the flourish on
-   2026-08-17 — the letter should be signed with the name — and the objection
-   was answered the way CONVENTIONS.md answers everything: the word was drawn
-   AGAINST A REFERENCE, not from memory. Every stroke was authored over a
-   Homemade Apple underlay, rendered, zoomed, and re-cut until each letter
-   survived being read cold (the final s took thirteen constructions; the
-   loops all read as "e" or "z", and the printed swash-S is what stayed
-   legible). What ships is a drawing of writing that was actually judged as
-   writing, which is the difference between a signature and a font.
+   "JACKDAWS", WRITTEN, AND THE S LETS A BIRD GO. The word is a TRACE of the
+   letter's own hand: La Belle Aurore's rendered "Jackdaws" was skeletonised
+   to the pen's centreline, routed in the order a hand writes, and refit as
+   cubics. Two earlier constructions failed — a flourish (overruled
+   2026-08-17: the letter should be signed with the name) and a hand-drawn
+   word over a Homemade Apple underlay, which the owner read as rigid, not
+   cursive. Tracing the prose face is the reference rule taken to its end:
+   the signature cannot disagree with the writing above it, because it IS
+   that writing, at signature size.
 
-   Seven strokes, drawn in pen order with pen-lift gaps in the delays. The
-   trail thins over three segments as the pen leaves the paper, and the lift
-   is where the bird goes — the project's continuity rule (one thing becomes
-   another; the pen's exit velocity is the bird's entry velocity). It is the
-   same silhouette `brand.js` flies in the nav, so the letter is signed by the
-   mark at the top of every page.
+   Four strokes in pen order — J, ac, kdaw, s — and the pen lifts between
+   them are the font's own (the k starts fresh after "Jac"; the pen lifts
+   again before the s). The hand's slant is baked into the traced
+   coordinates, so there is no skew transform. The s exits through its
+   top-right flick into a trail that thins over three segments as the pen
+   leaves the paper, and the lift is where the bird goes — the project's
+   continuity rule (one thing becomes another; the pen's exit velocity is
+   the bird's entry velocity). It is the same silhouette `brand.js` flies in
+   the nav, so the letter is signed by the mark at the top of every page.
 
    `pathLength="1"` NORMALISES EVERY GEOMETRY so the dash choreography needs
    no measurement — each stroke is one unit long whatever its actual length,
@@ -175,27 +176,30 @@
      100% and the grid gives way, which the flourish accepted too. */
   width: min(352px, 100%);
   height: auto;
-  /* Negative left by the ink's own inset: the J's entry sits at x = 23 user
-     units once the slant is applied, 18.4px at the 0.8 render — a signature
-     that begins indented from the line above it reads as misaligned rather
-     than as written. */
-  margin: 2px 0 4px -18px;
+  /* Negative left by the ink's own inset: the J's crescent enters at x = 16.5
+     user units, 13.2px at the 0.8 render, so -13px puts the letter body on
+     the prose margin and lets the descender's tail kick ~10px into the left
+     margin the way a signed name does. */
+  margin: 2px 0 4px -13px;
   overflow: visible;
 }
 .sign-stroke {
   fill: none;
   stroke: var(--ink);
-  /* 2.4 user units at the 0.8 render scale is 1.92 real pixels — chosen after
-     2 measured out at 1.6 and read as a hairline rather than as ink. */
-  stroke-width: 2.4;
+  /* 4 user units at the 0.8 render scale is 3.2 real pixels — a medium
+     ballpoint, the owner's pick from a weighted audition (2026-08-18) after
+     2.4 read as too thin. For calibration: the prose face's own ink measures
+     5.25 units at this scale (word ink area over skeleton length), so the
+     signature sits deliberately one step lighter than the hand it traces. */
+  stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 /* The trail is the pen leaving: three short segments sharing endpoints, each
    thinner than the last. Width is per-path because a stroke cannot taper. */
-.st-t1 { stroke-width: 1.7; }
-.st-t2 { stroke-width: 1.1; }
-.st-t3 { stroke-width: 0.6; }
+.st-t1 { stroke-width: 2.84; }
+.st-t2 { stroke-width: 1.84; }
+.st-t3 { stroke-width: 1; }
 .sign-bird { fill: var(--ink); }
 .sign-name { font-weight: 650; }
 
@@ -206,28 +210,28 @@
    silent. So the hidden state is scoped to `html.reveal`, which only the
    inline one-liner in <head> sets.
 
-   The delays are the writing rhythm: each stroke starts where the previous
-   ends, with ~60ms pen-lift gaps and a 100ms lift before the S (the one
-   deliberate break in the word — a Palmer loop-s kept reading as "e", so the
-   pen lifts and prints the letterform). Strokes ease in-out like a hand;
-   the tapers ease IN only, because the exit accelerates. */
+   The delays are the writing rhythm: durations are proportional to each
+   stroke's real traced length (J 236, ac 244, kdaw 719, s 86 units), so the
+   pen moves at one speed through the whole word, with ~120ms pen-lift gaps
+   at the font's own lifts. Strokes ease in-out like a hand; the tapers ease
+   IN only, because the exit accelerates. */
 html.reveal .sign-stroke {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
 }
-html.reveal .st-j    { transition: stroke-dashoffset 0.55s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.2s; }
-html.reveal .st-ackd { transition: stroke-dashoffset 1.15s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.81s; }
-html.reveal .st-aws  { transition: stroke-dashoffset 1s    cubic-bezier(0.45, 0.05, 0.55, 0.95) 2.02s; }
-html.reveal .st-s    { transition: stroke-dashoffset 0.5s  cubic-bezier(0.45, 0.05, 0.55, 0.95) 3.12s; }
-html.reveal .st-t1   { transition: stroke-dashoffset 0.12s cubic-bezier(0.5, 0, 1, 1) 3.62s; }
-html.reveal .st-t2   { transition: stroke-dashoffset 0.08s cubic-bezier(0.5, 0, 1, 1) 3.74s; }
-html.reveal .st-t3   { transition: stroke-dashoffset 0.06s cubic-bezier(0.5, 0, 1, 1) 3.82s; }
+html.reveal .st-j    { transition: stroke-dashoffset 0.6s  cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.2s; }
+html.reveal .st-ac   { transition: stroke-dashoffset 0.63s cubic-bezier(0.45, 0.05, 0.55, 0.95) 0.92s; }
+html.reveal .st-kdaw { transition: stroke-dashoffset 1.8s  cubic-bezier(0.45, 0.05, 0.55, 0.95) 1.67s; }
+html.reveal .st-s    { transition: stroke-dashoffset 0.38s cubic-bezier(0.45, 0.05, 0.55, 0.95) 3.62s; }
+html.reveal .st-t1   { transition: stroke-dashoffset 0.12s cubic-bezier(0.5, 0, 1, 1) 4.05s; }
+html.reveal .st-t2   { transition: stroke-dashoffset 0.08s cubic-bezier(0.5, 0, 1, 1) 4.17s; }
+html.reveal .st-t3   { transition: stroke-dashoffset 0.06s cubic-bezier(0.5, 0, 1, 1) 4.25s; }
 html.reveal .letter-sign.in .sign-stroke { stroke-dashoffset: 0; }
 
 /* A CSS TRANSFORM ON AN SVG CHILD IS IN ITS OWN USER UNITS, NOT IN CSS PIXELS.
    The bird sits inside a group carrying `scale(0.45)` as an attribute, so `px`
    here is 0.36 of a rendered pixel. The start offset is back down the trail's
-   own vector (the trail climbs 40 units over 29 to the right), so the bird
+   own vector (the trail climbs ~30 units over ~25 to the right), so the bird
    continues the pen's line rather than arriving beside it; the delay lands on
    the last taper's finish. A CSS transform would REPLACE the positioning
    attribute outright, which is why positioning lives on a parent group this
@@ -236,8 +240,8 @@ html.reveal .sign-bird {
   opacity: 0;
   transform-box: fill-box;
   transform-origin: center;
-  transform: translate(-40px, 55px) scale(0.55);
-  transition: opacity 0.45s var(--ease-out) 3.86s, transform 0.7s var(--ease-out) 3.86s;
+  transform: translate(-40px, 49px) scale(0.55);
+  transition: opacity 0.45s var(--ease-out) 4.3s, transform 0.7s var(--ease-out) 4.3s;
 }
 html.reveal .letter-sign.in .sign-bird { opacity: 1; transform: none; }
 
