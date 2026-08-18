@@ -57,21 +57,18 @@ body {
   color: var(--jd-navy);
   pointer-events: none;
 }
-.wel-flight {
+/* The flight is drawn by welcome.js on this canvas, frame by frame — the
+   same four paths as the static glyph, flown along the same authored paths
+   the old CSS mover rode. The rect must hold every flight's drawn extent
+   (sky-space x -670…511, y from the page top at -64): welcome.js's CV
+   constant mirrors these numbers — change both together. */
+.wel-canvas {
   position: absolute;
-  width: 76px;
-  height: 96px;
-  /* Entry from off-left, the low sweep that writes the word, a wingover past
-     the right edge, the high return leg, and a rightward final approach onto
-     the glyph. Coordinates are sky-space; the mover's centre rides the path. */
-  /* The return leg's y is clamped for the DRAWN extent: ink reaches ~32px
-     above the mover's centre at that leg's scale, and the page top is at
-     sky y -64, so the leg flies no higher than y -32. */
-  offset-path: path("M -640 -30 C -430 4 -250 92 -30 112 C 40 119 120 121 200 118 C 260 116 330 108 396 86 C 452 68 476 30 448 -6 C 420 -18 330 -26 240 -24 C 180 -23 120 -18 92 -8 C 76 18 120 44 176 48 C 200 50 220 50 236 48");
-  offset-rotate: 0deg; /* heading is posed by hand — auto would flip on return */
+  left: -700px;
+  top: -64px;
+  width: 1250px;
+  height: 240px;
 }
-.wel-flight svg { width: 100%; height: 100%; display: block; }
-.wel-flight path { fill: currentColor; }
 
 /* Variant B furniture. Base state is hidden and lives OUTSIDE the motion
    gate: the tree by its markup dash attributes, the perched bird by
@@ -194,18 +191,14 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
    motion none of it exists and the page is complete at frame one. */
 @media (prefers-reduced-motion: no-preference) {
   .wel-sky { display: block; }
-  .wel-flight {
-    animation: wel-fly 2.6s linear 0.2s both;
-  }
-  .wel-flight svg {
-    animation: wel-pose 2.6s ease-in-out 0.2s both;
-  }
-  /* Timeline marks below are shared between wel-fly and wel-pose so the
-     mirror flips land on the path's two turn apexes. */
-
-  /* The wake: letters rise as the sweep passes their x. */
-  .wel-mark.split i {
-    animation: wel-letter 0.5s var(--ease-out) calc(1.36s + var(--i) * 40ms) backwards;
+  /* The wake: welcome.js hides the letters (.pending) and raises each one
+     (.rise) the moment the arrival's sweep actually crosses it — causal,
+     not a fitted delay. The explicit opacity on .rise is the rest state
+     the animation returns to; wel-letter's `from` starts it at 0. */
+  .wel-mark.split.pending i { opacity: 0; }
+  .wel-mark.split.pending i.rise {
+    opacity: 1;
+    animation: wel-letter 0.5s var(--ease-out) backwards;
   }
   /* No JS to split the word: the whole mark fades up under the sweep. */
   .wel-mark:not(.split) { animation: wel-in 0.6s var(--ease-out) 1.4s backwards; }
@@ -244,15 +237,10 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
 
   /* ---------- Idle repertoire ---------- */
   /* After the arrival, welcome.js marks the scene settled (.settled on the
-     sky and mark, .aloft on the glyph). These classes REPLACE the finished
-     entrance animations with quiet states, so the idle flight below can
-     override them and — critically — hand control back HERE when it ends.
-     Without them, removing .idle-fly would re-apply the arrival rules and
-     replay the whole entrance: a glyph invisible for 2.62s, a re-cascading
-     word. A finished animation never restarts; a re-applied one always does. */
-  .wel-sky.settled .wel-flight { animation: none; opacity: 0; }
-  .wel-sky.settled .wel-flight svg { animation: none; }
-  .wel-mark.split.settled i { animation: none; }
+     sky and mark, .aloft on the glyph). The mark's rule replaces the
+     letters' entrance with a quiet state — and its opacity must beat
+     .pending's, so it sits later in source at equal specificity. */
+  .wel-mark.split.settled i { animation: none; opacity: 1; }
 
   /* Drift: the settled glyph rides a slow thermal. Starts and loops at
      identity, so taking over from the landing (and resuming after a
@@ -272,24 +260,14 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
      0.56 scale) brushes the letter caps and clears the tagline (top at
      y 128.5) by ~6px — the arrival could fly lower only because the
      tagline hadn't entered yet. */
-  .wel-hero.idle-fly .wel-sky.settled .wel-flight {
-    offset-path: path("M 236 48 C 290 33 350 15 404 22 C 448 28 462 62 436 88 C 420 100 380 102 330 101 C 260 100 160 100 96 98 C 56 96 30 84 34 58 C 38 34 90 26 140 32 C 180 36 212 42 236 48");
-    animation: wel-circuit 2.8s linear both;
-  }
-  .wel-hero.idle-fly .wel-sky.settled .wel-flight svg {
-    animation: wel-circuit-pose 2.8s ease-in-out both;
-  }
-  .wel-hero.idle-fly .wel-bird.aloft { animation: wel-away 2.8s linear both; }
+  .wel-bird.aloft.away { animation: wel-away-hold 0.18s linear both; }
+  .wel-bird.aloft.return { animation: wel-return 0.4s var(--ease-out) both; }
 
-  /* The wake, in reverse: the sweep runs right-to-left, so the last letter
-     ducks first. The line below is a fit to the MEASURED crossing times
-     (the sweep's ease-in-out makes them non-linear, ~73ms/letter overall):
-     each duck's peak lands 40–100ms after its letter is overflown —
-     impulse, then recovery, never anticipation. */
-  .wel-hero.idle-fly .wel-mark.split.settled i,
-  .wel-hero.idle-perch .wel-mark.split.settled i {
-    animation: wel-duck 0.5s ease-in-out calc(0.94s + (6 - var(--i)) * 73ms) both;
-  }
+  /* The wake, in reverse: welcome.js adds .duck as the canvas bird crosses
+     each letter flying leftward — the sweep runs right-to-left, so the last
+     letter ducks first: impulse, then recovery, never anticipation. The
+     class comes off on its own animationend, so every pass is a fresh play. */
+  .wel-mark.split.settled i.duck { animation: wel-duck 0.5s ease-in-out both; }
 
   /* ---------- Variant B: the circuit that lands ---------- */
   /* Every second circuit doesn't return to the glyph. The same circuit —
@@ -300,16 +278,9 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
      bird flares into its branch. It perches — breathing, the odd
      weight-shift and peck — then launches out; the tree retracts under it
      AS it climbs, and it lands back into the static glyph. */
-  .wel-hero.idle-perch .wel-sky.settled .wel-flight {
-    offset-path: path("M 236 48 C 290 33 350 15 404 22 C 448 28 462 62 436 88 C 420 100 380 102 330 101 C 260 100 160 100 96 98 C 56 96 30 84 34 58 C 38 34 90 26 140 32 C 180 36 212 42 236 48 C 282 38 334 46 366 60 C 386 68 396 76 383 71");
-    animation: wel-circuit-land 4.1s linear both;
-  }
-  .wel-hero.idle-perch .wel-sky.settled .wel-flight svg {
-    animation: wel-circuit-land-pose 4.1s ease-in-out both;
-  }
-  /* The glyph hands its mass to the mover and stays away for the whole
-     cycle — the hold is the fill, so the rest length is JS's to choose. */
-  .wel-hero.idle-perch .wel-bird.aloft { animation: wel-away-hold 0.18s linear both; }
+  /* The flight is welcome.js's canvas mover; the glyph's absence for the
+     whole cycle is the .away hold above — the rest length is JS's to
+     choose. The furniture below stays CSS, timed against the flight. */
 
   /* The sapling, drawn root-to-tip: trunk, then branches staggered.
      Timed against the flight: the trunk starts at 2.1s with the mover at
@@ -345,15 +316,7 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
      wingover and fades into the glyph's return squash. The tree retracts
      tip-first DURING the climb — exit synchronized with departure — and
      the branch recoils the moment the weight leaves it. */
-  .wel-hero.idle-perch.idle-depart .wel-sky.settled .wel-flight {
-    offset-path: path("M 383 71 C 352 50 300 30 258 26 C 222 23 206 34 218 44 C 226 49 232 49 236 48");
-    animation: wel-depart 1.6s linear 0.35s both;
-  }
-  .wel-hero.idle-perch.idle-depart .wel-sky.settled .wel-flight svg {
-    animation: wel-depart-pose 1.6s ease-in-out 0.35s both;
-  }
   .wel-hero.idle-perch.idle-depart .wel-perched { animation: wel-perch-out 0.55s ease-in both; }
-  .wel-hero.idle-perch.idle-depart .wel-bird.aloft { animation: wel-return 0.4s var(--ease-out) 1.6s both; }
   .wel-hero.idle-perch.idle-depart .wel-tree .wt-stub { animation: wt-ungrow 0.3s ease-in 0.45s both; }
   .wel-hero.idle-perch.idle-depart .wel-tree .wt-high { animation: wt-ungrow 0.3s ease-in 0.52s both; }
   .wel-hero.idle-perch.idle-depart .wel-tree .wt-perch {
@@ -363,31 +326,9 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
   .wel-hero.idle-perch.idle-depart .wel-tree .wt-trunk { animation: wt-ungrow 0.45s ease-in 0.75s both; }
 }
 
-/* Path progress is by arc length; the marks give the sweep more time than
-   its share (statelier crossing) and decelerate the final approach. */
-@keyframes wel-fly {
-  0%   { offset-distance: 0%; opacity: 0; animation-timing-function: cubic-bezier(0.3, 0.4, 0.6, 1); }
-  6%   { opacity: 1; }
-  30%  { offset-distance: 39%; animation-timing-function: linear; }
-  62%  { offset-distance: 64%; animation-timing-function: ease-in-out; }
-  70%  { offset-distance: 69%; animation-timing-function: linear; }
-  84%  { offset-distance: 88%; animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1); }
-  92%  { opacity: 1; }
-  100% { offset-distance: 100%; opacity: 0; }
-}
-/* Heading and size. scaleX runs through zero at each turn apex — the bird
-   presents edge-on for a frame, then mirrored: a wingover, not a teleport. */
-@keyframes wel-pose {
-  0%   { transform: rotate(7deg) scale(0.58); }
-  30%  { transform: rotate(2deg) scale(0.8); }
-  61%  { transform: rotate(-4deg) scale(0.88); }
-  67%  { transform: rotate(-16deg) scale(0.14, 0.9); }
-  73%  { transform: rotate(-6deg) scale(-0.9, 0.9); }
-  82%  { transform: rotate(3deg) scale(-0.94, 0.94); }
-  86.5% { transform: rotate(10deg) scale(-0.14, 0.94); }
-  92%  { transform: rotate(2deg) scale(0.97); }
-  100% { transform: rotate(0deg) scale(1); }
-}
+/* The flight keyframes (wel-fly/wel-pose and kin) live in welcome.js now,
+   as timing tables sampled by arc length — the same marks, same paths,
+   drawn on the canvas with a real wingbeat. */
 @keyframes wel-land {
   0%   { opacity: 0; transform: scale(1.08); }
   45%  { opacity: 1; transform: scale(0.97); }
@@ -429,41 +370,6 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
   58%  { transform: rotate(1.8deg); }
   100% { transform: rotate(0deg); }
 }
-/* Timeline marks shared with wel-circuit-pose: right apex at 22%, sweep
-   32–68% (26% of the arc given 36% of the time), left apex at 76%. */
-@keyframes wel-circuit {
-  0%   { offset-distance: 0%; opacity: 0; animation-timing-function: cubic-bezier(0.3, 0.4, 0.6, 1); }
-  4%   { opacity: 1; }
-  22%  { offset-distance: 26%; animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
-  32%  { offset-distance: 42.5%; animation-timing-function: ease-in-out; }
-  68%  { offset-distance: 68.5%; animation-timing-function: cubic-bezier(0.4, 0, 0.5, 1); }
-  76%  { offset-distance: 73%; animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1); }
-  95%  { opacity: 1; }
-  100% { offset-distance: 100%; opacity: 0; }
-}
-/* Shrinks climbing out (gaining distance), sweeps small and mirrored, grows
-   back to full on the approach. scaleX through near-zero at each apex — the
-   same wingover language as the arrival. */
-@keyframes wel-circuit-pose {
-  0%   { transform: rotate(0deg) scale(1); }
-  12%  { transform: rotate(-6deg) scale(0.82); }
-  22%  { transform: rotate(-14deg) scale(0.14, 0.72); }
-  28%  { transform: rotate(-5deg) scale(-0.62, 0.62); }
-  32%  { transform: rotate(1deg) scale(-0.56, 0.56); }
-  68%  { transform: rotate(3deg) scale(-0.56, 0.56); }
-  76%  { transform: rotate(12deg) scale(-0.14, 0.6); }
-  82%  { transform: rotate(5deg) scale(0.7); }
-  100% { transform: rotate(0deg) scale(1); }
-}
-/* The glyph during a circuit: hands its mass to the mover at the start,
-   takes it back with the arrival's settle-squash at the end. */
-@keyframes wel-away {
-  0%    { opacity: 1; transform: scale(1); }
-  5%    { opacity: 0; transform: scale(1.06); }
-  93%   { opacity: 0; transform: scale(1.08); animation-timing-function: var(--ease-out); }
-  96.5% { opacity: 1; transform: scale(0.97); }
-  100%  { opacity: 1; transform: scale(1); }
-}
 @keyframes wel-duck {
   0%   { transform: translateY(0); }
   40%  { transform: translateY(3px); }
@@ -471,41 +377,8 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
 }
 
 /* ---------- Variant B keyframes ---------- */
-/* wel-circuit's marks rescaled onto the longer path: time × 2.8/4.1 (the
-   prefix keeps its wall-clock), offset × 906.9/1071.7 (the circuit's arc
-   length over the total, both measured). The tail decelerates from 68.3%
-   and the fade is the last 2% — the crossfade into the perched bird. */
-@keyframes wel-circuit-land {
-  0%    { offset-distance: 0%; opacity: 0; animation-timing-function: cubic-bezier(0.3, 0.4, 0.6, 1); }
-  2.7%  { opacity: 1; }
-  15%   { offset-distance: 22%; animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
-  21.9% { offset-distance: 35.9%; animation-timing-function: ease-in-out; }
-  46.4% { offset-distance: 58%; animation-timing-function: cubic-bezier(0.4, 0, 0.5, 1); }
-  51.9% { offset-distance: 61.8%; animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1); }
-  68.3% { offset-distance: 84.6%; animation-timing-function: cubic-bezier(0.25, 0.6, 0.35, 1); }
-  98%   { opacity: 1; }
-  100%  { offset-distance: 100%; opacity: 0; }
-}
-/* The circuit poses to 68.3%, then the tail: a nose-down descent, and a
-   flare that pitches up and mirrors through edge-on — the bird lands
-   facing left, which is the way the perched silhouette faces. */
-@keyframes wel-circuit-land-pose {
-  0%    { transform: rotate(0deg) scale(1); }
-  8.2%  { transform: rotate(-6deg) scale(0.82); }
-  15%   { transform: rotate(-14deg) scale(0.14, 0.72); }
-  19.1% { transform: rotate(-5deg) scale(-0.62, 0.62); }
-  21.9% { transform: rotate(1deg) scale(-0.56, 0.56); }
-  46.4% { transform: rotate(3deg) scale(-0.56, 0.56); }
-  51.9% { transform: rotate(12deg) scale(-0.14, 0.6); }
-  56%   { transform: rotate(5deg) scale(0.7); }
-  68.3% { transform: rotate(3deg) scale(0.78); }
-  80%   { transform: rotate(9deg) scale(0.74); }
-  90%   { transform: rotate(4deg) scale(0.68); }
-  93.5% { transform: rotate(-10deg) scale(0.14, 0.64); }
-  100%  { transform: rotate(-4deg) scale(-0.6, 0.62); }
-}
-/* wel-away's first beat alone: the glyph hands its mass off and the fill
-   holds it away until the depart rules replace this with wel-return. */
+/* The glyph's handoff pair: .away (wel-away's first beat alone) holds the
+   mass off until welcome.js swaps it for .return at the flight's cue. */
 @keyframes wel-away-hold {
   0%   { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.06); }
@@ -585,24 +458,4 @@ body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #244
   22%  { opacity: 1; transform: translateY(1.3px) scaleY(0.86); animation-timing-function: cubic-bezier(0.5, 0, 0.8, 0.6); }
   60%  { opacity: 1; transform: translate(-4px, -9px) rotate(-6deg); }
   100% { opacity: 0; transform: translate(-7px, -16px) rotate(-8deg); }
-}
-/* The depart leg: fast climb-out leftward, decelerating hook back onto
-   the glyph; the fade at each end is a handoff, not an exit. */
-@keyframes wel-depart {
-  0%   { offset-distance: 0%; opacity: 0; animation-timing-function: cubic-bezier(0.4, 0.1, 0.7, 1); }
-  8%   { opacity: 1; }
-  55%  { offset-distance: 62%; animation-timing-function: cubic-bezier(0.3, 0.3, 0.4, 1); }
-  90%  { opacity: 1; }
-  100% { offset-distance: 100%; opacity: 0; }
-}
-/* Launches facing left (the perched heading), climbs nose-up, wingovers
-   through edge-on at the turn, and arrives facing right at full size —
-   the glyph's own heading and mass. */
-@keyframes wel-depart-pose {
-  0%   { transform: rotate(-4deg) scale(-0.62, 0.62); }
-  20%  { transform: rotate(-12deg) scale(-0.72, 0.72); }
-  50%  { transform: rotate(-6deg) scale(-0.78, 0.78); }
-  68%  { transform: rotate(-2deg) scale(-0.14, 0.8); }
-  80%  { transform: rotate(6deg) scale(0.88); }
-  100% { transform: rotate(0deg) scale(1); }
 }

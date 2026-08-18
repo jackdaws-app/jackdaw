@@ -320,8 +320,12 @@
     return card;
   }
 
-  /** One switch row: label, live hint, and the painted track over a real input. */
-  function settingRow({ on, label, hint, onChange }) {
+  /** One switch row: label, an ⓘ note, an optional live hint, and the painted
+      track over a real input. The note is the long form — collapsed until the
+      ⓘ is hovered, focused, or clicked — so the sheet leads with controls
+      instead of prose. A row given no `hint` shows its state through the note
+      instead, which is why a toggle on such a row opens it. */
+  function settingRow({ on, label, hint, note, noteId, onChange }) {
     const row = el("label", "pop-set-row");
     const input = document.createElement("input");
     input.type = "checkbox";
@@ -331,38 +335,77 @@
     track.append(el("span", "pop-set-thumb"));
 
     const text = el("div", "pop-set-text");
-    const hintEl = el("div", "pop-set-hint");
+    const line = el("div", "pop-set-labelline");
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "pop-set-info";
+    info.setAttribute("aria-label", "More about this setting");
+    info.setAttribute("aria-expanded", "false");
+    info.setAttribute("aria-controls", noteId);
+    info.innerHTML =
+      '<svg viewBox="0 0 12 12" aria-hidden="true">' +
+      '<circle cx="6" cy="6" r="5.25" fill="none" stroke="currentColor" stroke-width="1.1"/>' +
+      '<circle cx="6" cy="3.5" r="0.9" fill="currentColor"/>' +
+      '<rect x="5.3" y="5.3" width="1.4" height="3.5" rx="0.7" fill="currentColor"/>' +
+      "</svg>";
+    line.append(el("span", "pop-set-label", label), info);
+
+    const noteEl = el("div", "pop-set-note");
+    const noteInner = el("div", "pop-set-note-inner");
+    const noteText = el("div", "pop-set-note-text");
+    noteText.id = noteId;
+    noteInner.append(noteText);
+    noteEl.append(noteInner);
+
+    const hintEl = hint ? el("div", "pop-set-hint") : null;
     const paint = () => {
-      hintEl.textContent = hint(input.checked);
+      if (hintEl) hintEl.textContent = hint(input.checked);
+      noteText.textContent = note(input.checked);
     };
     paint();
-    text.append(el("div", "pop-set-label", label), hintEl);
+    text.append(line);
+    if (hintEl) text.append(hintEl);
+    text.append(noteEl);
+
+    const setOpen = (open) => {
+      row.classList.toggle("note-open", open);
+      info.setAttribute("aria-expanded", String(open));
+    };
+    info.addEventListener("click", (e) => {
+      // A button inside the row's <label>: the click must never double as a
+      // flip of the switch the label wraps.
+      e.preventDefault();
+      setOpen(!row.classList.contains("note-open"));
+    });
 
     input.addEventListener("change", async () => {
       await onChange(input.checked);
       paint();
+      if (!hintEl) setOpen(true);
     });
 
     row.append(text, input, track);
     return row;
   }
 
-  /** The permanent controls, behind the header's settings button. */
+  /** The permanent controls, behind the header's settings button. The full
+      disclosures live in each row's ⓘ note; the one line that stays on the
+      surface is the badge row's "sends the products on the page", because it
+      is the only place the popup says the feature sends anything. */
   function renderSettings() {
     sheetBody.textContent = "";
     sheetBody.append(
       sheetHead(
         "Contributing",
-        "Jackdaw's price history is built from what people already have on " +
-          "screen. Nothing is requested on your behalf — no extra pages, no " +
-          "products opened in the background, no images.",
+        "Built from what you already have on screen — nothing is requested on your behalf.",
       ),
       settingRow({
         on: catalogOn,
         label: "Share what I browse",
-        hint: (on) =>
+        noteId: "setNoteCatalog",
+        note: (on) =>
           on
-            ? "Prices and stock from the Micro Center pages you visit, with no account and nothing that identifies you."
+            ? "Prices and stock from the Micro Center pages you visit. No account, nothing that identifies you, and no extra pages opened in the background."
             : "Jackdaw still shows you the history. You just won't be adding to it.",
         // Writing the explicit boolean is also what answers the consent card's
         // question, so it stops appearing once this switch has been touched.
@@ -377,16 +420,17 @@
       el(
         "div",
         "pop-sheet-body",
-        "What Jackdaw draws on Micro Center's own pages. Separate from the " +
-          "switch above — this one is about reading, not contributing.",
+        "What Jackdaw draws on the page — reading, not contributing.",
       ),
       settingRow({
         on: badgesOn,
         label: "Price range on category pages",
+        noteId: "setNoteBadges",
         hint: (on) =>
           on
-            ? "A small range under each card, showing where today's price sits. Looking them up sends the products on the page — never what you searched for."
-            : "Category and search pages stay exactly as Micro Center draws them.",
+            ? "Sends the products on the page — never what you searched for."
+            : "Category pages stay as Micro Center draws them.",
+        note: () => "A small range under each card, showing where today's price sits.",
         onChange: setBadges,
       }),
     );
@@ -711,4 +755,290 @@
 
   loadList();
   refreshAuth();
+})();
+
+// ---------- The header lap ----------
+// Every 18 seconds the live dot takes flight: it becomes the bird, flies one
+// lap over the wordmark — letters ducking as it actually passes them — and
+// lands back on its mark. The same engine as the welcome arrival (arc-length
+// path sampling, per-frame wingbeat, heading from the path derivative),
+// trimmed to one flight on a 200x60 stage over the brand. popup.css hides
+// the canvas under prefers-reduced-motion; the scheduler here checks the
+// same query before every lap, and tears down on a mid-session flip.
+(() => {
+  const sky = document.querySelector(".pop-sky");
+  const live = document.querySelector(".pop-live");
+  const mark = document.querySelector(".pop-wordmark");
+  if (!sky || !live || !mark) return;
+  const brand = sky.parentElement;
+  const letters = Array.from(mark.querySelectorAll("i"));
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  // The glyph's own artwork as Path2D: head at +x, tail at -x, wings
+  // +-y about the body line at y 50; registration centre (46, 50).
+  const BIRD_PARTS = {
+    wingUp: new Path2D("M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"),
+    wingDn: new Path2D("M55 53.8 Q51 62 47.5 69.5 Q44.5 76.5 40.5 84.5 L38.6 78.5 L35.2 82.5 L34.6 76 L31.6 78.5 L32 72 L29.5 73.5 Q32.5 66 36 59.5 Q38.5 55.4 40 52.2 Z"),
+    tail: new Path2D("M31.5 47.6 L20 42.5 L21.8 45.8 L17.5 44.8 L19.6 48 L16.8 50 L19.6 52 L17.5 55.2 L21.8 54.2 L20 57.5 L31.5 52.4 Q30.6 50 31.5 47.6 Z"),
+    body: new Path2D("M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"),
+  };
+  // Wings first, under a vertical squash about the body line, then tail and
+  // body on top. Symmetric artwork: heading is pure rotation, no mirror.
+  function drawBird(g, x, y, ang, k, spread, alpha) {
+    g.save();
+    g.globalAlpha = alpha;
+    g.translate(x, y);
+    g.rotate(ang);
+    g.scale(k, k);
+    g.translate(-46, -50);
+    g.save();
+    g.translate(0, 50);
+    g.scale(1, Math.max(spread, 0.05));
+    g.translate(0, -50);
+    g.fill(BIRD_PARTS.wingUp);
+    g.fill(BIRD_PARTS.wingDn);
+    g.restore();
+    g.fill(BIRD_PARTS.tail);
+    g.fill(BIRD_PARTS.body);
+    g.restore();
+  }
+
+  // Arc-length path sampling, as in welcome.js: one cumulative table per
+  // authored path, inverted per frame; heading from the derivative.
+  const ARC_STEPS = 32;
+  function cubicAt(s, t) {
+    const u = 1 - t;
+    return [
+      u * u * u * s[0] + 3 * u * u * t * s[2] + 3 * u * t * t * s[4] + t * t * t * s[6],
+      u * u * u * s[1] + 3 * u * u * t * s[3] + 3 * u * t * t * s[5] + t * t * t * s[7],
+    ];
+  }
+  function cubicDeriv(s, t) {
+    const u = 1 - t;
+    return [
+      3 * u * u * (s[2] - s[0]) + 6 * u * t * (s[4] - s[2]) + 3 * t * t * (s[6] - s[4]),
+      3 * u * u * (s[3] - s[1]) + 6 * u * t * (s[5] - s[3]) + 3 * t * t * (s[7] - s[5]),
+    ];
+  }
+  function measurePath(d) {
+    const n = (d.match(/-?[\d.]+/g) || []).map(Number);
+    const segs = [];
+    let sx = n[0], sy = n[1];
+    for (let i = 2; i + 5 < n.length; i += 6) {
+      segs.push([sx, sy, n[i], n[i + 1], n[i + 2], n[i + 3], n[i + 4], n[i + 5]]);
+      sx = n[i + 4];
+      sy = n[i + 5];
+    }
+    const lens = [0];
+    const samples = [];
+    let total = 0;
+    let px = segs[0][0], py = segs[0][1];
+    for (const seg of segs) {
+      for (let k = 1; k <= ARC_STEPS; k++) {
+        const [x, y] = cubicAt(seg, k / ARC_STEPS);
+        total += Math.hypot(x - px, y - py);
+        lens.push(total);
+        samples.push([seg, k / ARC_STEPS]);
+        px = x;
+        py = y;
+      }
+    }
+    return { lens, samples, total };
+  }
+  function pathAt(path, f) {
+    const target = Math.min(Math.max(f, 0), 1) * path.total;
+    let lo = 0, hi = path.lens.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (path.lens[mid] < target) lo = mid + 1;
+      else hi = mid;
+    }
+    const i = Math.max(lo, 1);
+    const [seg, t1] = path.samples[i - 1];
+    const span = path.lens[i] - path.lens[i - 1] || 1;
+    const t = t1 - 1 / ARC_STEPS + ((target - path.lens[i - 1]) / span) * (1 / ARC_STEPS);
+    const [x, y] = cubicAt(seg, t);
+    const [dx, dy] = cubicDeriv(seg, t);
+    return { x, y, ang: Math.atan2(dy, dx) };
+  }
+  function bezierEase(x1, y1, x2, y2) {
+    const ax = 3 * x1 - 3 * x2 + 1, bx = 3 * x2 - 6 * x1, cx = 3 * x1;
+    const ay = 3 * y1 - 3 * y2 + 1, by = 3 * y2 - 6 * y1, cy = 3 * y1;
+    const sampleX = (t) => ((ax * t + bx) * t + cx) * t;
+    const sampleY = (t) => ((ay * t + by) * t + cy) * t;
+    const slopeX = (t) => (3 * ax * t + 2 * bx) * t + cx;
+    return (x) => {
+      if (x <= 0) return 0;
+      if (x >= 1) return 1;
+      let t = x;
+      for (let i = 0; i < 5; i++) {
+        const s = slopeX(t);
+        if (Math.abs(s) < 1e-6) break;
+        t -= (sampleX(t) - x) / s;
+      }
+      if (t < 0 || t > 1 || Math.abs(sampleX(t) - x) > 1e-4) {
+        let lo = 0, hi = 1;
+        t = x;
+        for (let i = 0; i < 24; i++) {
+          if (sampleX(t) < x) lo = t;
+          else hi = t;
+          t = (lo + hi) / 2;
+        }
+      }
+      return sampleY(t);
+    };
+  }
+  const LINEAR = (x) => x;
+  const EASE_IN_OUT = bezierEase(0.42, 0, 0.58, 1);
+  function profileAt(marks, p) {
+    if (p <= marks[0][0]) return marks[0][1];
+    const last = marks[marks.length - 1];
+    if (p >= last[0]) return last[1];
+    for (let i = 1; i < marks.length; i++) {
+      if (p <= marks[i][0]) {
+        const prev = marks[i - 1];
+        const u = (p - prev[0]) / (marks[i][0] - prev[0]);
+        return prev[1] + (prev[2] || LINEAR)(u) * (marks[i][1] - prev[1]);
+      }
+    }
+    return last[1];
+  }
+  const smooth = (u) => {
+    const c = Math.min(Math.max(u, 0), 1);
+    return c * c * (3 - 2 * c);
+  };
+
+  const cbLaunch = bezierEase(0.4, 0.1, 0.7, 1);
+  const cbSweep = bezierEase(0.4, 0, 0.5, 1);
+  const cbSettle = bezierEase(0.2, 0.6, 0.3, 1);
+
+  // Stage: popup.css's .pop-sky rect, in .pop-brand coordinates — change
+  // both together. The dot's centre sits at (3.5, 8) at the popup's fixed
+  // metrics; the lap launches there, climbs over the letters, banks past
+  // the wordmark's end and swoops home below it.
+  const CV = { left: -20, top: -24, w: 200, h: 60 };
+  const LAP = {
+    path: measurePath("M 3.5 9.4 C 24 -4 62 -8 96 -2 C 122 3 126 16 102 19 C 78 21 40 21 14 17 C 2 16 -1 12 3.5 9.4"),
+    dur: 1.9, delay: 0,
+    dist: [[0, 0, cbLaunch], [0.32, 0.42, EASE_IN_OUT], [0.62, 0.66, cbSweep], [0.8, 0.85, cbSettle], [1, 1]],
+    alpha: [[0, 0], [0.07, 1], [0.93, 1], [1, 0]],
+    size: [[0, 0.11], [0.18, 0.19], [0.3, 0.2], [0.72, 0.2], [0.88, 0.16], [1, 0.11]],
+    take: 0.4, rampIn: 0.15, flare: 0.85, level: 0.9,
+  };
+  // Cruise flap at ~195ms a beat, a blend from the folded launch pose, and
+  // a full-spread flare before the bird shrinks back into the dot.
+  function spreadAt(p, ms) {
+    let s = 0.3 + 0.7 * Math.abs(Math.sin(ms / 62));
+    if (p < LAP.rampIn) s = LAP.take + (s - LAP.take) * smooth(p / LAP.rampIn);
+    if (p > LAP.flare) s += (1 - s) * smooth((p - LAP.flare) / (1 - LAP.flare));
+    return s;
+  }
+
+  const cx2d = sky.getContext("2d");
+  let dpr = 0;
+  let flightRaf = 0;
+  let flightState = null;
+  function ensureCanvas() {
+    const want = Math.min(window.devicePixelRatio || 1, 2);
+    if (want !== dpr) {
+      dpr = want;
+      sky.width = Math.round(CV.w * dpr);
+      sky.height = Math.round(CV.h * dpr);
+    }
+  }
+  function cancelFlight() {
+    if (flightRaf) cancelAnimationFrame(flightRaf);
+    flightRaf = 0;
+    flightState = null;
+    cx2d.setTransform(1, 0, 0, 1, 0, 0);
+    cx2d.clearRect(0, 0, sky.width, sky.height);
+  }
+  function startFlight(hooks) {
+    cancelFlight();
+    ensureCanvas();
+    flightState = { hooks: hooks || {}, t0: 0, prevX: null };
+    flightRaf = requestAnimationFrame(flightFrame);
+  }
+  function flightFrame(ts) {
+    const st = flightState;
+    if (!st) return;
+    if (!st.t0) st.t0 = ts;
+    const p = ((ts - st.t0) / 1000 - LAP.delay) / LAP.dur;
+    cx2d.setTransform(1, 0, 0, 1, 0, 0);
+    cx2d.clearRect(0, 0, sky.width, sky.height);
+    if (p >= 1) {
+      const done = st.hooks.onDone;
+      flightRaf = 0;
+      flightState = null;
+      if (done) done();
+      return;
+    }
+    if (p > 0) {
+      const pt = pathAt(LAP.path, profileAt(LAP.dist, p));
+      let ang = pt.ang;
+      if (p > LAP.level) ang *= 1 - smooth((p - LAP.level) / (1 - LAP.level));
+      cx2d.setTransform(dpr, 0, 0, dpr, -CV.left * dpr, -CV.top * dpr);
+      // Ink re-read per frame: the theme class lands asynchronously from
+      // the storage read, and the old SVG's currentColor was live too.
+      cx2d.fillStyle = getComputedStyle(sky).color;
+      drawBird(cx2d, pt.x, pt.y, ang, profileAt(LAP.size, p),
+               spreadAt(p, ts - st.t0), profileAt(LAP.alpha, p));
+      if (st.hooks.onPos) st.hooks.onPos(pt.x, pt.y, p, st.prevX);
+      st.prevX = pt.x;
+    }
+    flightRaf = requestAnimationFrame(flightFrame);
+  }
+
+  // Letter centres in brand space, measured per lap; a letter ducks the
+  // frame the bird's x actually crosses it on the outbound (rightward,
+  // overhead) leg. One-shot animation, removed on its own animationend.
+  let letterXs = null;
+  function measureLetters() {
+    const brandLeft = brand.getBoundingClientRect().left;
+    letterXs = letters.map((el) => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2 - brandLeft;
+    });
+  }
+  function duckUnder(x, y, p, prevX) {
+    if (prevX == null || y > 4 || p > 0.55) return;
+    for (let i = 0; i < letters.length; i++) {
+      if (prevX < letterXs[i] && letterXs[i] <= x) letters[i].classList.add("duck");
+    }
+  }
+  mark.addEventListener("animationend", (e) => {
+    if (e.animationName === "pop-duck") e.target.classList.remove("duck");
+  });
+
+  let lapTimer = 0;
+  function schedule(ms) {
+    clearTimeout(lapTimer);
+    lapTimer = setTimeout(lap, ms);
+  }
+  function lap() {
+    if (reduced.matches || flightState) return;
+    measureLetters();
+    live.classList.add("away");
+    startFlight({
+      onPos: duckUnder,
+      onDone: () => {
+        live.classList.remove("away");
+        schedule(16100); // lap 1.9s -> the old 18s cycle, kept
+      },
+    });
+  }
+  if (reduced.addEventListener) {
+    reduced.addEventListener("change", () => {
+      if (reduced.matches) {
+        clearTimeout(lapTimer);
+        lapTimer = 0;
+        cancelFlight();
+        live.classList.remove("away");
+        letters.forEach((el) => el.classList.remove("duck"));
+      } else {
+        schedule(6000);
+      }
+    });
+  }
+  if (!reduced.matches) schedule(6000); // the old cycle's initial delay, kept
 })();
