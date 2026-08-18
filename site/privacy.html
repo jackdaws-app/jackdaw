@@ -68,14 +68,14 @@
         <nav class="doc-index" aria-label="Sections">
           <p class="doc-index-label">Contents</p>
           <ol>
-            <li><a href="#s1">Information we collect</a></li>
-            <li><a href="#s2">Optional accounts</a></li>
-            <li><a href="#s3">Information we do not collect</a></li>
-            <li><a href="#s4">How we use information</a></li>
-            <li><a href="#s5">Data storage and sharing</a></li>
-            <li><a href="#s6">Data retention and deletion</a></li>
+            <li><a href="#s1">Information We Collect (all users)</a></li>
+            <li><a href="#s2">Optional Accounts</a></li>
+            <li><a href="#s3">Information We Do Not Collect</a></li>
+            <li><a href="#s4">How We Use Information</a></li>
+            <li><a href="#s5">Data Storage and Sharing</a></li>
+            <li><a href="#s6">Data Retention and Deletion</a></li>
             <li><a href="#s7">Children</a></li>
-            <li><a href="#s8">Changes to this policy</a></li>
+            <li><a href="#s8">Changes to This Policy</a></li>
             <li><a href="#s9">Contact</a></li>
           </ol>
         </nav>
@@ -92,17 +92,18 @@
          reason love.html needs it, where it is not. See that file's leaf. -->
     <section class="section doc-leaf" data-ground="paper" data-chapter="paper">
       <div class="wrap">
-        <main class="doc" id="doc">
+        <main class="doc" id="doc" data-policy-slug="privacy" data-policy-version="0">
           <p>This Privacy Policy describes how the Jackdaw browser extension (&quot;Jackdaw,&quot; &quot;we,&quot; &quot;our&quot;) collects, uses, and shares information. <strong>Jackdaw does not require an account.</strong> All features work anonymously; an optional account may be created to sync alerts across browsers and to claim a handle, and is described in Section 2.</p>
 
           <section class="doc-sec" id="s1">
             <h2><span class="doc-num">1.</span> Information We Collect (all users)</h2>
             <ul>
               <li><strong>Device identifier.</strong> A randomly generated identifier (UUID) created by your browser when the extension is installed. It is not derived from your name or email address, and for users without an account it is not linked to any identity.</li>
-              <li><strong>Price observations.</strong> When you visit a Micro Center product page, the extension reads product information already displayed on that page (product ID, SKU, price, stock status, and your selected store number) and submits it to the shared community database. On Micro Center search and category pages it does the same for the product listings already displayed on the page you are viewing, submitting them together as one batch. In both cases it reads only what your browser has already loaded: it does not open pages, load products in the background, follow links, or request anything from Micro Center on your behalf. None of this happens until you turn on &quot;Contributing&quot; — the extension asks once when it is installed, and again in its toolbar popup until you answer — and you can turn it off again at any time; the rest of the extension works either way.</li>
+              <li><strong>Price observations.</strong> When you visit a Micro Center product page, the extension reads product information already displayed on that page — the product&#x27;s identifiers (product ID, SKU, and the manufacturer and barcode numbers where the page carries them), its name, brand, category, and its own path on the retailer&#x27;s site; its price, together with any open-box or advertised original price shown beside it; its stock status; and your selected store number — and submits it to the shared community database. On Micro Center search and category pages it does the same for the product listings already displayed on the page you are viewing, submitting them together as one batch. In both cases it reads only what your browser has already loaded: it does not open pages, load products in the background, follow links, or request anything from Micro Center on your behalf. None of this happens until you turn on &quot;Contributing&quot; — the extension asks once when it is installed, and again in its toolbar popup until you answer — and you can turn it off again at any time; the rest of the extension works either way.</li>
               <li><strong>Price-history requests.</strong> To display price history on a page you are already viewing, the extension asks our servers for the recorded history of the products shown on that page. Such a request contains the product identifiers and nothing else: no device identifier, no account, no page address, no search terms, and no filters. These requests only read the database; no record of them is written to it. On search and category pages, this display can be turned off from the extension&#x27;s toolbar popup, under &quot;Showing.&quot; That setting is separate from &quot;Contributing,&quot; because it governs what the extension shows you rather than what it submits.</li>
               <li><strong>User content.</strong> Comments, votes, reports, price-alert targets, and the name displayed on your comments. Without an account, that name is self-selected text and is not verified. With an account, it is the handle you claim under Section 2.</li>
               <li><strong>Anonymous diagnostic counts.</strong> Aggregate tallies of two kinds, used to detect outages and faults in the extension itself. The first counts events such as &quot;price report failed&quot; or &quot;product data not found.&quot; The second counts, for each page from which observations are submitted, how many product listings the extension was able to read and which of the page elements it looks for were present; this is submitted only together with an observation, and is governed by the same &quot;Contributing&quot; setting. Both are counts only: they contain no identifier, no page address, and no content, and neither varies with who is browsing.</li>
+              <li><strong>Anonymous alert counts.</strong> When you click one of Jackdaw&#x27;s price-alert notifications, the extension increments a single shared counter, so that we can tell how often alerts are acted on. The request carries no arguments at all: no device identifier, no product, no store, and nothing about the alert. Only the total and the date it arrived are recorded.</li>
             </ul>
           </section>
 
@@ -201,6 +202,8 @@
 
     <script src="brand.js"></script>
     <script src="doc.js"></script>
+    <script src="config.js"></script>
+    <script src="policy.js"></script>
     <script src="lit.js"></script>
     <script src="favicon.js"></script>
   </body>

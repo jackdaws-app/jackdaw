@@ -16,6 +16,7 @@ import type * as lib from "../lib.js";
 import type * as metrics from "../metrics.js";
 import type * as moderation from "../moderation.js";
 import type * as observations from "../observations.js";
+import type * as policy from "../policy.js";
 import type * as products from "../products.js";
 import type * as seed from "../seed.js";
 import type * as watches from "../watches.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   metrics: typeof metrics;
   moderation: typeof moderation;
   observations: typeof observations;
+  policy: typeof policy;
   products: typeof products;
   seed: typeof seed;
   watches: typeof watches;

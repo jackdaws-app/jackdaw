@@ -404,6 +404,37 @@ export default defineSchema({
     devCode: v.optional(v.string()),
   }).index("by_email", ["email"]),
 
+  // The published text of PRIVACY.md and TERMS.md, so the two documents can be
+  // amended from the admin panel instead of a deploy.
+  //
+  // APPEND-ONLY. A publish inserts; nothing here is ever patched or deleted,
+  // including a revert, which republishes an old body as a new version. A
+  // policy that can be edited in place is not a policy — the whole value of
+  // keeping the history is being able to say what a user agreed to on a given
+  // day, and a mutable row cannot answer that.
+  //
+  // `slug` is a closed union rather than free text for the same reason
+  // EVENT_NAMES is: the doc pages ask for exactly these two, and a caller who
+  // could mint a third would be publishing a document no page renders and no
+  // one reviews.
+  //
+  // The committed HTML remains the floor. site/privacy.html and site/terms.html
+  // carry the last committed body baked in and a `data-policy-version`; the
+  // page swaps to the row below only when this `version` is higher and the
+  // markdown parses. A reader with JavaScript off, a printer, and a store
+  // reviewer therefore always see text that is in git.
+  policyDocs: defineTable({
+    slug: v.union(v.literal("privacy"), v.literal("terms")),
+    // 1-based, contiguous per slug, assigned from the current maximum at
+    // publish. Not `_creationTime`: the pages compare it against a number
+    // written into committed HTML, so it has to be small, stable and readable.
+    version: v.number(),
+    markdown: v.string(),
+    publishedAt: v.number(),
+    // Why this version exists, for the history list. Never rendered publicly.
+    note: v.optional(v.string()),
+  }).index("by_slug_version", ["slug", "version"]),
+
   // Incremental metrics for the admin panel. Every number the dashboard shows
   // is maintained on write, because counting on demand (e.g. all pricePoints)
   // would blow the ~16k document read limit as history accumulates.
