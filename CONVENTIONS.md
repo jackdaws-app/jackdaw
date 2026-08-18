@@ -45,6 +45,15 @@ cross it and start failing in production for the heaviest users first. Bump a co
 on write; cap every `take`; if a query samples, say what it sampled in its own return
 value so the UI can label it.
 
+**Escape a value at the boundary where it changes syntax.** A string that is correct at
+rest can still be wrong the instant it is concatenated into something with its own
+grammar. A stored product path ending `...with-900&#181;m-fiber-holder` — an undecoded
+HTML numeric character reference, which is what the retailer's own tag manager emits — is
+the right value to keep, and becomes a truncated path plus a stray fragment the moment it
+is glued onto an origin. `encodeURI` is not the fix: it deliberately leaves `#` and `&`
+alone as reserved characters. Escape the one character whose meaning changes, at the
+construction site, and leave the stored value alone.
+
 ## Visual rules
 
 - **No emoji in product UI.** SVG icons, small-caps letterspaced labels.
@@ -151,6 +160,19 @@ Each of these cost real debugging time. They look like bugs in your code and are
 - **Draw artwork from references, never from memory.** Extract the dominant shapes first
   — for a bird in flight the wings are 3–4× the body's area, and getting that ratio wrong
   produces something confidently wrong rather than roughly right.
+- **When the reference is already on the page, trace it rather than imitate it.** Two
+  hand-built cursive signatures were rejected as rigid before the shipped one was produced
+  by tracing the letter's own typeface — skeletonised to the pen's centreline, routed in
+  the order a hand writes it, refit as cubics. It cannot disagree with the prose above it
+  because it *is* that prose at signature size. Imitating a hand carries your construction
+  habits into it; tracing one carries the hand's.
+- **Calibrate stroke weight against the ink beside it, and audition it as pixels.** A
+  weight that looks fine alone reads thin next to text whose own stems you never measured.
+  Render candidate widths as a row-sheet and choose from that, not from a number.
+- **Take pen order and per-stroke timing from the letterforms, not from a schedule you
+  like.** One stroke per pen-down, duration proportional to that stroke's arc length so
+  the pen holds one speed, a short gap across each lift. That is what makes a frozen
+  mid-write frame read as handwriting rather than as paths revealing in a pleasing order.
 
 ## Measuring in a driven browser
 
@@ -201,8 +223,39 @@ measurement first, and go read the code it claims to describe.**
 - **A JS `matchMedia` patch cannot test the CSS half of `prefers-reduced-motion`.** Media
   queries are evaluated against the real browser setting. A faithful run needs the patch
   *and* every `@media (prefers-reduced-motion: reduce)` block in the stylesheet lifted out
-  and applied unconditionally — check how many there are; ours is three, and taking only
-  the first left eight infinite animations running.
+  and applied unconditionally — check how many there are, and recount rather than trust
+  the last number written down; ours read "three" for months and is four in the main
+  stylesheet, eight across the site (47 rules, counted 2026-08-18). Taking only the first
+  left eight infinite animations running.
+- **When you cannot photograph a moment, re-render the measured values as a static
+  pose-sheet.** Freeze the animation numerically, read the computed values at each instant
+  you care about, then write those exact numbers back as inline styles on copies of the
+  real markup — one row per instant, in a page that loads the shipped stylesheet and
+  animates nothing. One screenshot of that is pixel proof of a whole sequence, and because
+  every number came off the live engine it cannot be a flattering reconstruction.
+- **Freezing with `getAnimations()` has two traps in one line.** Setting an absolute
+  `currentTime` throws on a progress-based (scroll-driven) animation — and the loop has
+  already paused everything it reached before it throws, so an unrelated reveal is left
+  parked mid-fade and the page looks broken. Filter to exactly what you are freezing, and
+  resume strays with `play()`.
+- **Virtual time does not advance scroll.** A headless virtual-time budget lands an
+  `IntersectionObserver`-driven reveal at an unpredictable instant, so three budgets give
+  three readings that each look like a different bug. Capture end state under forced
+  reduced motion, which is deterministic and is a guarded path you want checked anyway.
+- **A collapsed pane reports every width as zero, and nothing warns you.** A hidden
+  preview surface can report an `innerWidth`/`innerHeight` of 0, at which point every
+  `getBoundingClientRect().width` on the page is 0 as well — including elements that are
+  plainly fine. Read the viewport before believing any width. If it is 0, no width
+  measurement on that page means anything, and a zero-sized element is not evidence of a
+  layout bug.
+- **A backgrounded tab suspends the rendering pipeline, so `IntersectionObserver` never
+  delivers — not even its initial callback.** An IO-driven reveal then sits unrevealed
+  indefinitely and is indistinguishable from a broken one. That is worst for anything
+  deliberately exempt from a timed backstop, because there is no backstop left to cover
+  for it. The tell is cheap: arm a *fresh* observer on an element you can see is in view;
+  if it reports nothing at all, the pipeline is parked, not the page. Forcing a composite
+  — a screenshot will do — delivers the queued records at once. Same family as the rAF
+  rule above, one layer down: it is not only animation that stops.
 
 ## Data collection is not negotiable
 
