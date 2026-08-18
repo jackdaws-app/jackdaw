@@ -20,6 +20,19 @@
     `<path d="M31 49.9 Q34 47.6 41 46.6 Q50 45.4 57 46.6 Q62.5 47.4 66.5 48.7 L74 49.9 L66.5 51.2 Q62.5 52.6 57 53.4 Q50 54.6 41 53.4 Q34 52.4 31 50.1 Z"/>` +
     `</svg>`;
 
+  // Micro Center's own slugs can carry an undecoded HTML numeric character
+  // reference: product 684336's path ends `...with-900&#181;m-fiber-holder`, the
+  // micro sign arriving from `dataLayer.pageUrl` as those seven literal
+  // characters because a script body is not HTML and nothing ever decodes it.
+  // The stored path is right and stays that way — `normalizeUrlPath` in
+  // convex/lib.ts deliberately does not cut there — but concatenated onto the
+  // origin that `#` is a fragment delimiter, so the browser navigates to
+  // `.../with-900&` and 404s. `encodeURI` does NOT help; it leaves `#` and `&`
+  // alone as reserved characters. Escape the one character whose meaning
+  // changes on the way into a URL.
+  const productUrl = (urlPath) =>
+    "https://www.microcenter.com" + String(urlPath).replace(/#/g, "%23");
+
   // Micro Center prints "$15,299.99"; every price string in Jackdaw matches it.
   const fmt = (p) =>
     "$" + p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -186,7 +199,7 @@
       if (triggers) card.append(el("div", "pop-triggers", triggers));
 
       card.addEventListener("click", () => {
-        chrome.tabs.create({ url: "https://www.microcenter.com" + r.urlPath });
+        chrome.tabs.create({ url: productUrl(r.urlPath) });
         window.close();
       });
       bodyEl.append(card);

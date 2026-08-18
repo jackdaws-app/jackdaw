@@ -535,9 +535,24 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
+// Micro Center's own slugs can carry an undecoded HTML numeric character
+// reference: product 684336's path ends `...with-900&#181;m-fiber-holder`, the
+// micro sign arriving from `dataLayer.pageUrl` as those seven literal characters
+// because a script body is not HTML and nothing ever decodes it. The stored path
+// is right and stays that way — `normalizeUrlPath` in convex/lib.ts deliberately
+// does not cut there — but concatenated onto the origin that `#` is a fragment
+// delimiter, so the browser navigates to `.../with-900&` and 404s. `encodeURI`
+// does NOT help; it leaves `#` and `&` alone as reserved characters. Escape the
+// one character whose meaning changes on the way into a URL.
+//
+// Duplicated in popup.js: a popup script and a service worker share no module
+// here, and the alternative is a file that exists only to hold one expression.
+const productUrl = (urlPath) =>
+  "https://www.microcenter.com" + String(urlPath).replace(/#/g, "%23");
+
 chrome.notifications.onClicked.addListener((notificationId) => {
   if (!notificationId.startsWith("/")) return;
-  chrome.tabs.create({ url: "https://www.microcenter.com" + notificationId });
+  chrome.tabs.create({ url: productUrl(notificationId) });
   chrome.notifications.clear(notificationId);
   // A click is the one moment we can honestly say Jackdaw sent someone to a
   // store's product page. Counted in aggregate only (no device, no product).
