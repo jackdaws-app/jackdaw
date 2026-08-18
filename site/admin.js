@@ -1,164 +1,24 @@
-// Jackdaw admin panel.
-// Security posture: the admin key is a 256-bit bearer secret held in
-// sessionStorage (cleared when the tab closes, never in localStorage, never in
-// a URL), sent over HTTPS and compared server-side without early return.
-// NOTE: failed attempts are NOT rate limited — a Convex mutation that throws
-// rolls back its own transaction (including the limiter's write), and queries
-// cannot write at all. The key's entropy is the lock; put the page behind edge
-// SSO (see DEPLOY.md) for identity. noindex + robots Disallow'd. Single
-// operator tool, not a multi-user auth system.
+// Jackdaw admin panel — the numbers half of the console.
+//
+// The gate, the Convex transport, the power-on choreography and the plate
+// stagger belong to the console rather than to this page, and live in
+// admin-shell.js so the policies editor runs on exactly the same ones. See its
+// head note for the security posture; nothing about the key is decided here.
 (() => {
-  // set in config.js so the site and the extension are swapped together
-  const CONVEX_URL = window.JACKDAW_CONVEX_URL;
-  if (!CONVEX_URL) {
-    document.body.innerHTML =
-      '<p style="font:14px system-ui;padding:40px">config.js is missing: no Convex deployment configured.</p>';
-    return;
-  }
-  const KEY_STORE = "jd_admin_key";
+  const A = window.JackdawAdmin;
+  if (!A || !A.ok) return;
+  const { query, el, fmt, toast, still } = A;
+  const adminKey = () => A.key();
 
   const $ = (id) => document.getElementById(id);
-  const gate = $("gate");
-  const gateForm = $("gateForm");
-  const keyInput = $("keyInput");
-  const gateError = $("gateError");
-  const panelWrap = $("panelWrap");
-  const signOut = $("signOut");
+  const panelWrap = A.panelWrap;
 
-  let adminKey = sessionStorage.getItem(KEY_STORE) || "";
-  // Every animation on this page is gated on this ONE query rather than each
-  // one testing for itself, so a stale gate cannot leave half the choreography
-  // running. The CSS half is in admin.css's own `reduce` block; a JS check
-  // cannot substitute for it (media queries are evaluated by the engine, not
-  // by us) and neither can substitute for the other — both halves are needed.
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
-  // The boot choreography plays once, on the transition from gate to panel.
-  // Refresh redraws the same plates; replaying their entrance on every poll
-  // would make a routine refresh look like a page load.
-  let booted = false;
   let lastStats = null;
   const kpiPrev = new Map();
   let trendRun = 0;
 
-  // ── Convex HTTP ──
-  async function call(kind, path, args) {
-    const res = await fetch(`${CONVEX_URL}/api/${kind}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, args, format: "json" }),
-    });
-    const json = await res.json();
-    if (json.status === "success") return json.value;
-    const code = json.errorData && json.errorData.code;
-    const err = new Error(json.errorMessage || "Request failed");
-    err.code = code;
-    throw err;
-  }
-  const query = (path, args) => call("query", path, args);
-  const mutate = (path, args) => call("mutation", path, args);
-
-  // ── Helpers ──
-  const fmt = (n) => (n == null ? "—" : n.toLocaleString());
-  const el = (tag, cls, text) => {
-    const n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text != null) n.textContent = text;
-    return n;
-  };
-
-  let toastEl = null;
-  function toast(msg) {
-    if (!toastEl) {
-      toastEl = el("div", "toast");
-      document.body.appendChild(toastEl);
-    }
-    toastEl.textContent = msg;
-    requestAnimationFrame(() => toastEl.classList.add("in"));
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => toastEl.classList.remove("in"), 2400);
-  }
-
-  // ── Gate ──
-  function showGate(message) {
-    panelWrap.hidden = true;
-    signOut.hidden = true;
-    gate.hidden = false;
-    if (message) {
-      gateError.textContent = message;
-      gateError.hidden = false;
-      // retrigger the shake
-      gateError.style.animation = "none";
-      void gateError.offsetWidth;
-      gateError.style.animation = "";
-    }
-    keyInput.focus();
-  }
-
-  function showPanel() {
-    gateError.hidden = true;
-    panelWrap.hidden = false;
-    signOut.hidden = false;
-    if (gate.hidden) return;
-    // Power-on, not a page swap. The lamp goes green, the gate plate drops
-    // away, and the console's own plates come up BEHIND it rather than after
-    // it — the overlap is the point, and it is the same continuity rule the
-    // bird arrival is built on: one stage hands its mass to the next.
-    gate.classList.remove("checking");
-    gate.classList.add("opened");
-    panelWrap.classList.add("booting");
-    const finish = () => {
-      gate.hidden = true;
-      gate.classList.remove("opened", "leaving");
-    };
-    if (still.matches) {
-      finish();
-      return;
-    }
-    gate.classList.add("leaving");
-    // The plates start at 240ms, while the gate is still fading: the two
-    // overlap by ~180ms. Sequenced by timer rather than by `animationend`
-    // because the gate's own exit is what we are deliberately NOT waiting for.
-    setTimeout(finish, 430);
-  }
-
-  // Boot state is a class on the wrapper, dropped once the last plate has
-  // landed. Leaving it on would keep an inert `::before` element on every card
-  // and, worse, would mean a later re-render inherits a finished animation —
-  // which never restarts under the same name.
-  function bootDone() {
-    panelWrap.classList.remove("booting");
-    booted = true;
-  }
-
-  gateForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const val = keyInput.value.trim();
-    if (!val) return;
-    adminKey = val;
-    gate.classList.add("checking");
-    const ok = await load();
-    gate.classList.remove("checking");
-    if (ok) {
-      sessionStorage.setItem(KEY_STORE, adminKey);
-      keyInput.value = "";
-    } else {
-      adminKey = "";
-    }
-  });
-
-  signOut.addEventListener("click", () => {
-    sessionStorage.removeItem(KEY_STORE);
-    adminKey = "";
-    booted = false;
-    gate.classList.remove("opened", "leaving", "checking");
-    showGate();
-  });
-
-  $("refresh").addEventListener("click", () => load());
-
   // ── Rendering ──
-  const money = (n) =>
-    "$" + Math.round(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const money = A.money;
 
   function renderKpis(stats) {
     const t = stats.totals;
@@ -205,7 +65,7 @@
       const card = el("div", "kpi" + (accent ? " kpi-accent" : ""));
       const val = el("div", "kpi-value", format(value));
       const prev = kpiPrev.get(label);
-      if (!booted && !still.matches && !document.hidden && typeof value === "number") {
+      if (!A.booted() && !still.matches && !document.hidden && typeof value === "number") {
         countUp(val, value, format);
       } else if (prev != null && prev !== value && !still.matches) {
         // A refresh redraws nine tiles at once; without this the one that moved
@@ -437,11 +297,11 @@
     // has nothing to do with it.
     try {
       renderPriceIndex(
-        await query("dashboard:categoryIndex", { adminKey, days: indexDays }),
+        await query("dashboard:categoryIndex", { adminKey: adminKey(), days: indexDays }),
       );
     } catch (err) {
       toast(err.code === "UNAUTHORIZED" ? "Session expired" : "Couldn't load that window");
-      if (err.code === "UNAUTHORIZED") showGate("That key was rejected.");
+      if (err.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
     }
   });
 
@@ -871,7 +731,7 @@
     // tab, so starting a run there would leave the canvas at k=0 — an empty
     // chart — until the tab was fronted. Same gotcha the panel's bar widths hit.
     trendRun++;
-    if (booted || still.matches || document.hidden) {
+    if (A.booted() || still.matches || document.hidden) {
       paint(1);
       return;
     }
@@ -926,13 +786,13 @@
   async function act(commentId, action, btn) {
     btn.disabled = true;
     try {
-      await mutate("dashboard:resolve", { adminKey, commentId, action });
+      await A.mutate("dashboard:resolve", { adminKey: adminKey(), commentId, action });
       toast(action === "delete" ? "Comment deleted" : "Comment restored");
       await load();
     } catch (e) {
       toast(e.code === "UNAUTHORIZED" ? "Session expired" : "Action failed");
       btn.disabled = false;
-      if (e.code === "UNAUTHORIZED") showGate("That key was rejected.");
+      if (e.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
     }
   }
 
@@ -949,16 +809,7 @@
     { slug: "privacy", label: "Privacy Policy", page: "privacy.html" },
     { slug: "terms", label: "Terms of Service", page: "terms.html" },
   ];
-  const HOST = String(CONVEX_URL).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0].toLowerCase();
-  const DAY = 86400000;
-
-  function ago(ts) {
-    const d = Math.floor((Date.now() - ts) / DAY);
-    if (d <= 0) return "today";
-    if (d === 1) return "yesterday";
-    if (d < 30) return `${d} days ago`;
-    return new Date(ts).toISOString().slice(0, 10);
-  }
+  const { host: HOST, ago } = A;
 
   // The committed floor, read out of the shipped page itself rather than out of
   // a build manifest — the page IS the artefact, so nothing can drift between
@@ -1067,73 +918,26 @@
     $("policyCard").classList.toggle("has-drift", behind > 0);
   }
 
-  // ── Plate order and the idle sweep ──
-  // The entrance stagger is stamped in DOCUMENT order over what is actually on
-  // screen. Two cards start `hidden` (health signals, selector health) and are
-  // revealed only when they have something to say, so a static index authored
-  // in the HTML would leave gaps in the cascade — a 62ms beat with two silent
-  // rests in it reads as jank, not as rhythm.
-  function plates() {
-    return Array.from(panelWrap.querySelectorAll(".kpi, [data-plate]")).filter(
-      (n) => !n.hidden && !n.closest("[hidden]"),
-    );
-  }
-  function stampPlates() {
-    plates().forEach((n, i) => n.style.setProperty("--plate-i", String(i)));
-  }
-
-  // One plate at a time, page-wide — the same rule brand.js applies to the
-  // birds, for the same reason: a console where six surfaces glint at once
-  // reads as a screensaver. Only plates on screen are eligible, so the sweep is
-  // never spent on something nobody is looking at.
-  let sweepTimer = null;
-  function scheduleSweep() {
-    clearTimeout(sweepTimer);
-    if (still.matches) return;
-    sweepTimer = setTimeout(() => {
-      scheduleSweep();
-      if (document.hidden || panelWrap.hidden) return;
-      const vh = window.innerHeight;
-      const eligible = plates().filter((n) => {
-        if (!n.classList.contains("admin-card")) return false;
-        const r = n.getBoundingClientRect();
-        return r.top < vh - 40 && r.bottom > 40;
-      });
-      if (!eligible.length) return;
-      const card = eligible[Math.floor(Math.random() * eligible.length)];
-      // A finished animation never restarts under the same name, so the class
-      // is removed on the way out rather than left on the winner.
-      card.classList.remove("sweep");
-      void card.offsetWidth;
-      card.classList.add("sweep");
-      setTimeout(() => card.classList.remove("sweep"), 2200);
-    }, 9000 + Math.random() * 7000);
-  }
-  still.addEventListener("change", () => {
-    if (still.matches) clearTimeout(sweepTimer);
-    else scheduleSweep();
-  });
-
   // ── Load ──
   async function load() {
-    if (!adminKey) {
-      showGate();
+    if (!adminKey()) {
+      A.showGate();
       return false;
     }
     // Drives the refresh arrow's spin. Set before the await so the button
     // responds to the click and not to the reply.
-    panelWrap.classList.add("loading");
+    A.setLoading(true);
     try {
       // Three queries, not one. The index reads price points and costs roughly
       // 7k documents; folding it into `stats` would put the counters — which
       // cost nothing and never fail — behind the one query here that can.
       const [stats, flagged, index] = await Promise.all([
-        query("dashboard:stats", { adminKey }),
-        query("dashboard:flagged", { adminKey }),
-        query("dashboard:categoryIndex", { adminKey, days: indexDays }),
+        query("dashboard:stats", { adminKey: adminKey() }),
+        query("dashboard:flagged", { adminKey: adminKey() }),
+        query("dashboard:categoryIndex", { adminKey: adminKey(), days: indexDays }),
       ]);
       lastStats = stats;
-      showPanel();
+      A.showPanel();
       renderKpis(stats);
       renderStores(stats.stores);
       renderCategories(stats.categories);
@@ -1149,24 +953,19 @@
       renderFlagged(flagged);
       // Stamped AFTER every renderer, because two of the cards decide whether
       // they are hidden while rendering.
-      stampPlates();
+      A.afterRender();
       // Its own request, deliberately not awaited with the three above: it hits
       // a different (public) endpoint and reads two files off this origin, and
       // a slow policy read must not hold the numbers back.
       renderPolicies();
-      if (!booted) {
-        // The last plate's contents finish at index*62 + 200 + 420.
-        setTimeout(bootDone, plates().length * 62 + 700);
-        scheduleSweep();
-      }
       return true;
     } catch (e) {
-      if (e.code === "UNAUTHORIZED") showGate("That key was rejected.");
-      else if (e.code === "RATE_LIMITED") showGate("Too many attempts. Wait a minute and try again.");
-      else showGate("Couldn't reach the backend. Check your connection.");
+      if (e.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
+      else if (e.code === "RATE_LIMITED") A.showGate("Too many attempts. Wait a minute and try again.");
+      else A.showGate("Couldn't reach the backend. Check your connection.");
       return false;
     } finally {
-      panelWrap.classList.remove("loading");
+      A.setLoading(false);
     }
   }
 
@@ -1186,6 +985,5 @@
     }, 120);
   });
 
-  if (adminKey) load();
-  else showGate();
+  A.init({ load });
 })();

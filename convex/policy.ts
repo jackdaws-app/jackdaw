@@ -30,7 +30,10 @@ const VERSION_ROW = v.object({
   publishedAt: v.number(),
   note: v.union(v.string(), v.null()),
   // So the panel can show a version's weight without fetching its body.
-  bytes: v.number(),
+  // Characters rather than bytes, because that is the count `publish`
+  // enforces against MAX_BODY. A second unit here would disagree with the
+  // editor's own readout on any document containing an em dash.
+  chars: v.number(),
 });
 
 /**
@@ -209,7 +212,7 @@ export const history = query({
       version: r.version,
       publishedAt: r.publishedAt,
       note: r.note ?? null,
-      bytes: r.markdown.length,
+      chars: r.markdown.length,
     }));
   },
 });

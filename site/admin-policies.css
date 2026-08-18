@@ -1,0 +1,359 @@
+/* ── The policies editor ─────────────────────────────────────────────────────
+   admin.css is the chassis; this is the one bench on it that writes rather
+   than reads. Everything here inherits that file's material — plates on a dark
+   ground, sunk channels for anything text goes INTO, brass for chrome and
+   green reserved for data — and adds only what an editor needs and a dashboard
+   never did: a wide monospace field, a lamp that answers the structure check,
+   and a confirm that is part of the card rather than a browser dialog.
+
+   Ratios below were measured against the RESOLVED backdrop (the composited
+   colour under the text), not against the token they were picked from. */
+
+.pol-wrap { max-width: 1320px; }
+
+.pol-head-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ── State strip ─────────────────────────────────────────────────────────────
+   Live, committed, editor. One plate rather than three, because the three
+   numbers are only meaningful beside one another: what a reader sees now, what
+   git carries, and whether this page is holding something neither of them has. */
+.pol-state { padding-top: 14px; padding-bottom: 14px; }
+.pol-state-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.pol-stat { min-width: 0; }
+.pol-stat + .pol-stat {
+  border-left: 1px solid var(--hairline);
+  padding-left: 14px;
+}
+.pol-stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--brass); /* 8.28:1 on the plate */
+  margin-bottom: 5px;
+}
+.pol-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink); /* 15.72:1 */
+  line-height: 1.15;
+  /* Backlit rather than printed — the same half-pixel lift the KPI values take. */
+  text-shadow: 0 0 18px color-mix(in oklab, var(--ink) 16%, transparent);
+}
+.pol-stat-value.ok { color: var(--accent-deep); }   /* 11.11:1 */
+.pol-stat-value.warn { color: var(--adm-warn); }    /* 10.05:1 */
+.pol-stat-value.bad { color: var(--adm-bad); }      /*  6.07:1 */
+.pol-stat-sub {
+  font-size: 11.5px;
+  color: var(--muted); /* 6.96:1 */
+  margin-top: 5px;
+  line-height: 1.45;
+}
+/* A changed reading tints for a beat, exactly as the KPIs do — the strip is
+   read after an action, and the eye needs telling which of the three moved. */
+.pol-stat-value.changed { animation: value-settle 0.9s var(--ease-out); }
+
+/* ── The two benches ─────────────────────────────────────────────────────────
+   Source on the left, result on the right, both full height so the editor and
+   its preview scroll against a shared baseline rather than pushing each other
+   about. */
+.pol-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.pol-cols > .admin-card { margin-bottom: 16px; display: flex; flex-direction: column; }
+
+/* ── Lamp + verdict ── */
+.pol-lamp-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.pol-lamp {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 1px 0 var(--adm-lit);
+}
+.pol-lamp i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.42;
+  transition: background-color 0.35s ease, opacity 0.35s ease, box-shadow 0.45s ease;
+}
+/* Motion as state, again: the lamp answers, it never idles. Green when the
+   structure check passes, red when it does not, unlit when there is nothing
+   loaded to judge. */
+.pol-lamp[data-state="ok"] i {
+  background: var(--accent);
+  opacity: 1;
+  box-shadow: 0 0 12px 2px color-mix(in oklab, var(--accent) 50%, transparent);
+}
+.pol-lamp[data-state="fault"] i {
+  background: var(--adm-bad);
+  opacity: 1;
+  animation: lamp-pulse-bad 1.1s var(--ease-out) infinite;
+}
+@keyframes lamp-pulse-bad {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--adm-bad) 46%, transparent); }
+  55% { box-shadow: 0 0 12px 3px color-mix(in oklab, var(--adm-bad) 26%, transparent); }
+}
+.pol-fault {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.pol-fault.ok { color: var(--ink-soft); }  /* 12.29:1 */
+.pol-fault.bad { color: var(--adm-bad); }
+
+/* ── The field ───────────────────────────────────────────────────────────────
+   A sunk channel like every other place text goes in, monospace because the
+   grammar is column-sensitive (a two-space continuation is meaningful), and
+   tall enough to hold a section without scrolling. */
+.pol-area {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 14px 15px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.62;
+  tab-size: 2;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink); /* 16.4:1 on the channel */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pol-area::placeholder { color: color-mix(in oklab, var(--muted) 62%, transparent); }
+.pol-area:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--accent-wash);
+}
+.pol-area.faulted { border-color: color-mix(in oklab, var(--adm-bad) 52%, transparent); }
+
+/* ── Actions ── */
+.pol-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.pol-note {
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pol-note::placeholder { color: color-mix(in oklab, var(--muted) 76%, transparent); }
+.pol-note:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--accent-wash);
+}
+.pol-buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.pol-btn-sm { padding: 8px 15px; font-size: 12.5px; }
+.pol-buttons .btn[disabled] {
+  cursor: not-allowed;
+  /* Recoloured, not faded. `opacity` on the whole button pulls a near-white
+     plate AND the near-black label it carries toward the same dark ground, so
+     the two converge: the label measured 2.74:1 — the page's primary control,
+     in the state it holds for as long as the text is unpublishable. An unlit
+     button instead, which is the language the rest of the page already speaks.
+     Border via inset shadow so switching states costs no layout. */
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* ── Confirm ─────────────────────────────────────────────────────────────────
+   Arm, then fire. Publishing puts text in front of readers, so it takes two
+   deliberate acts — and the second one is only worth asking for if the page
+   uses the space to say what the first one actually means, which a browser
+   `confirm()` string cannot. It opens the way a plate does: the edge first. */
+.pol-confirm {
+  margin-top: 12px;
+  border: 1px solid color-mix(in oklab, var(--brass) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--brass) 7%, rgba(0, 0, 0, 0.22));
+  padding: 12px 14px;
+  animation: confirm-open 0.34s var(--ease-out) backwards;
+}
+@keyframes confirm-open {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.9); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+.pol-confirm-text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.pol-confirm-text strong { color: var(--ink); font-weight: 600; }
+.pol-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Result ── */
+.pol-view .admin-card-head { margin-bottom: 12px; }
+.pol-scroll {
+  flex: 1 1 auto;
+  max-height: 620px;
+  min-height: 420px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  padding: 16px 18px;
+}
+
+/* The preview is the document's own typography, not the console's: it exists
+   to answer "does this read right", and a preview in the surrounding UI's font
+   answers a different question. Sizes track doc.css; the ink is night's. */
+.pol-preview { font-size: 14px; line-height: 1.72; color: var(--ink-soft); }
+.pol-preview .pol-doc-title {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 26px;
+  line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.pol-preview .pol-doc-meta {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  margin-bottom: 18px;
+}
+.pol-preview p { margin: 0 0 12px; }
+.pol-preview ul { margin: 0 0 12px; padding-left: 20px; }
+.pol-preview li { margin-bottom: 6px; }
+.pol-preview a { color: var(--accent-deep); text-decoration: underline; text-underline-offset: 2px; }
+.pol-preview strong { color: var(--ink); font-weight: 600; }
+.pol-preview code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.pol-preview .doc-sec { margin-bottom: 22px; }
+.pol-preview .doc-sec h2 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 17px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.pol-preview .doc-num { color: var(--brass); margin-right: 4px; font-variant-numeric: tabular-nums; }
+.pol-empty { font-size: 13px; color: var(--muted); }
+
+/* ── Changes ─────────────────────────────────────────────────────────────────
+   Colour is not the only carrier: every line keeps its `+`/`−`/space gutter,
+   so the diff survives being printed, screenshotted in greyscale, or read by
+   someone who cannot separate the two hues. */
+.pol-diff {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.pol-dline { display: flex; gap: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pol-dmark { flex: 0 0 1ch; color: var(--muted); user-select: none; }
+/* min-width:0 is what lets a long line wrap instead of pushing the gutter off. */
+.pol-dtext { flex: 1 1 auto; min-width: 0; }
+.pol-dline.add { color: var(--accent-deep); background: color-mix(in oklab, var(--accent) 9%, transparent); }
+.pol-dline.add .pol-dmark { color: var(--accent-deep); }
+.pol-dline.del { color: var(--adm-bad); background: color-mix(in oklab, var(--adm-bad) 9%, transparent); }
+.pol-dline.del .pol-dmark { color: var(--adm-bad); }
+.pol-dline.ctx { color: var(--muted); }
+.pol-dgap {
+  font-size: 11px;
+  color: var(--brass);
+  padding: 6px 0 4px;
+  letter-spacing: 0.08em;
+}
+
+/* ── History ── */
+.pol-history { display: flex; flex-direction: column; }
+.pol-ver {
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+}
+.pol-ver + .pol-ver { border-top: 1px solid var(--hairline); }
+.pol-ver-n {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.pol-ver.is-live .pol-ver-n { color: var(--accent-deep); }
+.pol-ver-main { min-width: 0; }
+.pol-ver-note { font-size: 12.5px; color: var(--ink-soft); overflow-wrap: break-word; }
+.pol-ver-note.none { color: var(--muted); font-style: italic; }
+.pol-ver-when { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.pol-ver-btns { display: flex; gap: 6px; align-self: center; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────
+   One column below 1000px: side-by-side source and preview stop being legible
+   long before they stop fitting. The state strip stacks at 640, where three
+   columns put a version number on two lines. */
+@media (max-width: 1000px) {
+  .pol-cols { grid-template-columns: minmax(0, 1fr); }
+  .pol-scroll { max-height: 460px; min-height: 260px; }
+  .pol-area { min-height: 340px; }
+}
+@media (max-width: 640px) {
+  .pol-state-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .pol-stat + .pol-stat {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid var(--hairline);
+    padding-top: 12px;
+  }
+  .pol-ver { grid-template-columns: 42px 1fr; }
+  .pol-ver-btns { grid-column: 1 / -1; justify-content: flex-start; }
+  .pol-buttons { justify-content: stretch; }
+  .pol-buttons .btn { flex: 1 1 auto; justify-content: center; }
+  .pol-head-controls { width: 100%; }
+  .pol-head-controls .seg { flex: 1 1 auto; }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   Same rule as the console's: hold every animation at its end state rather
+   than substituting anything, and keep the two that are STATE rather than
+   decoration — the lamp keeps its colour, it only stops breathing, because a
+   red lamp still says the body will not publish. */
+@media (prefers-reduced-motion: reduce) {
+  .pol-confirm,
+  .pol-stat-value.changed {
+    animation: none;
+  }
+  .pol-lamp[data-state="fault"] i {
+    animation: none;
+    box-shadow: 0 0 10px 2px color-mix(in oklab, var(--adm-bad) 34%, transparent);
+  }
+  .pol-lamp i,
+  .pol-area,
+  .pol-note {
+    transition: none;
+  }
+}

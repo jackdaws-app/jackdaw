@@ -1,0 +1,241 @@
+<!doctype html>
+<!-- The policy text, in the same night room as the numbers. Same chassis, same
+     gate, same key — see admin-shell.js. This page is the other half of the
+     static floor: it publishes, and `node site/policy-sync.js --write` commits
+     what was published. Neither one is optional and the page says so. -->
+<html lang="en" data-chapter="night">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Policies · Jackdaw admin</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#0a1120" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="vendor/fonts/instrument-serif-latin.woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="admin.css" />
+    <link rel="stylesheet" href="admin-policies.css" />
+  </head>
+  <body class="admin-body">
+    <a class="skip" href="#panelWrap">Skip to the editor</a>
+
+    <div class="nav-rail">
+      <nav class="nav admin-nav" id="nav">
+        <span class="nav-lead">
+          <a class="brand-mark" href="index.html" aria-label="Jackdaw, home">
+            <span class="brand-perch"><span class="brand-dot"></span></span>
+            <span class="brand-word">Jackdaw</span>
+          </a>
+          <span class="admin-tag">Admin</span>
+        </span>
+        <div class="nav-mid">
+          <div class="nav-links">
+            <a href="admin.html">Panel</a>
+            <a href="index.html">Home</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">Source</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost nav-cta" id="signOut" hidden>
+          <span class="btn-label">Sign out</span>
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- ── Gate ── identical to the panel's, because it is the same lock. -->
+    <section class="gate" id="gate">
+      <div class="gate-plate">
+        <div class="gate-lamp" aria-hidden="true"><i></i></div>
+        <p class="eyebrow">Restricted</p>
+        <h1 class="h-section">Admin access</h1>
+        <p class="gate-sub">Enter the admin key. It is kept for this browser session only.</p>
+        <form class="gate-form" id="gateForm">
+          <input
+            class="gate-input"
+            id="keyInput"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Admin key"
+            aria-label="Admin key"
+          />
+          <button class="btn btn-primary" type="submit">
+            <span class="btn-label">Unlock</span><span class="btn-arrow" aria-hidden="true">→</span>
+          </button>
+        </form>
+        <p class="gate-error" id="gateError" hidden></p>
+      </div>
+    </section>
+
+    <main class="panel-wrap pol-wrap" id="panelWrap" hidden>
+      <header class="admin-head">
+        <div>
+          <p class="eyebrow">Policies</p>
+          <h1 class="h-section">The text readers see</h1>
+        </div>
+        <div class="pol-head-controls">
+          <div class="seg" id="docPick" role="group" aria-label="Document">
+            <button class="seg-btn is-on" type="button" data-slug="privacy" aria-pressed="true">Privacy</button>
+            <button class="seg-btn" type="button" data-slug="terms" aria-pressed="false">Terms</button>
+          </div>
+          <button class="btn btn-ghost" id="refresh">
+            <span class="btn-label">Reload</span><span class="btn-arrow admin-spin" aria-hidden="true">↻</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ── State strip ──────────────────────────────────────────────────────
+           Three facts, always on screen, because every one of them changes what
+           pressing publish will mean: what is live, what git carries, and
+           whether the editor differs from either. -->
+      <section class="admin-card pol-state" data-plate>
+        <div class="pol-state-grid">
+          <div class="pol-stat">
+            <div class="pol-stat-label">Live</div>
+            <div class="pol-stat-value" id="stLive">—</div>
+            <div class="pol-stat-sub" id="stLiveSub">Reading…</div>
+          </div>
+          <div class="pol-stat">
+            <div class="pol-stat-label">Committed</div>
+            <div class="pol-stat-value" id="stFloor">—</div>
+            <div class="pol-stat-sub" id="stFloorSub">Reading…</div>
+          </div>
+          <div class="pol-stat">
+            <div class="pol-stat-label">Editor</div>
+            <div class="pol-stat-value" id="stDirty">—</div>
+            <div class="pol-stat-sub" id="stDirtySub">Nothing loaded yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="pol-cols">
+        <!-- ── Source ── -->
+        <section class="admin-card pol-edit" data-plate id="editCard">
+          <div class="admin-card-head">
+            <h2>Source</h2>
+            <span class="admin-note" id="editNote"></span>
+          </div>
+          <div class="pol-lamp-row">
+            <span class="pol-lamp" id="lamp" data-state="idle" aria-hidden="true"><i></i></span>
+            <p class="pol-fault" id="fault" role="status" aria-live="polite">Nothing loaded yet.</p>
+          </div>
+          <textarea
+            class="pol-area"
+            id="editor"
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="Policy markdown"
+            placeholder="# Privacy Policy&#10;&#10;*Last updated 1 January 2026*&#10;&#10;## 1. Section title&#10;&#10;Body text."
+          ></textarea>
+          <div class="pol-actions">
+            <input
+              class="pol-note"
+              id="noteInput"
+              type="text"
+              maxlength="200"
+              autocomplete="off"
+              placeholder="What changed? (optional, kept in the history)"
+              aria-label="Version note"
+            />
+            <div class="pol-buttons">
+              <button class="btn btn-ghost pol-btn-sm" type="button" id="loadLive">Live text</button>
+              <button class="btn btn-ghost pol-btn-sm" type="button" id="loadFloor">Committed text</button>
+              <button class="btn btn-primary" type="button" id="publish" disabled>
+                <span class="btn-label">Publish</span><span class="btn-arrow" aria-hidden="true">→</span>
+              </button>
+            </div>
+          </div>
+          <!-- The confirm is a state of the card, not a browser dialog: it names
+               the version, the document and what will still be stale afterwards,
+               which a `confirm()` string cannot lay out and nobody reads. -->
+          <div class="pol-confirm" id="confirm" hidden>
+            <p class="pol-confirm-text" id="confirmText"></p>
+            <div class="pol-confirm-btns">
+              <button class="btn btn-ghost pol-btn-sm" type="button" id="confirmNo">Cancel</button>
+              <button class="btn btn-primary pol-btn-sm" type="button" id="confirmYes">
+                <span class="btn-label">Publish now</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Preview / Changes ── -->
+        <section class="admin-card pol-view" data-plate>
+          <div class="admin-card-head">
+            <h2>Result</h2>
+            <div class="seg" id="viewPick" role="group" aria-label="View">
+              <button class="seg-btn is-on" type="button" data-view="preview" aria-pressed="true">Preview</button>
+              <button class="seg-btn" type="button" data-view="diff" aria-pressed="false">Changes</button>
+            </div>
+          </div>
+          <div class="pol-scroll" id="previewWrap">
+            <div class="pol-preview doc" id="preview"></div>
+          </div>
+          <div class="pol-scroll" id="diffWrap" hidden>
+            <div class="pol-diff" id="diff"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── History ── -->
+      <section class="admin-card" data-plate id="historyCard">
+        <div class="admin-card-head">
+          <h2>Version history</h2>
+          <span class="admin-note" id="historyNote"></span>
+        </div>
+        <div class="pol-history" id="history"></div>
+      </section>
+
+      <p class="admin-fine">
+        Publishing puts new text in front of readers immediately. It does not put it in git: the repository,
+        the printed page, a reader with JavaScript off and the Chrome Web Store listing all keep showing the
+        committed text until someone runs <code class="policy-cmd">node site/policy-sync.js --write</code> and
+        commits the result. That gap is the safety property — a policy whose visible text depends on a network
+        call is a policy that can be blank — but it is only safe while it is short, so the strip above reports
+        it and this page will keep saying so until it closes.
+      </p>
+      <p class="admin-fine">
+        Versions are append-only and per-deployment. Restoring an earlier version republishes its text under a
+        new number rather than deleting anything, so what was live between any two dates stays answerable
+        afterwards. The structure check below the editor mirrors the one the server applies at publish time;
+        it exists to tell you at the moment of the mistake rather than after the page is live, and it is the
+        server's answer that decides.
+      </p>
+    </main>
+
+    <footer class="footer admin-foot" data-lit>
+      <div class="wrap">
+        <div class="footer-inner">
+          <a class="brand-mark" href="index.html" aria-label="Jackdaw, home">
+            <span class="brand-perch"><span class="brand-dot"></span></span>
+            <span class="brand-word">Jackdaw</span>
+          </a>
+          <nav class="footer-links" aria-label="Footer">
+            <a href="admin.html">Panel</a>
+            <a href="index.html">Home</a>
+            <a href="privacy.html">Privacy</a>
+            <a href="terms.html">Terms</a>
+            <a href="https://github.com/DavidSensara/jackdaw" target="_blank" rel="noopener">GitHub</a>
+          </nav>
+        </div>
+        <p class="footer-fine">
+          Not affiliated with, endorsed by, or sponsored by Micro Center.
+          Product names and trademarks belong to their owners.
+        </p>
+      </div>
+    </footer>
+
+    <script src="brand.js"></script>
+    <script src="config.js"></script>
+    <script src="policy.js"></script>
+    <script src="admin-shell.js"></script>
+    <script src="admin-policies.js"></script>
+    <script src="lit.js"></script>
+  </body>
+</html>
