@@ -104,31 +104,23 @@
 }
 
 
-/* ── The hands (CHOSEN, 2026-08-18) ───────────────────────────────────────────
-   Two hands, picked by the owner from the seven-face audition that briefly set
-   each stretch of the letter in a different face. CAVEAT writes the letter —
-   salutation, body, postscript — named as "the font of the first paragraph";
-   LA BELLE AURORE writes the date, named as "the font that the date is set
-   to". A letter and its dateline reading as two acts of writing is why both
-   stay. The five unchosen faces are gone — files, @font-face blocks and
-   licence rows alike (vendor/NOTICE.md records the pick). The typed strings
-   stay typed on purpose: the eyebrows are the ledger's furniture, and
-   .sign-name is the typewritten name under a signature.
+/* ── The hand (CHOSEN 2026-08-18) ──────────────────────────────────────────────────
+   One hand for the whole letter. The seven-face audition first settled on two
+   — Caveat for the prose, La Belle Aurore for the date — and the owner then
+   asked to see the prose in the dateline's hand: one act of writing instead of
+   two, and he kept it. Caveat went the way of the five unchosen faces — file,
+   @font-face and licence rows alike; the two-hand state is committed at
+   c53f2e7 if it is ever wanted back. The typed strings stay typed on purpose:
+   the eyebrows are the ledger's furniture, and .sign-name is the typewritten
+   name under a signature.
 
-   Both faces are vendored like every other font on the site (latin subset,
+   The face is vendored like every other font on the site (latin subset,
    self-hosted, never a CDN — vendor/NOTICE.md says why that is a privacy
    decision, not a build one). Sizes are tuned to the optical size of the type
-   they replaced (24px Caveat ≈ the 17px sans; 19px La Belle Aurore ≈ the
-   date's 13.5px), and `line-height` is inherited — the ledger pitch — so
+   they replaced (24px La Belle Aurore ≈ the 17px sans it displaced; 19px ≈
+   the date's 13.5px), and `line-height` is inherited — the ledger pitch — so
    every line sits ON the ruling. Handwriting whose descenders cross a rule is
    what written-on ledger paper looks like; that is the charm, not a bug. */
-@font-face {
-  font-family: "Caveat";
-  src: url("vendor/fonts/caveat-latin.woff2") format("woff2");
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
 @font-face {
   font-family: "La Belle Aurore";
   src: url("vendor/fonts/la-belle-aurore-latin.woff2") format("woff2");
@@ -136,8 +128,10 @@
   font-style: normal;
   font-display: swap;
 }
+/* The dateline sits a step below the prose — 19px against 24 — because a date
+   is a margin note, not a sentence. */
 .letter-date { font-family: "La Belle Aurore", cursive; font-size: 19px; }
-.letter-body > p { font-family: "Caveat", cursive; font-size: 24px; }
+.letter-body > p { font-family: "La Belle Aurore", cursive; font-size: 24px; }
 /* A letter's opening line is louder than its prose — one size step up, same
    hand. `line-height` holds the pitch, so the 30px hail lands on the same
    rule the 24px body does. */
@@ -146,7 +140,7 @@
    .sign-name below it stays typed on purpose: it is the typewritten name under
    a signature, not more handwriting. */
 .letter-sign > p:not(.sign-name),
-.letter-ps p:not(.eyebrow), .ps-list { font-family: "Caveat", cursive; font-size: 24px; }
+.letter-ps p:not(.eyebrow), .ps-list { font-family: "La Belle Aurore", cursive; font-size: 24px; }
 
 /* ── The signature ───────────────────────────────────────────────────────────
    "JACKDAWS", WRITTEN, AND THE S LETS A BIRD GO. This section used to argue

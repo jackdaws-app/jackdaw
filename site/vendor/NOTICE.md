@@ -18,7 +18,6 @@ is the code that runs inside a page you did not write.
 | `ScrollTrigger.min.js` | GSAP ScrollTrigger 3.13.0 | GreenSock Standard "No Charge" Licence |
 | `lenis.min.js` | Lenis 1.3.11 | MIT — see `lenis-LICENSE.txt` |
 | `fonts/instrument-serif-*.woff2` | Instrument Serif v5 | SIL OFL 1.1 — see `fonts/OFL.txt` |
-| `fonts/caveat-latin.woff2` | Caveat | SIL OFL 1.1 — see `fonts/OFL.txt` |
 | `fonts/la-belle-aurore-latin.woff2` | La Belle Aurore | SIL OFL 1.1 — see `fonts/OFL.txt` |
 
 ## GSAP
@@ -48,17 +47,17 @@ forgotten, and it wants doing before the repository goes public rather than afte
 
 ## Fonts
 
-Instrument Serif is the site's text face. Caveat and La Belle Aurore are the love
-letter's two hands, chosen by the owner (2026-08-18) from a seven-face audition
-that set each stretch of the letter in a different face: Caveat writes the letter
-itself — salutation, body, postscript — and La Belle Aurore writes the date. The
-five unchosen faces (Homemade Apple, Kalam, Patrick Hand, Reenie Beanie, Shadows
-Into Light Two) were deleted along with their table rows — a font no rule
-references is dead weight every reader of this file would still have to account
-for, and a licence notice for a file that is gone is clutter. Homemade Apple was
-the only Apache-2.0 file in the directory, so `APACHE-2.0.txt` left with it;
-everything that remains is SIL OFL 1.1, each copyright holder named at the top of
-`fonts/OFL.txt`.
+Instrument Serif is the site's text face. La Belle Aurore is the love letter's
+hand. The owner first picked two from a seven-face audition — Caveat for the
+prose, La Belle Aurore for the date — then asked to see the whole letter in
+the dateline's hand and kept it (2026-08-18). Caveat and the five faces the
+audition passed over (Homemade Apple, Kalam, Patrick Hand, Reenie Beanie,
+Shadows Into Light Two) were deleted along with their table rows — a font no
+rule references is dead weight every reader of this file would still have to
+account for, and a licence notice for a file that is gone is clutter. Homemade
+Apple was the only Apache-2.0 file in the directory, so `APACHE-2.0.txt` left
+with it; everything that remains is SIL OFL 1.1, each copyright holder named at
+the top of `fonts/OFL.txt`.
 
 All are from Google Fonts. The `.woff2` subsets are byte-identical to the ones
 Google serves — they were fetched from `fonts.gstatic.com` and are here for the
@@ -71,8 +70,8 @@ well as quieter — but the reason is the first one.
 Instrument Serif ships roman and italic in `latin` and `latin-ext` (47 KB across
 four files; the `unicode-range` values in `styles.css` were copied verbatim from
 Google's own stylesheet, so a page that only ever sets Latin text never downloads
-the `latin-ext` pair). The two hands ship `latin` only — 65 KB between them — 
-because the letter is English.
+the `latin-ext` pair). The hand ships `latin` only — 18 KB — because the
+letter is English.
 
 ## Updating
 

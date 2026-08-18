@@ -2,7 +2,6 @@ The following Font Software in this directory is licensed under the SIL Open
 Font License, Version 1.1, each under its own copyright:
 
 Instrument Serif — Copyright 2022 The Instrument Serif Project Authors (https://github.com/Instrument/instrument-serif)
-Caveat — Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)
 La Belle Aurore — Copyright (c) 2010 Kimberly Geswein (kimberlygeswein.com)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
