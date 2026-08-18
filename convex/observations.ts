@@ -8,6 +8,7 @@ import {
   initCounter,
   isPhysicalStore,
   normalizeSku,
+  normalizeUrlPath,
   recordSelectorHealth,
   selectorHealthValidator,
   requireLength,
@@ -79,7 +80,14 @@ export const report = mutation({
     // same field on every alternating visit.
     const sku = normalizeSku(requireLength("sku", args.sku, 1, 40));
     const name = requireLength("name", args.name, 1, 300);
-    const urlPath = requireLength("urlPath", args.urlPath, 1, 500);
+    // Normalized BEFORE the length check, so a value that is nothing but a
+    // query string fails as INVALID_ARGUMENT rather than being stored empty.
+    const urlPath = requireLength(
+      "urlPath",
+      normalizeUrlPath(args.urlPath),
+      1,
+      500,
+    );
     const storeNum = requireLength("storeNum", args.storeNum, 1, 10);
     const availability =
       args.availability !== undefined
@@ -571,6 +579,12 @@ export const reportBatch = mutation({
       if (seen.has(raw.productId)) continue;
       seen.add(raw.productId);
 
+      // Normalized before it is length-checked or written, for the reason in
+      // lib.ts. The catalog reader already takes `u.pathname`, so this is the
+      // backstop for clients predating that and for anything the shape of the
+      // card's href changes into.
+      const itemUrlPath = normalizeUrlPath(raw.urlPath);
+
       if (
         !Number.isFinite(raw.price) ||
         raw.price <= 0 ||
@@ -581,8 +595,8 @@ export const reportBatch = mutation({
         raw.sku.length > 40 ||
         raw.name.length === 0 ||
         raw.name.length > 300 ||
-        raw.urlPath.length === 0 ||
-        raw.urlPath.length > 500
+        itemUrlPath.length === 0 ||
+        itemUrlPath.length > 500
       ) {
         skipped++;
         skippedItems.push({
@@ -672,7 +686,7 @@ export const reportBatch = mutation({
           category,
           categoryKey: categoryKey(category) ?? undefined,
           condition: conditionFromName(name),
-          urlPath: raw.urlPath,
+          urlPath: itemUrlPath,
         });
         newProducts++;
       } else {
@@ -685,7 +699,7 @@ export const reportBatch = mutation({
           const nextCondition = conditionFromName(name);
           if (existing.condition !== nextCondition) patch.condition = nextCondition;
         }
-        if (existing.urlPath !== raw.urlPath) patch.urlPath = raw.urlPath;
+        if (existing.urlPath !== itemUrlPath) patch.urlPath = itemUrlPath;
         if (brand !== undefined && existing.brand !== brand) patch.brand = brand;
         if (category !== undefined && existing.category !== category) {
           patch.category = category;

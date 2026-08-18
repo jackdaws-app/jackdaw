@@ -15,15 +15,16 @@ database grows only when someone running the extension loads a page themselves.
 Two surfaces produce readings:
 
 - **Product pages.** The extension reads the Google Tag Manager `dataLayer` object the
-  page publishes to its own visitors — product ID, SKU, price, brand, category, MPN, EAN,
-  the selected store number, and stock status — plus the open-box price rendered in the
-  page's own pricing block. One observation per visit.
+  page publishes to its own visitors — product ID, SKU, name, price, brand, category, MPN,
+  EAN, the product's own `/product/` path, the selected store number, and stock status —
+  plus the open-box price rendered in the page's own pricing block. One observation per
+  visit.
 - **Search and category pages.** The extension reads the result cards already rendered on
-  screen (`li.product_wrapper`: id, price, name, brand, category, the printed SKU, a stock
-  string, the card's own open-box line where it has one — "2 open box from $339.96" — and
-  the struck-out original price where the card advertises a discount) and submits them as a
-  single bounded batch, capped at 96 items — the largest page of results Micro Center
-  itself offers.
+  screen (`li.product_wrapper`: id, price, name, brand, category, the printed SKU, the
+  `/product/` path from the card's own link, a stock string, the card's own open-box line
+  where it has one — "2 open box from $339.96" — and the struck-out original price where
+  the card advertises a discount) and submits them as a single bounded batch, capped at 96
+  items — the largest page of results Micro Center itself offers.
 
 Everything collected is text the retailer had already painted onto the user's screen.
 
@@ -62,8 +63,8 @@ appear nowhere in the extension, the site, or the store listing.
 
 ## 5. What is sent, and what is deliberately not
 
-Sent with an observation: the product's own identifiers and price, the store number the
-page had selected, stock status, and an anonymous per-install device ID.
+Sent with an observation: the product's own identifiers, path and price, the store number
+the page had selected, stock status, and an anonymous per-install device ID.
 
 Sent alongside it, and only alongside it: a small tally of whether the extension's own
 readers found the elements they look for — "96 cards on this page, 92 produced a reading;
@@ -78,9 +79,14 @@ sightings, so turning contributing off stops it too.
 
 Not sent, from either surface:
 
-- **The URL.** Products are identified by product ID, not by address. Search and category
-  pages transmit no URL at all, which means **no search terms and no filters** — Jackdaw
-  records the products that were displayed, never the query that displayed them.
+- **The address of the page you are on.** Search and category pages transmit no URL at
+  all, which means **no search terms and no filters** — Jackdaw records the products that
+  were displayed, never the query that displayed them. What *is* sent is each product's own
+  `/product/` path, taken from the card's link or from the product page itself and kept so
+  the extension can link back to the item. Both readers cut the query string and the
+  fragment off before it leaves the browser, and the server cuts them again on arrival, so
+  a campaign parameter or a shared link's query string cannot be stored even if the
+  retailer puts one there.
 - Anything about other tabs, other sites, or browsing history.
 - Any account, cart, order, or checkout data. The content scripts are registered only for
   `/product/`, `/search/`, and `/category/` URLs; the extension does not load on those

@@ -426,6 +426,57 @@ export function normalizeSku(raw: string): string {
 }
 
 /**
+ * The product's own path, and nothing else that was in the address bar.
+ *
+ * `DATA-POLICY.md` §5 and `PRIVACY.md` §3 both promise that no search term and
+ * no filter is ever transmitted, and the catalog reader earns that structurally
+ * — it takes `u.pathname` off the card's own `/product/` link, so a query
+ * string cannot survive the read. The PRODUCT-page reader did not: it forwards
+ * `dataLayer.pageUrl` verbatim (`page-world.js`), so whatever the retailer
+ * chose to put there is what landed in `products.urlPath`.
+ *
+ * In practice nothing ever has. Surveyed on dev 2026-08-17: 4,000 product rows,
+ * 0 carrying a query string, 0 absolute, 0 outside `/product/`. So this repairs
+ * no existing row — it removes the dependency of a published privacy claim on a
+ * habit of Micro Center's tag manager. A campaign link, a `?storeid=` on a
+ * shared URL or any future parameter would otherwise be stored, and the two
+ * documents would be false with nothing anywhere to notice it.
+ *
+ * At the write boundary, like `normalizeSku` and `conditionFromName`, so it
+ * settles for every client version at once including installs that never
+ * update. `page-world.js` strips it too — for a privacy claim the strongest
+ * form is that the field never leaves the browser, and this is the backstop
+ * for the clients already installed.
+ *
+ * Truncation only. Everything from the query string or the fragment is dropped
+ * and an absolute URL is reduced to its path, so the popup's
+ * `"https://www.microcenter.com" + urlPath` still resolves. A value that is
+ * neither is passed through untouched: inventing a path is worse than storing
+ * an odd one, and `report`'s length check still bounds it.
+ *
+ * NOT a plain cut at the first `#`, which is what this was until dev answered
+ * back. Product 684336's path is
+ * `.../simplyfiber-lc-assembly-fixture-base-with-900&#181;m-fiber-holder` — the
+ * micro sign arrives from `dataLayer.pageUrl` as the literal characters `&#181;`
+ * rather than as a decoded `µ`, because a script body is not HTML and nothing
+ * ever decodes it. One row of 8,000 on dev, and cutting at its `#` would have
+ * truncated a real product path to `...with-900&` on that product's next visit.
+ * `new URL().pathname` makes the identical mistake, which is why the host is
+ * stripped by hand below.
+ */
+export function normalizeUrlPath(raw: string): string {
+  // A `#` that follows `&` is a numeric character reference, not a fragment.
+  const cut = raw.search(/\?|(?<!&)#/);
+  const trimmed = cut === -1 ? raw : raw.slice(0, cut);
+  // Scheme and host stripped by hand rather than with `new URL`, whose parser
+  // would cut at the same `#` this function just decided to keep.
+  return /^https?:\/\//i.test(trimmed)
+    ? trimmed.replace(/^https?:\/\/[^/]*/i, "")
+    : trimmed;
+}
+
+
+/**
  * The product's condition, read off the one place Micro Center states it: a
  * trailing "(Refurbished)" on the product NAME.
  *

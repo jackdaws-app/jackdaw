@@ -77,13 +77,35 @@
       category: e.category ? String(e.category) : undefined,
       mpn: e.mpn ? String(e.mpn) : undefined,
       ean: e.ean ? String(e.ean) : undefined,
-      urlPath: String(e.pageUrl || location.pathname),
+      urlPath: pathOnly(String(e.pageUrl || location.pathname)),
       price,
       storeNum: String(e.storeNum || e.closestStoreId || "000"),
       inStock: String(e.inStock).toLowerCase() === "true",
       availability: e.AvailabilityCode ? String(e.AvailabilityCode) : undefined,
     };
   }
+
+  /**
+   * The product's path, never the query string beside it.
+   *
+   * `dataLayer.pageUrl` is whatever Micro Center's tag manager decided to put
+   * there, and PRIVACY.md §3 / DATA-POLICY.md §5 promise that no search term
+   * and no filter is ever transmitted. The catalog reader earns that by taking
+   * `u.pathname` off the card's link; this is the same guarantee for the
+   * product page, made where the value is read so the field never leaves the
+   * browser. convex/lib.ts normalizeUrlPath repeats it at the write boundary
+   * for clients installed before this line existed.
+   */
+  const pathOnly = (raw) => {
+    // A `#` after `&` is a numeric character reference, not a fragment: this
+    // string is a JS value, so a slug's `&#181;` arrives undecoded. Cutting at
+    // it would truncate a real product path. See convex/lib.ts.
+    const cut = raw.search(/\?|(?<!&)#/);
+    const trimmed = cut === -1 ? raw : raw.slice(0, cut);
+    return /^https?:\/\//i.test(trimmed)
+      ? trimmed.replace(/^https?:\/\/[^/]*/i, "")
+      : trimmed;
+  };
 
   // Re-announce until the isolated content script acks — injection order
   // between the MAIN and ISOLATED worlds is not guaranteed.
