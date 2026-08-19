@@ -16,9 +16,15 @@
  * never in a URL — sent over HTTPS and compared server-side without early
  * return. Failed attempts are NOT rate limited, because a Convex mutation that
  * throws rolls back its own transaction including the limiter's write, and
- * queries cannot write at all. The key's entropy is the lock; put the pages
- * behind edge SSO (see DEPLOY.md) for identity. Both are noindex + Disallow'd.
- * A single operator tool, not a multi-user auth system.
+ * queries cannot write at all. The key's entropy is the lock. Both pages are
+ * noindex + Disallow'd, which keeps them out of search results and is not a
+ * security control. A single operator tool, not a multi-user auth system.
+ *
+ * The backend has since grown a second door — `requireAdmin` also accepts an
+ * account whose `isAdmin` is true — but this shell does not use it: it sends
+ * `adminKey` and nothing else. Until a sign-in flow lands here, the key is the
+ * only credential the panel can present, so it cannot be unset on a deployment
+ * whose panel anyone still needs.
  *
  * One key serves both pages, deliberately: unlocking the numbers unlocks the
  * policies, and signing out of either signs out of both. Two keys for one

@@ -14,7 +14,11 @@ Community price tracking for Micro Center. Chrome extension + Convex backend, fr
   - `background.js` — anonymous device ID, all Convex HTTP calls, hourly price-drop alert notifications.
   - `config.js` — `CONVEX_URL`: dev (seeded demo data) vs prod, one-line swap.
 - `convex/` — backend: observations (dedupe + throttle, plus the bounded grid batch), products.history, threaded comments with votes/reports/auto-hide, watches (price targets, and open-box / back-in-stock triggers scoped to one store), optional email-code accounts with claimed comment handles, counters and the admin dashboard queries, rate limiting, content filters, internal moderation tools, `seed:demo` for dev.
-  - Admin access is an account whose `isAdmin` is true, granted from the CLI with `auth:grantAdmin`; a legacy shared `ADMIN_KEY` is a transitional second door and is retired by unsetting the env var. `site/DEPLOY.md` §5 covers both.
+  - Admin authorization accepts two credentials: an account whose `isAdmin` is true (granted
+    from the CLI with `auth:grantAdmin`), or a shared 256-bit `ADMIN_KEY`. The panel in `site/`
+    sends only the key today — the account door is implemented in the backend and not yet wired
+    into the front end. Unsetting `ADMIN_KEY` closes that door with no code change and no deploy;
+    it fails closed, because unconfigured has always meant every call is `UNAUTHORIZED`.
 - `site/` — the no-build marketing site (jackdaws.app), the policy pages, and `admin.html`, the auth-gated metrics and moderation panel. `site/vendor/` holds third-party files; see the licence note below.
 - `DATA-POLICY.md` — where every reading comes from, the zero-additional-requests rule, and what is deliberately never sent.
 - `CONVENTIONS.md` — the house style: code shape, visual and motion rules, and the gotchas worth not rediscovering. `CONTRIBUTING.md` covers scope and process.

@@ -10,8 +10,8 @@ what you just wrote, and a plain reload does not fix it.
 
 That cost real debugging time three separate times before this file existed.
 
-Not used in production. Cloudflare Pages serves the real site (see DEPLOY.md);
-this is only for `.claude/launch.json` and local work.
+Not used in production, where the real site is served as static files by the
+host; this is only for `.claude/launch.json` and local work.
 
     python3 site/devserver.py [port]
 """

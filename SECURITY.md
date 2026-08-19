@@ -109,10 +109,14 @@ trade-offs, not oversights, and each is written up where it lives:
   apart, so it is a ceiling on sustained *authorized* traffic rather than a lock. The
   account door is throttled by a different mechanism: sign-in codes are consumed by an
   *action* that commits its attempt counter in band, specifically so a lockout survives a
-  thrown refusal. The key door has no equivalent, and is a transitional hatch kept only
-  until account sign-in has been exercised against production — unsetting `ADMIN_KEY` on a
-  deployment makes that branch unreachable with no code change, and is the intended end
-  state.
+  thrown refusal. The key door has no equivalent.
+
+  **Today the key is the only door the panel can use.** `requireAdmin` accepts both, but
+  nothing in `site/` sends a session token — the account path is implemented in the backend
+  and not yet wired into the front end, so the unthrottled door is currently the one in use.
+  Retiring the key is an env var rather than an edit (unsetting `ADMIN_KEY` makes that
+  branch unreachable with no code change, and fails closed), but it is not safe to do until
+  the panel can sign in.
 - **Selector-health figures are self-reported by the content script** and are advisory
   only. Nothing depends on them and the admin panel says so on the page.
 - **A content script cannot outlive its extension safely** in the general case. Jackdaw
