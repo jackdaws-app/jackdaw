@@ -131,6 +131,13 @@ and feedback require signing nothing and are worth a great deal.
 
 The full text is in [CLA.md](CLA.md). It's short — please read it.
 
+## Security
+
+Security problems do not go through a pull request or a public issue. Report them
+privately — the repository's *Security* tab, or `security@jackdaws.app` — and read
+[SECURITY.md](SECURITY.md) first, particularly the request to keep testing off the
+production deployment.
+
 ## Questions
 
 Open an issue. A slow reply is likely; no reply isn't intended.

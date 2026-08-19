@@ -40,6 +40,13 @@ the price history you contribute by browsing to be the whole of what's owed.
 
 Donations are ordinary income to the maintainer and are **not** tax-deductible.
 
+## Security
+
+Found a vulnerability? Please report it privately — the *Security* tab above, or
+`security@jackdaws.app`. [SECURITY.md](SECURITY.md) covers scope, what to expect, and the
+one project-specific request: **test against your own deployment, never production**, because
+several counters there can be written but never unwritten.
+
 ## Licence
 
 Jackdaw's own source is licensed under **AGPL-3.0** — see [LICENSE](LICENSE). Anyone who
