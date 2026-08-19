@@ -59,4 +59,4 @@ We may update this policy. Material changes will be reflected by the "Last updat
 
 ## 9. Contact
 
-Questions or requests: open an issue in the Jackdaw GitHub repository.
+Jackdaw is operated by David, an individual based in the United States ("we", "us", "our"). Questions or requests: open an issue in the Jackdaw GitHub repository.

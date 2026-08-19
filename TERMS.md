@@ -6,7 +6,7 @@ These Terms of Service ("Terms") govern your use of the Jackdaw browser extensio
 
 ## 1. The Service
 
-Jackdaw is a free, open-source tool that displays community-contributed price history and discussion for Micro Center products. Jackdaw is not affiliated with, endorsed by, or sponsored by Micro Center or Micro Electronics, Inc. All product names and trademarks are the property of their respective owners.
+The Service is operated by David, an individual based in the United States ("we", "us", "our"). Jackdaw is a free, open-source tool that displays community-contributed price history and discussion for Micro Center products. Jackdaw is not affiliated with, endorsed by, or sponsored by Micro Center or Micro Electronics, Inc. All product names and trademarks are the property of their respective owners.
 
 ## 2. Community Data
 
