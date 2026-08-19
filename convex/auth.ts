@@ -85,6 +85,13 @@ const ADOPT_LIMIT = 200;
 const SWEEP_LIMIT = 500;
 const SESSION_SCAN_LIMIT = 100;
 
+// `isAdmin` is not indexed (see the schema note), so listAdmins scans. The cap
+// is what keeps that scan inside a transaction's read budget, and the result
+// says when it hit — a truncated answer cannot prove there is no admin further
+// down the table, and a list of privileged accounts is the last place to let a
+// silent cutoff pass for a complete one.
+const ADMIN_SCAN_LIMIT = 2000;
+
 // Sliding expiry, at day granularity: a session in daily use is refreshed at
 // most once a day, so `touch` is a no-op write almost every time it is called
 // rather than a write per panel load.
@@ -596,6 +603,7 @@ export const me = query({
       email: v.string(),
       createdAt: v.number(),
       handle: v.union(v.string(), v.null()),
+      isAdmin: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -610,6 +618,13 @@ export const me = query({
       // (comments:add answers NEED_HANDLE), so the client reads it to decide
       // whether to route into the claim step.
       handle: resolved.account.handle ?? null,
+      // Flattened to a real boolean here, because a client cannot be trusted
+      // to remember the `=== true` rule and `undefined` crossing the wire as a
+      // missing key is exactly how a truthiness check gets written on the far
+      // side. This is a HINT, never a gate: the panel uses it to decide what to
+      // render, and every admin function re-checks the account itself through
+      // requireAdmin. Nothing here becomes true because a client said so.
+      isAdmin: resolved.account.isAdmin === true,
     };
   },
 });
@@ -941,6 +956,163 @@ export const purgeAccountRows = internalMutation({
       });
     }
     return swept;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Admin privilege (internal — the only writers of accounts.isAdmin)
+// ---------------------------------------------------------------------------
+
+/**
+ * THESE THREE ARE THE ENTIRE WRITE SURFACE FOR `accounts.isAdmin`, and keeping
+ * it that small is the point of the field. They are internal, so they are
+ * reachable from a CLI session already holding the deployment's admin key and
+ * from nowhere else — not the extension, not the panel, not the public HTTP
+ * API. No public function takes an argument that reaches this field, which is
+ * what bounds the damage a bug in the sign-in surface could do: the worst a
+ * broken verify path can hand out is a session on an ordinary account, and an
+ * ordinary account is not an admin.
+ *
+ * Granting is therefore deliberately out of band. There is no invite flow, no
+ * first-user-wins bootstrap and no self-promotion — someone with deployment
+ * access types an address:
+ *
+ *   npx convex run auth:grantAdmin '{"email":"you@example.com"}'
+ *   npx convex run auth:listAdmins
+ *   npx convex run auth:revokeAdmin '{"email":"you@example.com"}'
+ */
+
+/**
+ * Make an existing account an admin.
+ *
+ * Requires the account to exist, and says so plainly when it does not — this
+ * is a CLI chore run by someone who can read the error, so the enumeration
+ * caution that governs `requestCode` does not apply. Creating the account here
+ * instead would be worse: an address typo would silently mint a privileged
+ * account nobody ever signs into, and it would put account creation on a path
+ * that never verified the address.
+ *
+ * Idempotent, and reports which it was — running it twice is a normal thing to
+ * do when you are unsure whether the first one landed.
+ */
+export const grantAdmin = internalMutation({
+  args: { email: v.string() },
+  returns: v.object({
+    accountId: v.id("accounts"),
+    email: v.string(),
+    isAdmin: v.boolean(),
+    changed: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const account = await ctx.db
+      .query("accounts")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (account === null) {
+      throw new ConvexError({
+        code: "NO_ACCOUNT",
+        message: `no account for ${email} — they have to sign in once first`,
+      });
+    }
+    const already = account.isAdmin === true;
+    if (!already) await ctx.db.patch(account._id, { isAdmin: true });
+    return {
+      accountId: account._id,
+      email: account.email,
+      isAdmin: true,
+      changed: !already,
+    };
+  },
+});
+
+/**
+ * Take admin away again.
+ *
+ * Writes `false` rather than deleting the key. Absent and false mean the same
+ * thing to every reader — `isAdmin === true` — so this is not about the answer
+ * but about the record: a row that says false was considered and refused,
+ * where an absent field says only that nobody ever looked. That distinction is
+ * the whole value of this table for the one question anyone will ask of it
+ * later, which is who used to be able to open the panel.
+ *
+ * Sessions are deliberately left alone. Privilege is read from the account on
+ * every admin call, so revoking takes effect on the revoked person's next
+ * request without ending the sign-in they still legitimately hold — they stay
+ * an ordinary user, with their watches, exactly as if they had never been
+ * granted it.
+ */
+export const revokeAdmin = internalMutation({
+  args: { email: v.string() },
+  returns: v.object({
+    accountId: v.id("accounts"),
+    email: v.string(),
+    isAdmin: v.boolean(),
+    changed: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const account = await ctx.db
+      .query("accounts")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (account === null) {
+      throw new ConvexError({
+        code: "NO_ACCOUNT",
+        message: `no account for ${email}`,
+      });
+    }
+    const was = account.isAdmin === true;
+    if (was) await ctx.db.patch(account._id, { isAdmin: false });
+    return {
+      accountId: account._id,
+      email: account.email,
+      isAdmin: false,
+      changed: was,
+    };
+  },
+});
+
+/**
+ * Who can open the panel: `npx convex run auth:listAdmins`
+ *
+ * The answer to "did that grant land" and to "who still has this", which is a
+ * question worth being able to ask without opening the data browser.
+ *
+ * `truncated` is not decoration. The scan is capped and `isAdmin` is not
+ * indexed, so a full table means this list is a floor rather than the set —
+ * and a floor is the wrong shape for a privilege audit, which is why it is
+ * flagged in band instead of being left for the reader to infer from a round
+ * number.
+ */
+export const listAdmins = internalQuery({
+  args: {},
+  returns: v.object({
+    admins: v.array(
+      v.object({
+        accountId: v.id("accounts"),
+        email: v.string(),
+        handle: v.union(v.string(), v.null()),
+        createdAt: v.number(),
+      }),
+    ),
+    scanned: v.number(),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("accounts").take(ADMIN_SCAN_LIMIT);
+    return {
+      admins: rows
+        .filter((r) => r.isAdmin === true)
+        .map((r) => ({
+          accountId: r._id,
+          email: r.email,
+          handle: r.handle ?? null,
+          createdAt: r.createdAt,
+        })),
+      scanned: rows.length,
+      truncated: rows.length >= ADMIN_SCAN_LIMIT,
+    };
   },
 });
 

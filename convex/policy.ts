@@ -1,12 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { enforceAdminRateLimit, requireAdmin } from "./lib";
+import { ADMIN_ARGS, enforceAdminRateLimit, requireAdmin } from "./lib";
 
 // The published bodies of the privacy policy and the terms of service.
 //
 // `current` is public and unauthenticated because the two doc pages call it
-// anonymously on load; everything that writes is gated on the shared ADMIN_KEY
-// exactly like dashboard.ts, which sits on the same plain HTTP surface.
+// anonymously on load; everything else is gated on requireAdmin exactly like
+// dashboard.ts, which sits on the same plain HTTP surface — an admin account's
+// session token or the legacy shared key, spread in as ADMIN_ARGS.
 //
 // Nothing here is required for the pages to render. See the schema note: the
 // committed HTML is the floor and this is an amendment on top of it, so every
@@ -142,7 +143,7 @@ export const current = query({
  */
 export const publish = mutation({
   args: {
-    adminKey: v.string(),
+    ...ADMIN_ARGS,
     slug: SLUG,
     markdown: v.string(),
     note: v.optional(v.string()),
@@ -154,7 +155,7 @@ export const publish = mutation({
   }),
   handler: async (ctx, args) => {
     await enforceAdminRateLimit(ctx);
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
 
     const body = normalizeBody(args.markdown);
     if (body.length < MIN_BODY || body.length > MAX_BODY) {
@@ -199,10 +200,10 @@ export const publish = mutation({
 
 /** Every version of one document, newest first — metadata only. */
 export const history = query({
-  args: { adminKey: v.string(), slug: SLUG },
+  args: { ...ADMIN_ARGS, slug: SLUG },
   returns: v.array(VERSION_ROW),
   handler: async (ctx, args) => {
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
     const rows = await ctx.db
       .query("policyDocs")
       .withIndex("by_slug_version", (q) => q.eq("slug", args.slug))
@@ -219,7 +220,7 @@ export const history = query({
 
 /** One version's body, for the diff view and the revert preview. */
 export const at = query({
-  args: { adminKey: v.string(), slug: SLUG, version: v.number() },
+  args: { ...ADMIN_ARGS, slug: SLUG, version: v.number() },
   returns: v.union(
     v.object({
       version: v.number(),
@@ -230,7 +231,7 @@ export const at = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
     const row = await ctx.db
       .query("policyDocs")
       .withIndex("by_slug_version", (q) =>
@@ -256,11 +257,11 @@ export const at = query({
  * reason to keep a history at all.
  */
 export const revert = mutation({
-  args: { adminKey: v.string(), slug: SLUG, version: v.number() },
+  args: { ...ADMIN_ARGS, slug: SLUG, version: v.number() },
   returns: v.object({ version: v.number(), restored: v.number() }),
   handler: async (ctx, args) => {
     await enforceAdminRateLimit(ctx);
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
 
     const source = await ctx.db
       .query("policyDocs")

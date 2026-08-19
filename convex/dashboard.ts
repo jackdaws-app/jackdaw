@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  ADMIN_ARGS,
   EVENT_NAMES,
   SELECTOR_NAMES,
   checkAdminRateLimit,
@@ -14,9 +15,12 @@ import {
 
 // Public surface for the owner-only web panel at jackdaws.app/admin.html.
 // These are `query`/`mutation` (not internal) because a static page calls them
-// over the plain HTTP API; the shared ADMIN_KEY is the only thing standing
-// between them and the internet, so every handler gates on requireAdmin before
-// touching a row.
+// over the plain HTTP API, so a credential is the only thing standing between
+// them and the internet and every handler awaits requireAdmin before touching a
+// row. Which credential is requireAdmin's business, not this file's: it takes
+// either an admin account's session token or the legacy shared key, both spread
+// in as ADMIN_ARGS so no handler here can accidentally accept a narrower or
+// wider set than the gate reads.
 
 const DAY_MS = 86_400_000;
 const DAILY_DAYS = 30;
@@ -52,7 +56,7 @@ const STALE_AFTER_MS = 30 * DAY_MS;
 const ERROR_DAYS = 7;
 
 export const stats = query({
-  args: { adminKey: v.string() },
+  args: ADMIN_ARGS,
   returns: v.object({
     totals: v.object({
       observations: v.number(),
@@ -143,7 +147,7 @@ export const stats = query({
   }),
   handler: async (ctx, args) => {
     await checkAdminRateLimit(ctx);
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
 
     // Every number below is a counter maintained on write. Nothing here scans
     // a growing table, so the panel costs the same at 1k rows and at 10M.
@@ -423,7 +427,7 @@ function medianOf(sorted: number[]): number {
 }
 
 export const categoryIndex = query({
-  args: { adminKey: v.string(), days: v.optional(v.number()) },
+  args: { ...ADMIN_ARGS, days: v.optional(v.number()) },
   returns: v.object({
     windowDays: v.number(),
     from: v.number(),
@@ -473,7 +477,7 @@ export const categoryIndex = query({
   }),
   handler: async (ctx, args) => {
     await checkAdminRateLimit(ctx);
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
 
     const requested = Math.round(args.days ?? WINDOW_DEFAULT_DAYS);
     const windowDays = Number.isFinite(requested)
@@ -614,7 +618,7 @@ export const categoryIndex = query({
 });
 
 export const flagged = query({
-  args: { adminKey: v.string() },
+  args: ADMIN_ARGS,
   returns: v.array(
     v.object({
       _id: v.id("comments"),
@@ -628,7 +632,7 @@ export const flagged = query({
   ),
   handler: async (ctx, args) => {
     await checkAdminRateLimit(ctx);
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
 
     const rows = await flaggedComments(ctx);
     return await Promise.all(
@@ -656,7 +660,7 @@ export const flagged = query({
  */
 export const resolve = mutation({
   args: {
-    adminKey: v.string(),
+    ...ADMIN_ARGS,
     commentId: v.id("comments"),
     action: v.union(v.literal("unhide"), v.literal("delete")),
   },
@@ -665,7 +669,7 @@ export const resolve = mutation({
     // Rate limit before the key check by intent, though the throw below rolls
     // the token back — see enforceAdminRateLimit's note.
     await enforceAdminRateLimit(ctx);
-    requireAdmin(args.adminKey);
+    await requireAdmin(ctx, args);
 
     await resolveCommentReport(ctx, args.commentId, args.action);
     return null;

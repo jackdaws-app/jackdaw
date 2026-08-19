@@ -4,9 +4,12 @@ import rateLimiter from "@convex-dev/rate-limiter/convex.config";
 
 const app = defineApp({
   env: {
-    // Shared secret for the jackdaws.app/admin.html panel. Optional so a
-    // deployment without it still pushes — requireAdmin() in lib.ts fails
-    // closed (every admin call is UNAUTHORIZED) when it is unset.
+    // Fallback secret for the jackdaws.app/admin.html panel, and the escape
+    // hatch during the move to account-based admin. Optional so a deployment
+    // without it still pushes: requireAdmin() in lib.ts refuses the key path
+    // when it is unset. That is no longer the same as closing the panel — an
+    // account with isAdmin true still gets in through the session door, which
+    // is exactly how this variable is meant to be retired.
     ADMIN_KEY: v.optional(v.string()),
 
     // Optional accounts. All three are optional so a deployment that has never

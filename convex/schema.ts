@@ -346,6 +346,27 @@ export default defineSchema({
     // whole attack: "hex-byte" beside "hex_byte" is indistinguishable to a
     // reader skimming a thread.
     handleKey: v.optional(v.string()),
+
+    // May this account open the admin panel? ABSENT MEANS NO, which is what
+    // every account in the table means today and what every account created
+    // from here on means until somebody says otherwise. Read as
+    // `isAdmin === true` and never for truthiness, the same rule
+    // `alertOpenBox === true` follows one table up: the one direction this
+    // comparison must never drift is toward admitting an ordinary account.
+    //
+    // WRITABLE ONLY FROM AN INTERNAL MUTATION — auth:grantAdmin and
+    // auth:revokeAdmin, run from a CLI session that already holds the
+    // deployment's admin key. No public function reads this field as an
+    // argument, sets it, or takes any input that could reach it, which is what
+    // makes the blast radius of a bug in the public sign-in surface bounded:
+    // the worst a broken verify path can hand out is a session on an ordinary
+    // account, and an ordinary account is not an admin. Privilege is granted
+    // out of band or not at all.
+    //
+    // Not indexed. The table holds a handful of rows and the only read that
+    // wants this field is auth:listAdmins, a CLI chore — an index here would
+    // cost a write on every sign-in to serve it.
+    isAdmin: v.optional(v.boolean()),
   })
     .index("by_email", ["email"])
     // Point lookups only, from two paths: claiming (is this key free?) and

@@ -151,7 +151,7 @@ export async function enforceRateLimit(
 }
 
 // ---------------------------------------------------------------------------
-// Admin authentication (shared secret, for the jackdaws.app/admin.html panel)
+// Admin authentication (for the jackdaws.app/admin.html panel)
 // ---------------------------------------------------------------------------
 
 // One fixed bucket key: the point is to cap admin attempts deployment-wide,
@@ -176,25 +176,99 @@ export function secretsMatch(a: string, b: string): boolean {
 }
 
 /**
- * Gate an admin function on the shared secret. Fails closed: when ADMIN_KEY is
- * unset on the deployment, every call is UNAUTHORIZED rather than open.
- * Throws ConvexError { code: "UNAUTHORIZED" }.
+ * Gate an admin function. TWO DOORS, and the second one is on its way out.
+ *
+ * SESSION — an account carrying `isAdmin === true`, signed in through the
+ * ordinary passwordless flow in auth.ts. This is the path meant to survive: it
+ * is per-person rather than per-deployment, it is revocable one account at a
+ * time (`auth:revokeAdmin`) without rotating a secret every other admin also
+ * holds, and it reuses the one credential the product already knows how to
+ * issue, refresh and end.
+ *
+ * KEY — the original shared secret, kept alive deliberately and only until
+ * account sign-in has been exercised against prod. Replacing the gate in a
+ * single deploy would mean the first surprise on prod locks the owner out of
+ * the panel, and the panel is where he would go to find out what the surprise
+ * was. A transitional escape hatch is cheaper than that.
+ *
+ * THE KILL SWITCH IS AN ENV VAR, NOT AN EDIT. `ADMIN_KEY` unset on a
+ * deployment makes the legacy branch below unreachable — no code change, no
+ * deploy — so retiring it is `npx convex env remove ADMIN_KEY` and changing
+ * one's mind is setting it back. That is the same fail-closed behaviour the
+ * single-door version had: unconfigured has always meant every call is
+ * UNAUTHORIZED, never open.
+ *
+ * `isAdmin === true`, NEVER TRUTHINESS. Same rule as `alertOpenBox === true`
+ * in watches.ts and for a sharper reason: absent is what every account in the
+ * table carries, so a loosened comparison does not fail — it silently admits
+ * everyone who has ever signed in. A session resolving to an ordinary account
+ * is refused exactly as hard as a forged token.
+ *
+ * ONE REFUSAL FOR EVERYTHING. The message never says which door was tried,
+ * whether the token was unknown or merely un-privileged, or whether an account
+ * exists at all. The panel's only question is "am I in"; anything more precise
+ * is a probe anyone can run against the same public HTTP surface, and the
+ * existing client only reads the UNAUTHORIZED code, never the text.
+ *
+ * A FAILED SESSION FALLS THROUGH TO THE KEY rather than short-circuiting.
+ * Holding a stale or ordinary session alongside the key is a real state during
+ * the transition — the panel and the extension both live in the same browser —
+ * and refusing the good credential because a different one was also present is
+ * precisely the lockout this dual path exists to prevent. It admits nobody the
+ * key alone would not: the fallthrough still has to pass secretsMatch.
+ *
+ * Async now, so every call site awaits it — resolving a session is a database
+ * read. `resolveSession` is declared further down this file and reached by
+ * hoisting; the accounts section owns it because auth.ts is its other caller.
+ *
+ * Returns who got in and by which door, for a caller that wants to attribute
+ * an action. Nothing does yet.
  */
-export function requireAdmin(key: string): void {
-  const expected = env.ADMIN_KEY;
-  if (expected === undefined || expected.length === 0) {
-    throw new ConvexError({
-      code: "UNAUTHORIZED",
-      message: "admin access is not configured",
-    });
+export async function requireAdmin(
+  ctx: QueryCtx,
+  auth: { sessionToken?: string; adminKey?: string },
+): Promise<{ accountId: Id<"accounts"> | null; via: "session" | "key" }> {
+  const sessionToken = auth.sessionToken ?? "";
+  if (sessionToken.length > 0) {
+    const resolved = await resolveSession(ctx, sessionToken);
+    if (resolved !== null && resolved.account.isAdmin === true) {
+      return { accountId: resolved.account._id, via: "session" };
+    }
   }
-  if (!secretsMatch(key, expected)) {
-    throw new ConvexError({
-      code: "UNAUTHORIZED",
-      message: "invalid admin key",
-    });
+
+  const adminKey = auth.adminKey ?? "";
+  const expected = env.ADMIN_KEY ?? "";
+  if (
+    adminKey.length > 0 &&
+    expected.length > 0 &&
+    secretsMatch(adminKey, expected)
+  ) {
+    return { accountId: null, via: "key" };
   }
+
+  throw new ConvexError({
+    code: "UNAUTHORIZED",
+    message: "admin access denied",
+  });
 }
+
+/**
+ * The two credential fields every admin function accepts, spread into its own
+ * `args` so the surface cannot drift function by function — the shape a caller
+ * may send and the shape {@link requireAdmin} reads are one declaration.
+ *
+ * BOTH OPTIONAL, and `adminKey` was required until this change. Relaxing a
+ * required validator is backwards compatible in the only direction that
+ * matters: every existing caller still sends the field and is still accepted,
+ * while a caller sending only a session token is now expressible. What it gives
+ * up is the validator refusing a credential-less call before the handler runs —
+ * which was never the thing keeping anyone out, since requireAdmin throws the
+ * same UNAUTHORIZED for an empty string as for a wrong one.
+ */
+export const ADMIN_ARGS = {
+  adminKey: v.optional(v.string()),
+  sessionToken: v.optional(v.string()),
+} as const;
 
 /**
  * Consume one adminAuth token (mutations only — this writes).
@@ -209,9 +283,11 @@ export function requireAdmin(key: string): void {
  *
  * Recording a failed attempt is impossible from inside a query or mutation for
  * that reason; it would take a non-transactional action wrapping the whole
- * admin surface. What actually keeps the panel shut is the 256-bit ADMIN_KEY
- * compared by requireAdmin — this bucket is a ceiling on sustained *authorized*
- * traffic (a runaway polling panel), not a lock.
+ * admin surface. What actually keeps the panel shut is requireAdmin, which now
+ * has two doors: an account whose isAdmin is true, or the 256-bit ADMIN_KEY.
+ * This bucket is a ceiling on sustained *authorized* traffic (a runaway polling
+ * panel), not a lock — and note it is keyed to one shared bucket, so it cannot
+ * tell the two doors apart even now that there are two.
  */
 export async function enforceAdminRateLimit(ctx: MutationCtx): Promise<void> {
   const { ok, retryAfter } = await rateLimiter.limit(ctx, "adminAuth", {
