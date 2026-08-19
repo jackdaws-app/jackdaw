@@ -44,6 +44,16 @@ You are not expected to provide support for Your Contributions, except to the ex
 
 You agree to notify the Project Owner of any facts or circumstances of which You become aware that would make these representations inaccurate in any respect.
 
+## 8. Assignment
+
+The Project Owner may assign this Agreement, and the licenses and rights granted to the
+Project Owner under it, in whole or in part, to a successor in interest to the Project or
+to an entity formed or designated by the Project Owner to steward the Project. Any such
+assignment carries the same obligations and limitations set out in this Agreement, and no
+assignment enlarges the rights You have granted. Your Contributions remain licensed to
+recipients of software distributed by the Project Owner exactly as stated in Sections 2
+and 3, regardless of any assignment.
+
 ---
 
 *Signing: this Agreement is accepted electronically. When you open your first pull request to the Project, a bot will ask you to sign by posting a comment; your signature is recorded alongside your GitHub username.*
