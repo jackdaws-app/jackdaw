@@ -38,8 +38,10 @@ you distribute *as a whole*. Vendoring a non-copyleft-compatible file into an AG
 repository is extremely common practice and nothing about it is unusual, but the tidy
 fix is the one the AGPL itself provides: an additional-permission note under section
 7 stating that Jackdaw's licence does not extend to the files in this directory and
-does not attempt to relicense them. See the task tracker — this is filed, not
-forgotten, and it wants doing before the repository goes public rather than after.
+does not attempt to relicense them. **That note now exists** — see
+[`LICENSE-EXCEPTIONS.md`](../../LICENSE-EXCEPTIONS.md) at the repository root, which
+states the scope of the AGPL grant, lists the excepted files, and carries the section 7
+permission itself. Keep the table there and the table above in step.
 
 ## Lenis
 

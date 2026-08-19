@@ -106,7 +106,10 @@ comment and it remembers you for future PRs. Here's the honest explanation.
 
 Jackdaw is licensed under **AGPL-3.0**, a deliberately strong copyleft license: anyone who
 distributes Jackdaw or runs a modified version as a service has to share their changes
-under the same terms.
+under the same terms. (That covers Jackdaw's own code. The third-party files in
+`site/vendor/` keep their own licences — see [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md),
+which matters if you ever vendor something new: say so in the PR, and add it to that table
+and to `site/vendor/NOTICE.md`.)
 
 The CLA exists for one reason: **it keeps open the option of relicensing or dual-licensing
 the project in future** — for example, offering the backend under different terms — without

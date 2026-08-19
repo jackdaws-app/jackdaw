@@ -17,6 +17,7 @@ Community price tracking for Micro Center. Chrome extension + Convex backend, fr
 - `DATA-POLICY.md` — where every reading comes from, the zero-additional-requests rule, and what is deliberately never sent.
 - `CONVENTIONS.md` — the house style: code shape, visual and motion rules, and the gotchas worth not rediscovering. `CONTRIBUTING.md` covers scope and process.
 - `PRIVACY.md` / `TERMS.md` — Web Store policy drafts. `CLA.md` + cla-assistant workflow — contributions require signing.
+- `LICENSE` — AGPL-3.0. [`LICENSE-EXCEPTIONS.md`](LICENSE-EXCEPTIONS.md) records what that grant does *not* cover: the third-party files in `site/vendor/`.
 
 ## Run it
 
@@ -28,3 +29,18 @@ npx convex dev        # starts/pushes the backend (local anonymous deployment by
 1. Set `extension/config.js` → `CONVEX_URL` to your deployment URL (local default `http://127.0.0.1:3210`; cloud: `https://<name>.convex.cloud`).
 2. Chrome → `chrome://extensions` → enable Developer mode → **Load unpacked** → select the `extension/` folder.
 3. Visit any Micro Center product page. The Jackdaw panel appears bottom-right. Search and category pages have no visible UI — the collector runs silently and can be switched off in the toolbar popup.
+
+## Licence
+
+Jackdaw's own source is licensed under **AGPL-3.0** — see [LICENSE](LICENSE). Anyone who
+distributes Jackdaw, or runs a modified version as a network service, has to share their
+changes under the same terms.
+
+That grant covers Jackdaw's code and stops at `site/vendor/`, which holds third-party
+files redistributed unmodified under their own licences — GSAP (a proprietary GreenSock
+licence, not OSI-approved), Lenis (MIT) and two SIL OFL fonts.
+[LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) states the scope, lists the files and
+carries the AGPL section 7 permission; [`site/vendor/NOTICE.md`](site/vendor/NOTICE.md)
+explains why each one is vendored rather than loaded from a CDN. **If you fork this and
+intend to charge for the result, read the GSAP terms first** — they are the one licence
+here that restricts that, and the AGPL cannot override them.
