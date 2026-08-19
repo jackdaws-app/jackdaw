@@ -7,3 +7,10 @@ node_modules/
 LEGAL-NOTES.md
 BUSINESS-NOTES.md
 dist/
+
+# Internal working docs and operator tooling — kept on disk, never tracked.
+# Their public counterparts are CONVENTIONS.md (from CLAUDE.md) and
+# DATA-POLICY.md (from LEGAL-NOTES.md). See jackdaw-private/ for the originals.
+CLAUDE.md
+site/DEPLOY.md
+build.sh
