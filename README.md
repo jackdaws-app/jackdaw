@@ -30,6 +30,16 @@ npx convex dev        # starts/pushes the backend (local anonymous deployment by
 2. Chrome → `chrome://extensions` → enable Developer mode → **Load unpacked** → select the `extension/` folder.
 3. Visit any Micro Center product page. The Jackdaw panel appears bottom-right. Search and category pages have no visible UI — the collector runs silently and can be switched off in the toolbar popup.
 
+## Supporting it
+
+Jackdaw is free, and every part of it stays free — there is no paid tier, no supporter
+build, and no perk that a donation unlocks. Donations cover hosting, the domain and the
+Chrome Web Store fee, nothing more. If that is worth a coffee to you, there is a Sponsor
+button at the top of this repository; if it isn't, use the extension anyway, and consider
+the price history you contribute by browsing to be the whole of what's owed.
+
+Donations are ordinary income to the maintainer and are **not** tax-deductible.
+
 ## Licence
 
 Jackdaw's own source is licensed under **AGPL-3.0** — see [LICENSE](LICENSE). Anyone who
