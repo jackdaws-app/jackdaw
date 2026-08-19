@@ -60,8 +60,11 @@ reading only pages a user already opened and never issuing a request of its own.
 - The site and admin panel (`site/`).
 
 What is worth the most attention, in rough order: **session tokens and account email
-addresses**; **admin authorization** on `convex/dashboard.ts` and `convex/policy.ts`;
-anything that lets one device or account read or write **another's watches**, since a
+addresses**; **admin authorization** on `convex/dashboard.ts` and `convex/policy.ts` —
+where the load-bearing test is `isAdmin === true` and never truthiness, since absent is
+what every ordinary account carries, so a loosened comparison would not fail but would
+silently admit everyone who has ever signed in; anything that lets one device or account
+read or write **another's watches**, since a
 watch list says which products a specific person is following; and the comment identity
 system, where the verified handle is only worth something if it cannot be worn by
 somebody else.
@@ -98,10 +101,18 @@ disrupting the service, or holding a finding for leverage.
 Stated up front so nobody spends an evening rediscovering them. These are documented
 trade-offs, not oversights, and each is written up where it lives:
 
-- **Admin rate limiting does not throttle key guessing.** A Convex mutation that throws
-  rolls back its own transaction, including the rate limiter's write, so a rejected
-  attempt costs an attacker nothing. `convex/lib.ts` explains this in full. What actually
-  gates admin access is the credential itself.
+- **Admin rate limiting does not throttle credential guessing.** A Convex mutation that
+  throws rolls back its own transaction, including the rate limiter's write, so a rejected
+  attempt costs an attacker nothing. `convex/lib.ts` explains this in full. Admin access
+  has **two doors** — an account whose `isAdmin` is true, or a legacy 256-bit shared
+  `ADMIN_KEY` — and the limiter is keyed to a single shared bucket that cannot tell them
+  apart, so it is a ceiling on sustained *authorized* traffic rather than a lock. The
+  account door is throttled by a different mechanism: sign-in codes are consumed by an
+  *action* that commits its attempt counter in band, specifically so a lockout survives a
+  thrown refusal. The key door has no equivalent, and is a transitional hatch kept only
+  until account sign-in has been exercised against production — unsetting `ADMIN_KEY` on a
+  deployment makes that branch unreachable with no code change, and is the intended end
+  state.
 - **Selector-health figures are self-reported by the content script** and are advisory
   only. Nothing depends on them and the admin panel says so on the page.
 - **A content script cannot outlive its extension safely** in the general case. Jackdaw

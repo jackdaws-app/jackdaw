@@ -52,6 +52,12 @@ cost a day to discover. A patch that works but violates it will be asked to chan
 **Then:** fork, branch from `main`, keep it to one fix per PR, and describe what you
 verified and how.
 
+`main` is protected and takes no direct pushes — every change, including the maintainer's,
+arrives as a pull request, and `.github/CODEOWNERS` puts one reviewer on all of them. The
+CLA check runs on each PR too; a first-time contributor's workflow run needs manual
+approval before it starts, so a pending check on your first PR is normal and not a
+failure.
+
 ## On AI-assisted contributions
 
 Use whatever tools you like. The requirement is about you, not the tool:

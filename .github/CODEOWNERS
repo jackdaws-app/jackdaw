@@ -1,0 +1,14 @@
+# Every file in the project is owned by the maintainer.
+#
+# GitHub reads this to auto-request review on every pull request, which is the
+# mechanical half of what CONTRIBUTING.md states in prose: Jackdaw is
+# maintained by one person and pull requests are accepted selectively. Pair it
+# with branch protection on main ("Require a pull request before merging" +
+# "Require review from Code Owners") so the rule is enforced rather than
+# advertised.
+#
+# Auto-request activates on public repositories and on private ones under a
+# paid plan; on a free private repo the file is inert but harmless, and starts
+# working the day the repository goes public.
+
+* @DavidSensara

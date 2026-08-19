@@ -9,11 +9,13 @@ Community price tracking for Micro Center. Chrome extension + Convex backend, fr
 - `extension/` — Manifest V3 Chrome extension, no build step, all UI in a Shadow DOM (immune to host-page CSS).
   - `page-world.js` reads the page's `dataLayer` + open-box price (MAIN world), relays via CustomEvent with an ack handshake.
   - `catalog-world.js` / `catalog.js` — the same pair for search and category pages: harvests the rendered grid once, dedupes, and submits one bounded batch.
-  - `content.js` — the "Price history" tab on the product image and the bottom drawer: stats, verdict chips, threaded reddit-style discussion (collapse, votes, replies, reports), price-target alerts, dark mode, expand mode, share-as-image.
+  - `content.js` — the "Price history" tab on the product image and the bottom drawer: stats, verdict chips, threaded reddit-style discussion (collapse, votes, replies, reports), alerts (price target, open box, back in stock), dark mode, expand mode, share-as-image.
   - `chart.js` — dependency-free canvas chart: range + store filters, open-box series, typical/low lines, crosshair tooltip, drag-resize.
   - `background.js` — anonymous device ID, all Convex HTTP calls, hourly price-drop alert notifications.
   - `config.js` — `CONVEX_URL`: dev (seeded demo data) vs prod, one-line swap.
-- `convex/` — backend: observations (dedupe + throttle), products.history, threaded comments with votes/reports/auto-hide, watches (price targets), rate limiting, content filters, internal moderation tools, `seed:demo` for dev.
+- `convex/` — backend: observations (dedupe + throttle, plus the bounded grid batch), products.history, threaded comments with votes/reports/auto-hide, watches (price targets, and open-box / back-in-stock triggers scoped to one store), optional email-code accounts with claimed comment handles, counters and the admin dashboard queries, rate limiting, content filters, internal moderation tools, `seed:demo` for dev.
+  - Admin access is an account whose `isAdmin` is true, granted from the CLI with `auth:grantAdmin`; a legacy shared `ADMIN_KEY` is a transitional second door and is retired by unsetting the env var. `site/DEPLOY.md` §5 covers both.
+- `site/` — the no-build marketing site (jackdaws.app), the policy pages, and `admin.html`, the auth-gated metrics and moderation panel. `site/vendor/` holds third-party files; see the licence note below.
 - `DATA-POLICY.md` — where every reading comes from, the zero-additional-requests rule, and what is deliberately never sent.
 - `CONVENTIONS.md` — the house style: code shape, visual and motion rules, and the gotchas worth not rediscovering. `CONTRIBUTING.md` covers scope and process.
 - `PRIVACY.md` / `TERMS.md` — Web Store policy drafts. `CLA.md` + cla-assistant workflow — contributions require signing.
