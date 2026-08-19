@@ -1,0 +1,73 @@
+name: CI
+
+# The mechanical half only: does every file still parse, and does the backend still
+# type-check. Nothing here judges design, motion, or copy — those are review's job,
+# and CONVENTIONS.md is what they are judged against.
+#
+# GitHub-hosted runners, deliberately and permanently. Once this repository is public
+# an approved fork's pull request executes its own code on the runner; on a self-hosted
+# box that would be the maintainer's own machine, filesystem and credentials.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Convex types
+        run: npx tsc --noEmit
+
+      - name: Extension syntax
+        # extension/ is no-build vanilla JS that never passes through a bundler, so a
+        # syntax error reaches the shopper. background.js and config.js are ES modules
+        # (manifest declares the service worker as type: module); the rest are classic
+        # scripts injected by the manifest or a <script> tag, and node only applies
+        # module parsing to .mjs.
+        run: |
+          fail=0
+          for f in extension/*.js; do
+            b=$(basename "$f" .js)
+            case "$b" in
+              background|config) ext=mjs ;;
+              *)                 ext=js  ;;
+            esac
+            cp "$f" "/tmp/ci-check.$ext"
+            if ! node --check "/tmp/ci-check.$ext"; then
+              echo "::error file=$f::syntax error"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Stylesheet syntax
+        # A CSS syntax error does not throw — the browser's error recovery swallows the
+        # NEXT rule whole and carries on, so a stray brace silently deletes a rule and
+        # nothing anywhere reports it. Two of them shipped in popup.css for two days and
+        # were found only because a minifier happened to parse the file. esbuild is the
+        # parser we already have; any warning fails the build.
+        run: |
+          fail=0
+          for f in extension/*.css site/*.css; do
+            out=$(npx esbuild "$f" --outfile=/dev/null --log-level=warning 2>&1)
+            if [ -n "$out" ]; then
+              echo "::error file=$f::$(echo "$out" | head -1)"
+              echo "$out"
+              fail=1
+            fi
+          done
+          exit $fail

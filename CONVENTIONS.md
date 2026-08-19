@@ -154,6 +154,13 @@ Each of these cost real debugging time. They look like bugs in your code and are
   measuring anything behind a media-query flip. And **resource events still fire when rAF
   does not**: a stylesheet's `onload` resolves in a hidden pane, so you can await CSS
   without awaiting a frame. Awaiting a frame there hangs until your tool times out.
+- **A CSS syntax error does not throw — it eats the next rule.** A stray `}` at the top
+  level is not skipped: the parser consumes it as the start of a selector, swallows the
+  whole rule that follows, and carries on silently. Two of them sat in `popup.css` for two
+  days, deleting `.pop-wordmark` and `.pop-icon` — the header wordmark lost its weight,
+  tracking and colour, and two buttons wore the browser's default grey border — and
+  nothing anywhere reported it. Nothing in a browser will tell you; CI's esbuild parse is
+  the only thing that does, which is why stylesheets are gated there.
 - **Measure alignment between separately-positioned SVGs; don't nudge.** Contact points
   need viewBox-scale arithmetic against the actual geometry underneath, which may not be
   flat.
@@ -339,5 +346,8 @@ never leak into legal text.
   on a category page at 96 results per page, both themes, contrast 4.9 light / 5.3 dark"
   is.
 
-A CI workflow will eventually run the mechanical half of this automatically. Until then it
-is on you, and a PR that hasn't had it done is a PR that isn't ready.
+CI runs the mechanical half automatically on every pull request — the backend type-check,
+a syntax check of every extension script, and an esbuild parse of every stylesheet. It
+cannot see any of the rules above it: nothing machine-checks a contrast ratio, a
+reduced-motion fallback, or whether an animation reads as handwriting. A green check means
+the files parse, not that the change is right.

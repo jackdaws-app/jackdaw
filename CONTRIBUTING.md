@@ -81,11 +81,14 @@ npx tsc --noEmit
 cp extension/content.js /tmp/x.mjs && node --check /tmp/x.mjs
 ```
 
-(Extension files are ES modules, hence the copy — repeat for each file you touched.) Then
-load the extension unpacked and drive the change on a real page.
+(`background.js` and `config.js` are ES modules, so copy those to `.mjs`; the rest are
+classic scripts and `.js` is right — repeat for each file you touched.) Then load the
+extension unpacked and drive the change on a real page.
 
-These will move into a CI workflow before the first tagged release. Until then they're
-manual, and a PR that hasn't had them run isn't ready.
+CI runs the mechanical half on every pull request — `tsc --noEmit`, `node --check` over
+each `extension/*.js`, and an esbuild parse of every stylesheet. Run them locally first
+anyway: CI tells you a file is broken, driving the page tells you the change is right, and
+only the second one is review-ready.
 
 ## Running the project
 
