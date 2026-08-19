@@ -122,7 +122,6 @@ body.dark .pop-sky { color: #cdd6e4; }
 }
 /* away, being the bird — popup.js swaps the class at the crossfade */
 .pop-live.away { opacity: 0; }            /* home again */
-}
 
 .pop-wordmark {
   display: inline-flex;
@@ -143,7 +142,6 @@ body.dark .pop-wordmark { color: #cdd6e4; }
 @keyframes pop-duck {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(1.6px); }
-}
 }
 .pop-icon {
   width: 24px;
