@@ -35,6 +35,10 @@ body.dark {
 body {
   width: 340px;
   margin: 0;
+  /* Match the site root: without these, macOS renders the extension's text
+     heavier than the same faces on jackdaws.app. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--jd-paper);
   color: var(--jd-ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;

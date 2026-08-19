@@ -26,6 +26,8 @@ body.dark {
 * { box-sizing: border-box; }
 body {
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--jd-paper);
   color: var(--jd-ink);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -104,6 +106,9 @@ body {
 .wel-perched .wel-perched-body { transform-box: fill-box; transform-origin: 37.5% 100%; }
 
 .wel-mark {
+  /* These titles are h1/h2 for the heading list, styled as the chips they
+     always were — margins pinned so the UA's heading defaults change nothing. */
+  margin: 0;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.32em;
@@ -130,7 +135,7 @@ body {
   width: 2px;
   background: var(--jd-hairline);
 }
-.wel-feat-title { font-weight: 650; font-size: 13.5px; margin-bottom: 2px; }
+.wel-feat-title { font-weight: 650; font-size: 13.5px; margin: 0 0 2px; }
 .wel-feat-body { font-size: 13px; color: var(--jd-muted); }
 
 /* ---------- The consent card ---------- */
@@ -143,7 +148,7 @@ body {
   margin-bottom: 28px;
 }
 body.dark .wel-consent { background: rgba(34, 165, 89, 0.09); border-color: #24413a; }
-.wel-consent-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.wel-consent-title { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
 .wel-consent-body { font-size: 13px; line-height: 1.55; color: var(--jd-notice-text); }
 .wel-consent-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .wel-btn {

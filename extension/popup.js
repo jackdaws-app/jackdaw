@@ -87,6 +87,10 @@
     document.body.classList.toggle("dark", dark);
     themeBtn.innerHTML = dark ? ICONS.sun : ICONS.moon;
     themeBtn.title = dark ? "Light mode" : "Dark mode";
+    // aria-label outranks title in the accessible name, so it must move with
+    // it — the static HTML label read "Dark mode" forever, wrong every second
+    // press for a screen reader.
+    themeBtn.setAttribute("aria-label", themeBtn.title);
   }
   themeBtn.addEventListener("click", () => {
     const dark = !document.body.classList.contains("dark");
