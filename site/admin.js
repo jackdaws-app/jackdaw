@@ -8,7 +8,7 @@
   const A = window.JackdawAdmin;
   if (!A || !A.ok) return;
   const { query, el, fmt, toast, still } = A;
-  const adminKey = () => A.key();
+  const creds = () => A.creds();
 
   const $ = (id) => document.getElementById(id);
   const panelWrap = A.panelWrap;
@@ -296,11 +296,11 @@
     // has nothing to do with it.
     try {
       renderPriceIndex(
-        await query("dashboard:categoryIndex", { adminKey: adminKey(), days: indexDays }),
+        await query("dashboard:categoryIndex", { ...creds(), days: indexDays }),
       );
     } catch (err) {
       toast(err.code === "UNAUTHORIZED" ? "Session expired" : "Couldn't load that window");
-      if (err.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
+      if (err.code === "UNAUTHORIZED") A.showGate("Access was refused.");
     }
   });
 
@@ -785,13 +785,13 @@
   async function act(commentId, action, btn) {
     btn.disabled = true;
     try {
-      await A.mutate("dashboard:resolve", { adminKey: adminKey(), commentId, action });
+      await A.mutate("dashboard:resolve", { ...creds(), commentId, action });
       toast(action === "delete" ? "Comment deleted" : "Comment restored");
       await load();
     } catch (e) {
       toast(e.code === "UNAUTHORIZED" ? "Session expired" : "Action failed");
       btn.disabled = false;
-      if (e.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
+      if (e.code === "UNAUTHORIZED") A.showGate("Access was refused.");
     }
   }
 
@@ -919,7 +919,7 @@
 
   // ── Load ──
   async function load() {
-    if (!adminKey()) {
+    if (!A.hasCreds()) {
       A.showGate();
       return false;
     }
@@ -931,9 +931,9 @@
       // 7k documents; folding it into `stats` would put the counters — which
       // cost nothing and never fail — behind the one query here that can.
       const [stats, flagged, index] = await Promise.all([
-        query("dashboard:stats", { adminKey: adminKey() }),
-        query("dashboard:flagged", { adminKey: adminKey() }),
-        query("dashboard:categoryIndex", { adminKey: adminKey(), days: indexDays }),
+        query("dashboard:stats", creds()),
+        query("dashboard:flagged", creds()),
+        query("dashboard:categoryIndex", { ...creds(), days: indexDays }),
       ]);
       lastStats = stats;
       A.showPanel();
@@ -959,7 +959,7 @@
       renderPolicies();
       return true;
     } catch (e) {
-      if (e.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
+      if (e.code === "UNAUTHORIZED") A.showGate("Access was refused.");
       else if (e.code === "RATE_LIMITED") A.showGate("Too many attempts. Wait a minute and try again.");
       else A.showGate("Couldn't reach the backend. Check your connection.");
       return false;

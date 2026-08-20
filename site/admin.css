@@ -225,6 +225,51 @@
   25% { transform: translateX(-5px); }
   60% { transform: translateX(4px); }
 }
+/* The quiet ways around the primary action — resend, start over, the other
+   door. Text links rather than buttons: one mode, one button. */
+.gate-alt {
+  margin-top: 18px;
+  margin-bottom: 0;
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.gate-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, currentColor 38%, transparent);
+  transition: color 0.15s ease;
+}
+.gate-link:hover { color: var(--ink); }
+.gate-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+/* The resend cooldown: still there, not yet willing. */
+.gate-link[disabled] {
+  opacity: 0.45;
+  cursor: default;
+  text-decoration: none;
+}
+/* A mode change steps the plate's contents without moving the plate: the form
+   and its instruction fade up while the lamp, bezel and error line hold
+   still. Retriggered by class-cycle + reflow. */
+.gate-form.swap,
+.gate-sub.swap {
+  animation: gate-swap 0.24s var(--ease-out);
+}
+@keyframes gate-swap {
+  from { opacity: 0; transform: translateY(4px); }
+}
 /* Power-on. The gate does not disappear — it goes dark and drops away while
    the console's own plates come up behind it, which is the project's
    continuity rule applied to a page transition: one stage hands its mass to
@@ -805,7 +850,9 @@
   .kpi-value.changed,
   .admin-card.sweep::before,
   .admin-card.has-drift .admin-card-head h2::after,
-  .gate.checking .gate-lamp i {
+  .gate.checking .gate-lamp i,
+  .gate-form.swap,
+  .gate-sub.swap {
     animation: none;
   }
   .panel-wrap.booting [data-plate]::before,

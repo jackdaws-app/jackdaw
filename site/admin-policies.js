@@ -27,7 +27,7 @@
   if (!A || !A.ok) return;
   const P = window.JackdawPolicy;
   const { query, el, toast, ago } = A;
-  const adminKey = () => A.key();
+  const creds = () => A.creds();
   const $ = (id) => document.getElementById(id);
 
   const MIN_BODY = 400;
@@ -502,7 +502,7 @@
 
   async function openVersion(version) {
     try {
-      const row = await query("policy:at", { adminKey: adminKey(), slug, version });
+      const row = await query("policy:at", { ...creds(), slug, version });
       if (!row) { toast("That version is gone."); return; }
       setBody(row.markdown, row.markdown);
       toast(`v${version} is in the editor. Nothing is published until you press Publish.`);
@@ -566,7 +566,7 @@
     A.setLoading(true);
     try {
       const res = await A.mutate("policy:publish", {
-        adminKey: adminKey(),
+        ...creds(),
         slug,
         markdown: body,
         ...(note ? { note } : {}),
@@ -590,7 +590,7 @@
     disarm();
     A.setLoading(true);
     try {
-      const res = await A.mutate("policy:revert", { adminKey: adminKey(), slug, version });
+      const res = await A.mutate("policy:revert", { ...creds(), slug, version });
       toast(`v${res.restored} republished as v${res.version}.`);
       await refresh();
       const c = cur();
@@ -617,7 +617,7 @@
     const [live, floor, history] = await Promise.all([
       query("policy:current", { slug }),
       readFloor(d.page),
-      query("policy:history", { adminKey: adminKey(), slug }),
+      query("policy:history", { ...creds(), slug }),
     ]);
     c.live = live;
     c.floor = floor;
@@ -646,7 +646,7 @@
       A.afterRender();
       return true;
     } catch (e) {
-      if (e.code === "UNAUTHORIZED") A.showGate("That key was rejected.");
+      if (e.code === "UNAUTHORIZED") A.showGate("Access was refused.");
       else if (e.code === "RATE_LIMITED") A.showGate("Too many attempts. Wait a minute and try again.");
       else A.showGate("Couldn't reach the backend. Check your connection.");
       return false;

@@ -64,13 +64,33 @@
          The console before it is on. The lamp is dark, the plate is unlit, and
          unlocking is a power-on rather than a page swap: see `.gate.leaving`
          and `.panel-wrap.booting` in admin.css. -->
-    <section class="gate" id="gate">
+    <section class="gate" id="gate" data-mode="email">
       <div class="gate-plate">
         <div class="gate-lamp" aria-hidden="true"><i></i></div>
         <p class="eyebrow">Restricted</p>
         <h1 class="h-section">Admin access</h1>
-        <p class="gate-sub">Enter the admin key. It is kept for this browser session only.</p>
+        <p class="gate-sub" id="gateSub">Sign in with your email. A six-digit code will be sent to it.</p>
         <form class="gate-form" id="gateForm">
+          <input
+            class="gate-input"
+            id="emailInput"
+            type="email"
+            autocomplete="email"
+            spellcheck="false"
+            placeholder="Email address"
+            aria-label="Email address"
+          />
+          <input
+            class="gate-input"
+            id="codeInput"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            spellcheck="false"
+            placeholder="6-digit code"
+            aria-label="Six-digit code"
+            hidden
+          />
           <input
             class="gate-input"
             id="keyInput"
@@ -79,12 +99,18 @@
             spellcheck="false"
             placeholder="Admin key"
             aria-label="Admin key"
+            hidden
           />
           <button class="btn btn-primary" type="submit">
-            <span class="btn-label">Unlock</span><span class="btn-arrow" aria-hidden="true">→</span>
+            <span class="btn-label" id="gateGo">Send code</span><span class="btn-arrow" aria-hidden="true">→</span>
           </button>
         </form>
         <p class="gate-error" id="gateError" hidden></p>
+        <p class="gate-alt">
+          <button class="gate-link" id="gateResend" type="button" hidden>Send a new code</button>
+          <button class="gate-link" id="gateBack" type="button" hidden>Different email</button>
+          <button class="gate-link" id="gateAlt" type="button">Use the admin key instead</button>
+        </p>
       </div>
     </section>
 
