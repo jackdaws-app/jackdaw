@@ -1,13 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import {
   bump,
   enforceRateLimit,
   separatorFoldedForm,
-  handleKeyOf,
-  isReservedHandleKey,
   requireCleanContent,
   requireLength,
   resolveSession,
@@ -19,122 +17,87 @@ const AUTO_HIDE_REPORT_THRESHOLD = 5;
 // ---------------------------------------------------------------------------
 // Who a comment is from
 //
-// Three states, and the whole identity model lives in the gap between them:
+// Participation moved behind sign-in on 2026-08-20 (owner's call). Reading a
+// thread stays anonymous — comments:list takes no identity at all beyond an
+// optional token used to mark the caller's own votes — but posting, voting and
+// reporting all require a session that resolves to an account, because a
+// deviceId is a string the client invents: "one vote per device" was one vote
+// per curl call, and the auto-hide threshold was five of them. The account is
+// the only identity here the caller cannot mint.
 //
-//  1. Signed in with a handle — the SERVER writes the name. The client's
-//     displayName argument is not read at all, because a caller who could
-//     choose the name on a ticked comment could wear anyone's.
+// What the sign-in gate replaced: the anonymous author path — a free-text
+// displayName run through the content filter (both forms), NAME_RESERVED for
+// the reserved-handle set, and NAME_CLAIMED for live or retired handle keys.
+// All three refusals existed to keep an untyped name from impersonating a
+// ticked one, and they are unreachable now that every byline is a claimed
+// handle written by the server. The claim machinery itself (handleKey
+// uniqueness, retiredHandles, the reserved list) is untouched in auth.ts —
+// it is what makes the handle worth writing.
+//
+// Two states remain:
+//
+//  1. Signed in with a handle — the SERVER writes the name. There is no
+//     displayName argument any more: a caller who could choose the name on a
+//     ticked comment could wear anyone's, and every comment is ticked now.
 //  2. Signed in without one — NEED_HANDLE, and nothing is written. The claim
 //     step is a fork in the flow, not an error, but it does have to happen
 //     before there is a comment to attribute.
-//  3. Anonymous — free-text name, no tick, exactly as it has always worked.
-//     Three refusals stand between the typed string and the byline, checked in
-//     this order:
 //
-//       · The content filter, on the name AND on its separator-folded form.
-//         "_" is a word character to JavaScript's `\b`, so a word-boundary
-//         blocklist catches "shit-head" and waves "shit_head" through; the
-//         second pass is what closes that. Both forms, the same two checks
-//         auth:claimHandle does — a name is a name whichever door it came in
-//         by, and the fix belonged on both or neither.
-//
-//       · NAME_RESERVED, when the fold lands in RESERVED_HANDLE_KEYS —
-//         "Jackdaw Support", "Micro Center Staff", "M-o-d". Checked on the
-//         folded key, so every spelling goes at once. This one is NOT about the
-//         tick: nobody may claim these names either, so no ticked/unticked pair
-//         can form. It is here because impersonating support is worth refusing
-//         on its own terms — the reader most likely to be taken in by a comment
-//         signed "Jackdaw Support" is exactly the reader who doesn't yet know
-//         what the marker means. Pure set membership with no database read,
-//         which is why it precedes the lookups below: a reserved name should
-//         never cost two index probes.
-//
-//       · NAME_CLAIMED, when the fold is a live or retired handle key. THIS is
-//         the refusal the tick depends on; without it an unticked "hex_byte"
-//         sits in the same thread as the ticked one and the reader learns to
-//         ignore the marker.
-//
-//     RESERVED and CLAIMED stay separate codes rather than one stretched
-//     NAME_CLAIMED because they are different facts about the name — nobody may
-//     ever hold this one, versus somebody already does — and only the second
-//     has "sign in and claim it yourself" as an answer.
-//
-// What the reservation does NOT cover, and no key-folding scheme could: a
-// visually confusable name built from characters the fold can't map, e.g. a
-// Cyrillic "е" in "hеx_byte" (key "hxbyte"). Handles themselves are ASCII-only
-// so no such name can ever be *claimed* — the tick stays trustworthy — but a
-// lookalike can still be typed anonymously. The marker is the guarantee; the
-// spelling is not.
+// No session — or a malformed, expired or orphaned token — is SIGN_IN_REQUIRED,
+// thrown in the same style as every other refusal in this file. The client
+// keeps the typed body on any thrown refusal (the panel returns before
+// re-render), so the cost of the gate is a sign-in, never a retype.
 // ---------------------------------------------------------------------------
 
-/** Name and account for a new comment, per the three paths above. */
-async function resolveAuthor(
+/**
+ * The account this call speaks for, or a thrown SIGN_IN_REQUIRED.
+ *
+ * Thrown BEFORE any rate-limit token is consumed, deliberately: a signed-out
+ * client is not spending anyone's bucket, and the throw rolls back nothing
+ * because nothing has been written yet.
+ */
+async function requireAccount(
   ctx: MutationCtx,
   sessionToken: string | undefined,
-  submittedName: string,
-): Promise<{ displayName: string; accountId: Id<"accounts"> | undefined }> {
-  // An absent, malformed or expired token is the anonymous path and never an
-  // error — a signed-out client is the normal state of this product.
+): Promise<Doc<"accounts">> {
   const resolved =
     sessionToken === undefined || sessionToken.length === 0
       ? null
       : await resolveSession(ctx, sessionToken);
-
-  if (resolved !== null) {
-    if (resolved.account.handle === undefined) {
-      throw new ConvexError({
-        code: "NEED_HANDLE",
-        message: "Pick a handle before posting",
-      });
-    }
-    return {
-      displayName: resolved.account.handle,
-      accountId: resolved.account._id,
-    };
+  if (resolved === null) {
+    throw new ConvexError({
+      code: "SIGN_IN_REQUIRED",
+      message: "Sign in to do that",
+    });
   }
+  return resolved.account;
+}
 
-  const displayName = requireLength("displayName", submittedName, 1, 40);
-  requireCleanContent(displayName);
-  // Second pass with separators as spaces: "_" is a word character to `\b`, so
-  // the raw form alone lets "shit_head" past the blocklist. See separatorFoldedForm.
-  requireCleanContent(separatorFoldedForm(displayName));
+/** The rate-limit key for an account. Never a deviceId: the account is the
+ * caller's identity now, and two browsers signed into one account share one
+ * bucket — which is the point. */
+function acctKey(account: Doc<"accounts">): string {
+  return `acct:${account._id}`;
+}
 
-  const handleKey = handleKeyOf(displayName);
-  if (handleKey.length > 0) {
-    // No database read, so it goes first — a reserved name never reaches the
-    // two index probes below.
-    if (isReservedHandleKey(handleKey)) {
-      throw new ConvexError({
-        code: "NAME_RESERVED",
-        message: "That name is reserved — pick another",
-      });
-    }
-    const claimed = await ctx.db
-      .query("accounts")
-      .withIndex("by_handleKey", (q) => q.eq("handleKey", handleKey))
-      .first();
-    const retired =
-      claimed !== null
-        ? null
-        : await ctx.db
-            .query("retiredHandles")
-            .withIndex("by_handleKey", (q) => q.eq("handleKey", handleKey))
-            .first();
-    if (claimed !== null || retired !== null) {
-      throw new ConvexError({
-        code: "NAME_CLAIMED",
-        message: "That name is claimed — pick another",
-      });
-    }
-  }
-
-  return { displayName, accountId: undefined };
+/** The caller's account for vote-marking in `list`, or null. Never throws:
+ * an anonymous reader is the normal state of a public thread. */
+async function optionalAccount(
+  ctx: QueryCtx,
+  sessionToken: string | undefined,
+): Promise<Doc<"accounts"> | null> {
+  if (sessionToken === undefined || sessionToken.length === 0) return null;
+  const resolved = await resolveSession(ctx, sessionToken);
+  return resolved === null ? null : resolved.account;
 }
 
 export const list = query({
   args: {
     productId: v.string(),
-    deviceId: v.string(),
+    // Only used to mark the caller's own votes. Absent, malformed or expired
+    // reads the thread exactly as any anonymous visitor does, with myVote 0
+    // everywhere — reading stays public.
+    sessionToken: v.optional(v.string()),
   },
   returns: v.array(
     v.object({
@@ -159,6 +122,8 @@ export const list = query({
       .unique();
     if (product === null) return [];
 
+    const account = await optionalAccount(ctx, args.sessionToken);
+
     const comments = await ctx.db
       .query("comments")
       .withIndex("by_product", (q) => q.eq("productDocId", product._id))
@@ -168,12 +133,19 @@ export const list = query({
     return await Promise.all(
       comments.map(async (c) => {
         const hidden = c.hidden === true;
-        const myVoteRow = await ctx.db
-          .query("votes")
-          .withIndex("by_comment_device", (q) =>
-            q.eq("commentId", c._id).eq("deviceId", args.deviceId),
-          )
-          .unique();
+        // Account-keyed: a vote cast in one browser shows as "mine" in every
+        // browser signed into the same account. Legacy device-keyed vote rows
+        // have accountId undefined and match nobody, which is the accepted
+        // cost of the move — the score they built still counts.
+        const myVoteRow =
+          account === null
+            ? null
+            : await ctx.db
+                .query("votes")
+                .withIndex("by_comment_account", (q) =>
+                  q.eq("commentId", c._id).eq("accountId", account._id),
+                )
+                .unique();
         return {
           _id: c._id,
           _creationTime: c._creationTime,
@@ -197,34 +169,29 @@ export const list = query({
 });
 
 /**
- * Post a comment.
+ * Post a comment. Requires a session resolving to an account with a claimed
+ * handle; the SERVER writes the byline from that handle. There is no
+ * displayName argument — the anonymous author path is gone, and a signed-in
+ * caller's copy was never read anyway.
  *
- * `displayName` is what an anonymous commenter is called. A signed-in caller's
- * copy is IGNORED — see resolveAuthor — so the argument stays required for the
- * anonymous path without becoming a way to choose the name on a ticked comment.
- *
- * Throws ConvexError { code: "NEED_HANDLE" } when the session resolves to an
- * account that hasn't claimed a handle; { code: "NAME_RESERVED" } when an
- * anonymous caller types a name nobody may hold; and { code: "NAME_CLAIMED" }
- * when they type one that belongs to someone.
- *
- * These THROW, where auth:claimHandle answers the same kind of refusal in band.
- * The asymmetry is deliberate rather than an oversight. claimHandle's bucket is
- * its only defence, so a thrown refusal — rolling that token back — would erase
- * the limit; it has to commit its verdict. Here the throw does roll the
- * commentAdd token back too, so a caller retyping refused names is never
- * throttled for it, and that is accepted: every refusal above is decided from
- * the argument plus at most two point lookups, and a name already spoken for is
- * visible on the face of any thread it was used in. There is no oracle here
- * worth the grinding.
+ * Throws ConvexError { code: "SIGN_IN_REQUIRED" } for no/invalid session, and
+ * { code: "NEED_HANDLE" } when the session resolves to an account that hasn't
+ * claimed one. Both are decided before the rate-limit token is consumed, so
+ * neither refusal can burn the bucket — and neither needs the in-band answer
+ * claimHandle uses, because nothing has been written when they throw.
  */
 export const add = mutation({
   args: {
     productId: v.string(),
+    // Stored on the row as the posting browser, exactly as before — the
+    // author is the account, but a device column that survives
+    // auth:deleteAccount is what keeps old threads attributable to *a*
+    // browser after the tick is gone.
     deviceId: v.string(),
-    displayName: v.string(),
     body: v.string(),
     parentId: v.optional(v.id("comments")),
+    // Optional in the validator so a signed-out client gets the clean
+    // SIGN_IN_REQUIRED refusal rather than an ArgumentValidationError.
     sessionToken: v.optional(v.string()),
   },
   returns: v.id("comments"),
@@ -232,21 +199,23 @@ export const add = mutation({
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const body = requireLength("body", args.body, 1, 2000);
 
-    await enforceRateLimit(ctx, "commentAdd", deviceId);
+    const account = await requireAccount(ctx, args.sessionToken);
+    if (account.handle === undefined) {
+      throw new ConvexError({
+        code: "NEED_HANDLE",
+        message: "Pick a handle before posting",
+      });
+    }
+
+    await enforceRateLimit(ctx, "commentAdd", acctKey(account));
 
     requireCleanContent(body);
-    // Both forms, the same pair of passes a name gets. The body filter used to
-    // check only the raw text, which meant "shit_head" posted and "shit-head"
-    // did not — the underscore is a word character to `\b`, so it hid the word
-    // from the blocklist. A filter the careless can step over by accident is
-    // just an inconsistent one.
+    // Both forms, the same pair of passes a handle claim gets. The body filter
+    // used to check only the raw text, which meant "shit_head" posted and
+    // "shit-head" did not — the underscore is a word character to `\b`, so it
+    // hid the word from the blocklist. A filter the careless can step over by
+    // accident is just an inconsistent one.
     requireCleanContent(separatorFoldedForm(body));
-
-    const { displayName, accountId } = await resolveAuthor(
-      ctx,
-      args.sessionToken,
-      args.displayName,
-    );
 
     const product = await ctx.db
       .query("products")
@@ -292,14 +261,13 @@ export const add = mutation({
     const commentId = await ctx.db.insert("comments", {
       productDocId: product._id,
       deviceId,
-      displayName,
+      // The server signs the comment. Never set from an argument.
+      displayName: account.handle,
       body,
       score: 0,
       voteCount: 0,
       parentId: args.parentId,
-      // undefined for an anonymous comment, which is what makes `verified`
-      // false on read. Never set from an argument.
-      accountId,
+      accountId: account._id,
     });
 
     await bump(ctx, "comments:total");
@@ -312,14 +280,16 @@ export const add = mutation({
 export const vote = mutation({
   args: {
     commentId: v.id("comments"),
-    deviceId: v.string(),
     value: v.union(v.literal(1), v.literal(-1), v.literal(0)),
+    sessionToken: v.optional(v.string()),
   },
   returns: v.object({ score: v.number() }),
   handler: async (ctx, args) => {
-    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+    // Voting needs an account but not a handle: nothing it writes carries a
+    // byline. SIGN_IN_REQUIRED lands before the rate-limit token is spent.
+    const account = await requireAccount(ctx, args.sessionToken);
 
-    await enforceRateLimit(ctx, "commentVote", deviceId);
+    await enforceRateLimit(ctx, "commentVote", acctKey(account));
 
     const comment = await ctx.db.get(args.commentId);
     if (comment === null) {
@@ -332,10 +302,14 @@ export const vote = mutation({
       });
     }
 
+    // One vote per ACCOUNT per comment: two browsers signed into the same
+    // account resolve to the same row, so they cannot double-vote. Legacy
+    // device-keyed rows have accountId undefined and never match here — they
+    // stand as counted history, not as anyone's current vote.
     const existing = await ctx.db
       .query("votes")
-      .withIndex("by_comment_device", (q) =>
-        q.eq("commentId", args.commentId).eq("deviceId", deviceId),
+      .withIndex("by_comment_account", (q) =>
+        q.eq("commentId", args.commentId).eq("accountId", account._id),
       )
       .unique();
 
@@ -350,7 +324,7 @@ export const vote = mutation({
     } else if (existing === null) {
       await ctx.db.insert("votes", {
         commentId: args.commentId,
-        deviceId,
+        accountId: account._id,
         value: newValue,
       });
     } else {
@@ -372,32 +346,37 @@ export const vote = mutation({
 export const report = mutation({
   args: {
     commentId: v.id("comments"),
-    deviceId: v.string(),
+    sessionToken: v.optional(v.string()),
   },
   returns: v.object({ ok: v.boolean(), alreadyReported: v.boolean() }),
   handler: async (ctx, args) => {
-    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+    const account = await requireAccount(ctx, args.sessionToken);
 
     const comment = await ctx.db.get(args.commentId);
     if (comment === null) {
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown comment" });
     }
 
-    // Dedupe per (commentId, deviceId): a repeat report is a no-op and does
-    // not consume a rate-limit token.
+    // Dedupe per (commentId, accountId): a repeat report is a no-op and does
+    // not consume a rate-limit token. The threshold below therefore means
+    // five distinct ACCOUNTS — each behind an email sign-in — where it used
+    // to mean five strings a client invented.
     const existing = await ctx.db
       .query("reports")
-      .withIndex("by_comment_device", (q) =>
-        q.eq("commentId", args.commentId).eq("deviceId", deviceId),
+      .withIndex("by_comment_account", (q) =>
+        q.eq("commentId", args.commentId).eq("accountId", account._id),
       )
       .unique();
     if (existing !== null) {
       return { ok: true, alreadyReported: true };
     }
 
-    await enforceRateLimit(ctx, "commentReport", deviceId);
+    await enforceRateLimit(ctx, "commentReport", acctKey(account));
 
-    await ctx.db.insert("reports", { commentId: args.commentId, deviceId });
+    await ctx.db.insert("reports", {
+      commentId: args.commentId,
+      accountId: account._id,
+    });
     const reportCount = (comment.reportCount ?? 0) + 1;
     await ctx.db.patch(args.commentId, {
       reportCount,

@@ -885,9 +885,12 @@ export const deleteAccount = mutation({
 });
 
 /**
- * One batch of account teardown: sessions deleted, watches and comments
- * unlinked. Every operation removes its rows from the range being read, so
- * repeated batches always make progress and the continuation terminates.
+ * One batch of account teardown: sessions and watches deleted, comments
+ * unlinked. Watches go with the account rather than being unlinked — alerts
+ * require an account now, so an unlinked watch would be dormant data with no
+ * owner and no path back (owner's call, 2026-08-20). Every operation removes
+ * its rows from the range being read, so repeated batches always make
+ * progress and the continuation terminates.
  */
 async function sweepAccountRows(
   ctx: MutationCtx,
@@ -913,7 +916,7 @@ async function sweepAccountRows(
     .withIndex("by_account_active", (q) => q.eq("accountId", accountId))
     .take(SWEEP_LIMIT);
   for (const watch of watches) {
-    await ctx.db.patch(watch._id, { accountId: undefined });
+    await ctx.db.delete(watch._id);
   }
 
   // The comment text and its displayName stay; only the link that produces the

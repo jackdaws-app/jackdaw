@@ -136,6 +136,23 @@
     countEl.textContent = "";
   }
 
+  // Signed out, the watchlist has nothing to show — alerts live with the
+  // account now, so the empty state is an invitation, not an absence.
+  function renderSignedOut() {
+    bodyEl.textContent = "";
+    const wrap = el("div", "pop-empty");
+    wrap.innerHTML = BIRD;
+    wrap.append(
+      el("div", "pop-empty-title", "Alerts follow your account"),
+      el("div", "pop-empty-body", "Price drops, open-box finds and restocks need an account, so one alert reaches you on every browser. No password — a 6-digit code by email."),
+    );
+    const btn = el("button", "pop-btn pop-signin-btn", "Sign in");
+    btn.addEventListener("click", () => openSheet(renderSignIn, btn));
+    wrap.append(btn);
+    bodyEl.append(wrap);
+    countEl.textContent = "";
+  }
+
   // The price line under the number. A watch with its price trigger switched
   // off has no target to measure against, so it names the state instead of
   // inventing a distance from a target that isn't live. A watch with no
@@ -237,8 +254,12 @@
   function loadList() {
     // Names resolve before the first paint, not after it — a row that renders
     // "store #045" and then swaps to "Westmont" is a visible correction.
+    // Signed out there is no list to fetch — the server would answer [] for a
+    // caller with no token anyway, so skip the round trip and show the
+    // invitation instead. The storage read stays: the consent card and store
+    // names are anonymous surfaces, independent of the account.
     return Promise.all([
-      send({ type: "watch:dashboard" }),
+      auth.signedIn ? send({ type: "watch:dashboard" }) : Promise.resolve({ result: [] }),
       chrome.storage.local.get([STORE_NAMES_KEY, CATALOG_KEY, BADGES_KEY]),
     ]).then(([res, stored]) => {
       storeNames = stored[STORE_NAMES_KEY] || {};
@@ -248,7 +269,8 @@
       bodySettled = true;
       if (res.error) return renderError();
       const rows = Array.isArray(res.result) ? res.result : [];
-      if (!rows.length) renderEmpty();
+      if (!auth.signedIn) renderSignedOut();
+      else if (!rows.length) renderEmpty();
       else renderList(rows);
       if (stored[CATALOG_KEY] === undefined) bodyEl.prepend(noticeCard());
     });
@@ -490,10 +512,10 @@
   function paintAcct() {
     acctBtn.hidden = false;
     acctBtn.classList.toggle("synced", auth.signedIn);
-    acctBtn.textContent = auth.signedIn ? "synced" : "this browser only";
+    acctBtn.textContent = auth.signedIn ? "synced" : "sign in";
     acctBtn.title = auth.signedIn
       ? `Signed in as ${auth.email}`
-      : "Your alerts live only in this browser";
+      : "Alerts need an account — sign in with a 6-digit email code";
   }
 
   function refreshAuth() {
@@ -562,8 +584,8 @@
     sheetBody.textContent = "";
     sheetBody.append(
       sheetHead(
-        "Keep your alerts",
-        "Clearing your browser data takes your watchlist with it. An account keeps it, and brings it to your other browsers. No password — we email you a 6-digit code.",
+        "Sign in",
+        "Alerts, comments and votes live with your account, so they follow you to any browser you sign in to. No password — we email you a 6-digit code.",
       ),
     );
 
@@ -742,7 +764,7 @@
           el(
             "div",
             "pop-sheet-body",
-            "Your email address and sessions are removed. Your alerts stay on this browser, unlinked — you keep them.",
+            "Your email address, sessions and alerts are deleted. Comments you posted stay, without the verified mark.",
           ),
         );
         return;
@@ -770,8 +792,10 @@
     openSheet(renderSettings, settingsBtn);
   });
 
-  loadList();
-  refreshAuth();
+  // The list depends on the auth answer now — a signed-out popup shows the
+  // invitation instead of fetching a dashboard it has no token for — so the
+  // auth read comes first rather than racing the render.
+  refreshAuth().then(loadList);
 })();
 
 // ---------- The header lap ----------

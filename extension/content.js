@@ -297,9 +297,9 @@
       send({ type: "comments:list", productId: product.productId }),
       send({ type: "auth:state" }),
     ]);
-    // A failed auth check falls back to the anonymous compose form — the
-    // normal state of this product, not a degraded one. The backend stays the
-    // authority on who signed a comment either way.
+    // A failed auth check falls back to the signed-out card. The backend
+    // stays the authority either way: a stale "signed in" here only draws a
+    // form whose post the server will refuse with SIGN_IN_REQUIRED.
     account = a && !a.error && a.result ? a.result : { signedIn: false };
     // A failed request and a product with no history are different things and
     // must not look the same: one offers a retry, the other invites a first visit.
@@ -714,6 +714,20 @@
   function renderAlerts() {
     if (activeTab !== "alerts" || !paneEl) return;
     paneEl.textContent = "";
+    // Alerts are account-scoped — that is what lets one alert reach every
+    // browser the person signs in to — so signed out there is no target to
+    // save and nothing truthful to draw. The card replaces the whole pane,
+    // and its body says what alerts do — worth knowing before deciding an
+    // account is worth having.
+    if (!account.signedIn) {
+      paneEl.append(
+        signInCard(
+          "Alerts follow your account",
+          "Price drops, open-box finds and restocks, checked hourly against what other shoppers have seen. One alert reaches you on every browser you sign in to. No password — a 6-digit code by email.",
+        ),
+      );
+      return;
+    }
     const card = el("div", "jd-alert-card");
     card.append(el("div", "jd-popover-label",
       watchTarget == null ? "Notify me at or below"
@@ -972,6 +986,49 @@
       setTimeout(() => t.remove(), 300);
     }, 2400);
   }
+
+  // ---------- The sign-in card ----------
+  //
+  // Participation — posting, voting, reporting, alerts — needs an account;
+  // reading never does. This is the one card every gated surface shows. Its
+  // button asks the service worker to open the toolbar popup, where the
+  // sign-in sheet lives; Chrome can refuse that (openPopup needs 127+ and a
+  // window in the right state), and the toast then says where the popup is.
+  // A content script cannot open the popup itself, and a card with no action
+  // at all would be furniture.
+
+  const ACCOUNT_MARK =
+    '<svg class="mk-signin-mark" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<circle cx="8" cy="5.4" r="2.7" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+    '<path d="M3 13.2c1.05-2.5 2.95-3.75 5-3.75s3.95 1.25 5 3.75" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+  function signInCard(title, body) {
+    const card = el("div", "mk-signin");
+    const head = el("div", "mk-signin-head");
+    head.innerHTML = ACCOUNT_MARK;
+    head.append(el("span", "mk-signin-title", title));
+    const btn = el("button", "mk-post mk-signin-btn", "Sign in");
+    btn.addEventListener("click", async () => {
+      const res = await send({ type: "auth:openPopup" });
+      if (!res || res.error) toast("Click the Jackdaw icon in your Chrome toolbar to sign in");
+    });
+    card.append(head, el("div", "mk-signin-body", body), btn);
+    return card;
+  }
+
+  // Signing in happens in the toolbar popup, which takes the page's focus.
+  // When focus comes back, re-read who we are — the panel may be showing a
+  // sign-in card the person has just made obsolete.
+  window.addEventListener("focus", async () => {
+    if (!alive()) return;
+    const a = await send({ type: "auth:state" });
+    if (!a || a.error || !a.result) return;
+    if (a.result.signedIn !== account.signedIn || a.result.handle !== account.handle) {
+      account = a.result;
+      if (drawerEl && drawerEl.classList.contains("jd-open")) renderActive();
+    }
+  });
 
   // ---------- Rendering ----------
 
@@ -1440,14 +1497,6 @@
     NO_SESSION: "Open the Jackdaw toolbar icon to sign in first.",
   };
 
-  // Refusals that are about the typed name and nothing else. They go inline on
-  // the name field rather than into a toast: the fix is to change that one
-  // input, and a toast floating over the panel points at nothing.
-  const NAME_REFUSALS = {
-    NAME_CLAIMED: "Someone has claimed that name. Pick another, or sign in to claim your own.",
-    NAME_RESERVED: "That name is reserved. Pick another.",
-  };
-
   function renderComment(c, depth) {
     const wrap = el("div", "mk-thread" + (depth ? " mk-thread-nested" : ""));
 
@@ -1500,9 +1549,15 @@
     down.setAttribute("aria-label", "Downvote");
     // Votes patch the row in place — the chart never re-renders for a vote.
     const applyVote = async (value) => {
+      // The arrows stay visible signed out — hiding them would hide the
+      // score — but a click gets the nudge, not a doomed round-trip.
+      if (!account.signedIn) {
+        toast("Voting needs an account — sign in from the Jackdaw toolbar icon");
+        return;
+      }
       const res = await send({ type: "comments:vote", commentId: c._id, value });
       if (res.error) {
-        toast("Vote failed — try again");
+        toast(friendlyError(res, "Vote failed — try again"));
         return;
       }
       c.score = res.result.score;
@@ -1541,6 +1596,10 @@
     }
     const reportBtn = el("button", "mk-reply-btn mk-report-btn", "Report");
     reportBtn.addEventListener("click", async () => {
+      if (!account.signedIn) {
+        toast("Reporting needs an account — sign in from the Jackdaw toolbar icon");
+        return;
+      }
       const res = await send({ type: "comments:report", commentId: c._id });
       if (res.error) toast(friendlyError(res, "Couldn't report — try again"));
       else toast(res.result.alreadyReported ? "You already reported this" : "Reported");
@@ -1566,8 +1625,7 @@
       case "LINKS_NOT_ALLOWED": return "Links aren't allowed in comments";
       case "CONTACT_INFO_NOT_ALLOWED": return "Contact info isn't allowed";
       case "CONTENT_REJECTED": return "Keep it civil — comment rejected";
-      case "NAME_CLAIMED": return "Someone has claimed that name — pick another";
-      case "NAME_RESERVED": return "That name is reserved — pick another";
+      case "SIGN_IN_REQUIRED": return "Sign in first — click the Jackdaw icon in your toolbar";
       case "NEED_HANDLE": return "Pick a handle first";
       case "ORPHANED": return "Jackdaw updated — refresh the page to reconnect";
       default: return fallback;
@@ -1579,25 +1637,30 @@
   }
 
   function composeForm(parentId, placeholder, cta) {
-    const form = el("div", "mk-form");
-    const signedIn = !!account.signedIn;
+    // Signed out, the compose slot IS the sign-in card — the retail-review
+    // shape: the thread is open to every reader, the pen needs an account.
+    if (!account.signedIn) {
+      return signInCard(
+        "Sign in to post",
+        "Reading is open to everyone. Posting, voting and reporting need an account — no password, just a 6-digit code by email — and your comments carry a handle that's yours alone.",
+      );
+    }
 
-    // Who this comment gets signed as, settled before a word is typed. Three
-    // states, and only one of them is an editable name: an account with a
-    // handle posts as that handle, an account without one claims it here on
-    // the way to its first comment, and everyone else keeps the free-text name
-    // this product has always had.
-    let nameInput = null; // anonymous — the display name
-    let handleInput = null; // signed in, unclaimed — the handle being claimed
+    const form = el("div", "mk-form");
+
+    // Who this comment gets signed as, settled before a word is typed. Two
+    // states: an account with a handle posts as that handle, and an account
+    // without one claims its handle here, on the way to its first comment.
+    let handleInput = null; // unclaimed — the handle being claimed
     const errEl = el("div", "mk-form-error");
     errEl.hidden = true;
 
-    if (signedIn && account.handle) {
+    if (account.handle) {
       const who = el("div", "mk-as");
       who.append(el("span", "mk-as-label", "Posting as"), el("span", "mk-as-handle", account.handle));
       who.insertAdjacentHTML("beforeend", VERIFIED_MARK);
       form.append(who);
-    } else if (signedIn) {
+    } else {
       form.append(
         el("div", "mk-as-hint", "Pick a handle — it's permanent, it's yours alone, and your comments carry a verified mark."),
       );
@@ -1607,12 +1670,6 @@
       handleInput.autocapitalize = "off";
       handleInput.spellcheck = false;
       form.append(handleInput, errEl);
-    } else {
-      nameInput = el("input", "mk-input");
-      nameInput.placeholder = "Display name";
-      nameInput.maxLength = 40;
-      store.get("displayName").then((v) => { if (v.displayName) nameInput.value = v.displayName; });
-      form.append(nameInput, errEl);
     }
 
     const bodyInput = el("textarea", "mk-input mk-textarea");
@@ -1636,7 +1693,6 @@
       errEl.hidden = true;
       const body = bodyInput.value.trim();
       if (handleInput && !handleInput.value.trim()) return nudge(handleInput);
-      if (nameInput && !nameInput.value.trim()) return nudge(nameInput);
       if (!body) { bodyInput.focus(); return; }
 
       btn.disabled = true;
@@ -1660,9 +1716,9 @@
           account = { ...account, handle: claim.result.handle };
         }
 
-        const displayName = nameInput ? nameInput.value.trim() : account.handle;
-        if (nameInput) await store.set({ displayName });
-        const args = { type: "comments:add", productId: product.productId, displayName, body };
+        // The server signs the comment with the account's handle — no name
+        // travels with the post, so no caller can pick one.
+        const args = { type: "comments:add", productId: product.productId, body };
         if (parentId) args.parentId = parentId;
         const res = await send(args);
         if (res.error) {
@@ -1671,9 +1727,6 @@
             toast("Pick a handle first");
             renderRight();
             return;
-          }
-          if (nameInput && NAME_REFUSALS[res.code]) {
-            return fail(nameInput, NAME_REFUSALS[res.code]);
           }
           toast(friendlyError(res, "Couldn't post — try again"));
           return;

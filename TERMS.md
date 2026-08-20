@@ -1,6 +1,6 @@
 # Terms of Service
 
-*Last updated: August 13, 2026.*
+*Last updated: August 20, 2026.*
 
 These Terms of Service ("Terms") govern your use of the Jackdaw browser extension and related services ("the Service"). By using the Service you agree to these Terms.
 
@@ -14,7 +14,7 @@ Price data is contributed by users' own browsers from pages they visit. It is pr
 
 ## 3. User Content
 
-You may post comments, votes, and reports. You retain ownership of content you post and grant us a non-exclusive, royalty-free license to display and distribute it within the Service. You may not post content that is unlawful, harassing, or defamatory; spam or commercial solicitation; links or contact information; or content you do not have the right to share. We may hide or remove content and restrict access for violations, with or without notice. Content hidden by community reports may be reviewed by a maintainer.
+You may post comments, votes, and reports, each of which requires an account; posting comments also requires a claimed handle, as described in the Privacy Policy. You retain ownership of content you post and grant us a non-exclusive, royalty-free license to display and distribute it within the Service. You may not post content that is unlawful, harassing, or defamatory; spam or commercial solicitation; links or contact information; or content you do not have the right to share. We may hide or remove content and restrict access for violations, with or without notice. Content hidden by community reports may be reviewed by a maintainer.
 
 ## 4. Disclaimer of Warranty; Limitation of Liability
 

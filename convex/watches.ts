@@ -55,20 +55,24 @@ function downsample(values: number[], max: number): number[] {
 }
 
 // ---------------------------------------------------------------------------
-// Scope: the device by default, the account when a session resolves
+// Scope: the account, and only the account (as of 2026-08-20)
 //
-// Anonymous stays exact. No sessionToken — or one that doesn't resolve —
-// behaves precisely as this file did before accounts existed. resolveSession
-// answers null for a malformed, expired or orphaned token, and null means
-// anonymous rather than an error: a signed-out client is the normal state of
-// this product, not a failure to report.
+// Every function in this file requires a session that resolves. A deviceId is
+// a string the client invents, so device-scoped alerts were alerts anyone
+// could read, disarm or forge with a curl call; the account — email + code —
+// is the one identity the caller cannot mint. Queries answer a signed-out
+// caller with the empty/signed-out shape rather than a throw, so a signed-out
+// popup renders a sign-in state without console errors; mutations refuse
+// SIGN_IN_REQUIRED in each mutation's existing refusal style (thrown where the
+// mutation's other refusals throw, in band where they answer in band).
 //
-// When a session does resolve the ACCOUNT is the scope, not a filter laid over
-// one device's rows — that is what makes the second browser see the first
-// browser's alerts, which is the entire promise. Rows written while signed in
-// carry accountId from birth, so they sync without waiting for another sign-in
-// to adopt them. deviceId stays on every row either way: it is the anonymous
-// owner, and it has to survive auth:deleteAccount clearing accountId back off.
+// The ACCOUNT is the scope, not a filter laid over one device's rows — that is
+// what makes the second browser see the first browser's alerts, which is the
+// entire promise. Rows written while signed in carry accountId from birth.
+// deviceId stays on every row: it is what auth:verifyCode's adoption matches
+// on, and it has to survive auth:deleteAccount clearing accountId back off —
+// the rows it leaves behind are unreachable until a sign-in adopts them again,
+// but they are not orphaned data.
 //
 // ONE ACTIVE ROW per (account, product) is an invariant every account-scoped
 // write maintains, and never one a read may assume. Two browsers that each
@@ -76,7 +80,7 @@ function downsample(values: number[], max: number): number[] {
 // adoption stamps them, so the read paths dedupe as well.
 // ---------------------------------------------------------------------------
 
-/** The account this call speaks for, or null for anonymous. */
+/** The account this call speaks for, or null for signed out. */
 async function scopeAccount(
   ctx: QueryCtx,
   sessionToken: string | undefined,
@@ -84,6 +88,25 @@ async function scopeAccount(
   if (sessionToken === undefined || sessionToken.length === 0) return null;
   const resolved = await resolveSession(ctx, sessionToken);
   return resolved === null ? null : resolved.account._id;
+}
+
+/**
+ * scopeAccount for the mutations whose refusals throw: no/invalid session is
+ * SIGN_IN_REQUIRED. Thrown before anything is written, so there is nothing for
+ * the throw to roll back.
+ */
+async function requireWatchAccount(
+  ctx: QueryCtx,
+  sessionToken: string | undefined,
+): Promise<Id<"accounts">> {
+  const accountId = await scopeAccount(ctx, sessionToken);
+  if (accountId === null) {
+    throw new ConvexError({
+      code: "SIGN_IN_REQUIRED",
+      message: "Sign in to use alerts",
+    });
+  }
+  return accountId;
 }
 
 type WatchSet = {
@@ -94,35 +117,34 @@ type WatchSet = {
 };
 
 /**
- * Every row that counts as "this caller's watch on this product".
+ * Every row that counts as "this caller's watch on this product": the
+ * account's rows across every browser, because a second browser's row for the
+ * same product is the same watch.
  *
- * Anonymous: the device's row, exactly as before.
- *
- * Signed in: the account's rows across every browser, because a second
- * browser's row for the same product is the same watch. `unclaimed` is
- * deliberately NOT one of them — a row this device holds that no account has
- * claimed still belongs to the anonymous device, and the account is the scope.
- * It comes back separately because a write must reuse it rather than insert a
- * second row for the same (device, product): the anonymous path resolves that
- * pair with .first(), so a duplicate would be permanently invisible to the
- * device that owns it the moment they sign out.
+ * `unclaimed` is deliberately NOT one of them — a row this device holds that
+ * no account has claimed still belongs to the device that armed it before
+ * signing in. It comes back separately because a write must reuse it rather
+ * than insert a second row for the same (device, product): adoption
+ * (auth:verifyCode) resolves that pair through by_device_product, so a
+ * duplicate would collide with the next sign-in's merge. Callers with no
+ * device to speak for (the account-only paths: setTriggers, ack) pass null
+ * and skip the probe.
  */
 async function watchSet(
   ctx: QueryCtx,
-  accountId: Id<"accounts"> | null,
-  deviceId: string,
+  accountId: Id<"accounts">,
+  deviceId: string | null,
   productDocId: Id<"products">,
 ): Promise<WatchSet> {
-  const deviceRow = await ctx.db
-    .query("watches")
-    .withIndex("by_device_product", (q) =>
-      q.eq("deviceId", deviceId).eq("productDocId", productDocId),
-    )
-    .first();
-
-  if (accountId === null) {
-    return { rows: deviceRow === null ? [] : [deviceRow], unclaimed: null };
-  }
+  const deviceRow =
+    deviceId === null
+      ? null
+      : await ctx.db
+          .query("watches")
+          .withIndex("by_device_product", (q) =>
+            q.eq("deviceId", deviceId).eq("productDocId", productDocId),
+          )
+          .first();
 
   // Newest first, so a bounded window always contains the rows canonical()
   // prefers rather than the oldest ten.
@@ -253,23 +275,14 @@ async function claimForWrite(
  */
 async function armedWatches(
   ctx: QueryCtx,
-  accountId: Id<"accounts"> | null,
-  deviceId: string,
+  accountId: Id<"accounts">,
 ): Promise<Doc<"watches">[]> {
-  const rows =
-    accountId === null
-      ? await ctx.db
-          .query("watches")
-          .withIndex("by_device_active", (q) =>
-            q.eq("deviceId", deviceId).eq("active", true),
-          )
-          .take(WATCH_WINDOW)
-      : await ctx.db
-          .query("watches")
-          .withIndex("by_account_active", (q) =>
-            q.eq("accountId", accountId).eq("active", true),
-          )
-          .take(WATCH_WINDOW);
+  const rows = await ctx.db
+    .query("watches")
+    .withIndex("by_account_active", (q) =>
+      q.eq("accountId", accountId).eq("active", true),
+    )
+    .take(WATCH_WINDOW);
 
   // Same rule the write paths pick with, so what the popup shows and what a
   // toggle acts on can't disagree.
@@ -285,15 +298,19 @@ async function armedWatches(
 
 export const toggle = mutation({
   args: {
+    // Still carried by the write paths that can CLAIM: it names this
+    // browser's pre-sign-in row so claimForWrite can adopt it, and it is
+    // stamped on any new row so a later deleteAccount leaves the row owned.
     deviceId: v.string(),
     productId: v.string(),
-    // Optional forever: absent, malformed or expired is anonymous, never an
-    // error. Same for every function in this file.
+    // Optional in the validator so a signed-out client gets the clean
+    // SIGN_IN_REQUIRED refusal rather than an ArgumentValidationError.
     sessionToken: v.optional(v.string()),
   },
   returns: v.object({ watching: v.boolean() }),
   handler: async (ctx, args) => {
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+    const accountId = await requireWatchAccount(ctx, args.sessionToken);
 
     const product = await ctx.db
       .query("products")
@@ -303,7 +320,6 @@ export const toggle = mutation({
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
     }
 
-    const accountId = await scopeAccount(ctx, args.sessionToken);
     const set = await watchSet(ctx, accountId, deviceId, product._id);
     const existing = canonical(set.rows);
 
@@ -323,9 +339,7 @@ export const toggle = mutation({
     const priceAtWatch = latest === null ? 0 : latest.price;
 
     const claimed =
-      existing === null && accountId !== null
-        ? await claimForWrite(ctx, set, accountId)
-        : null;
+      existing === null ? await claimForWrite(ctx, set, accountId) : null;
     const keep = existing ?? claimed;
 
     if (keep !== null) {
@@ -338,7 +352,7 @@ export const toggle = mutation({
         active: true,
         // Linked from birth, so the second browser sees it without waiting for
         // another sign-in to adopt it.
-        accountId: accountId ?? undefined,
+        accountId,
       });
     }
 
@@ -373,6 +387,7 @@ export const setTarget = mutation({
       });
     }
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+    const accountId = await requireWatchAccount(ctx, args.sessionToken);
 
     const product = await ctx.db
       .query("products")
@@ -382,13 +397,10 @@ export const setTarget = mutation({
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
     }
 
-    const accountId = await scopeAccount(ctx, args.sessionToken);
     const set = await watchSet(ctx, accountId, deviceId, product._id);
     const existing = canonical(set.rows);
     const claimed =
-      existing === null && accountId !== null
-        ? await claimForWrite(ctx, set, accountId)
-        : null;
+      existing === null ? await claimForWrite(ctx, set, accountId) : null;
     const keep = existing ?? claimed;
 
     // Arming is create-or-reactivate; re-pricing an already-armed watch is an
@@ -403,7 +415,7 @@ export const setTarget = mutation({
         productDocId: product._id,
         priceAtWatch: args.targetPrice,
         active: true,
-        accountId: accountId ?? undefined,
+        accountId,
       });
     }
 
@@ -427,7 +439,10 @@ export const setTarget = mutation({
  */
 export const setTriggers = mutation({
   args: {
-    deviceId: v.string(),
+    // No deviceId: this function only edits rows the account already holds —
+    // it never claims a pre-sign-in row and never inserts, so it has no use
+    // for a device identity. NOT_WATCHING is the answer when the account has
+    // nothing here, exactly as before.
     productId: v.string(),
     storeNum: v.string(),
     price: v.boolean(),
@@ -439,6 +454,7 @@ export const setTriggers = mutation({
     ok: v.boolean(),
     reason: v.optional(
       v.union(
+        v.literal("SIGN_IN_REQUIRED"),
         v.literal("NOT_WATCHING"),
         v.literal("NOT_A_STORE"),
         v.literal("NO_TRIGGERS"),
@@ -446,8 +462,16 @@ export const setTriggers = mutation({
     ),
   }),
   handler: async (ctx, args) => {
-    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const storeNum = requireLength("storeNum", args.storeNum, 1, 10);
+
+    // This mutation answers its refusals in band, so the sign-in gate does
+    // too — one refusal style per function, and the panel already branches on
+    // `reason`. First, before the cheaper checks: what a signed-out caller
+    // needs to hear is "sign in", not a critique of their store number.
+    const accountId = await scopeAccount(ctx, args.sessionToken);
+    if (accountId === null) {
+      return { ok: false, reason: "SIGN_IN_REQUIRED" as const };
+    }
 
     // Refused in band rather than thrown, for the reason the rest of this
     // codebase answers in band: a throw would roll back its own writes, and a
@@ -473,8 +497,7 @@ export const setTriggers = mutation({
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
     }
 
-    const accountId = await scopeAccount(ctx, args.sessionToken);
-    const set = await watchSet(ctx, accountId, deviceId, product._id);
+    const set = await watchSet(ctx, accountId, null, product._id);
     const watch = canonical(set.rows);
     if (watch === null || !watch.active) {
       return { ok: false, reason: "NOT_WATCHING" as const };
@@ -492,9 +515,22 @@ export const setTriggers = mutation({
   },
 });
 
+// What every watch query answers a signed-out caller with: the same shape an
+// unknown product gets. Not a throw — a signed-out popup or panel renders a
+// sign-in state from "you are watching nothing", and a console full of
+// SIGN_IN_REQUIRED errors for the product's most common visitor would be
+// noise about the normal case.
+const NOT_WATCHING_STATUS = {
+  watching: false,
+  target: null,
+  storeNum: null,
+  alertPrice: false,
+  alertOpenBox: false,
+  alertRestock: false,
+};
+
 export const status = query({
   args: {
-    deviceId: v.string(),
     productId: v.string(),
     sessionToken: v.optional(v.string()),
   },
@@ -507,23 +543,16 @@ export const status = query({
     alertRestock: v.boolean(),
   }),
   handler: async (ctx, args) => {
+    const accountId = await scopeAccount(ctx, args.sessionToken);
+    if (accountId === null) return NOT_WATCHING_STATUS;
+
     const product = await ctx.db
       .query("products")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .unique();
-    if (product === null) {
-      return {
-        watching: false,
-        target: null,
-        storeNum: null,
-        alertPrice: false,
-        alertOpenBox: false,
-        alertRestock: false,
-      };
-    }
+    if (product === null) return NOT_WATCHING_STATUS;
 
-    const accountId = await scopeAccount(ctx, args.sessionToken);
-    const set = await watchSet(ctx, accountId, args.deviceId, product._id);
+    const set = await watchSet(ctx, accountId, null, product._id);
     const watch = canonical(set.rows);
     const watching = watch !== null && watch.active;
     return {
@@ -678,7 +707,6 @@ async function fireFor(
 
 export const check = query({
   args: {
-    deviceId: v.string(),
     sessionToken: v.optional(v.string()),
   },
   returns: v.array(
@@ -699,8 +727,11 @@ export const check = query({
     }),
   ),
   handler: async (ctx, args) => {
+    // Signed out fires nothing: an empty answer, not an error, because the
+    // hourly alarm runs in every browser and most browsers are signed out.
     const accountId = await scopeAccount(ctx, args.sessionToken);
-    const watches = await armedWatches(ctx, accountId, args.deviceId);
+    if (accountId === null) return [];
+    const watches = await armedWatches(ctx, accountId);
     const now = Date.now();
 
     const fires: Fire[] = [];
@@ -782,13 +813,15 @@ type DashboardRow = {
  */
 export const dashboard = query({
   args: {
-    deviceId: v.string(),
     sessionToken: v.optional(v.string()),
   },
   returns: v.array(dashboardRowValidator),
   handler: async (ctx, args) => {
+    // Signed out is an empty watchlist, not an error — the popup renders its
+    // sign-in state from [] without a console full of refusals.
     const accountId = await scopeAccount(ctx, args.sessionToken);
-    const active = await armedWatches(ctx, accountId, args.deviceId);
+    if (accountId === null) return [];
+    const active = await armedWatches(ctx, accountId);
 
     if (active.length === 0) return [];
 
@@ -873,7 +906,9 @@ export const dashboard = query({
 
 export const ack = mutation({
   args: {
-    deviceId: v.string(),
+    // No deviceId: only check() finds fires and check answers nothing to a
+    // signed-out caller, so an ack always speaks for the account whose watch
+    // fired — there is no device-scoped alert left to dismiss.
     productId: v.string(),
     newPrice: v.number(),
     sessionToken: v.optional(v.string()),
@@ -890,7 +925,7 @@ export const ack = mutation({
         message: "newPrice must be a finite number between 0 and 100000",
       });
     }
-    const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
+    const accountId = await requireWatchAccount(ctx, args.sessionToken);
 
     const product = await ctx.db
       .query("products")
@@ -900,8 +935,7 @@ export const ack = mutation({
       throw new ConvexError({ code: "NOT_FOUND", message: "unknown product" });
     }
 
-    const accountId = await scopeAccount(ctx, args.sessionToken);
-    const set = await watchSet(ctx, accountId, deviceId, product._id);
+    const set = await watchSet(ctx, accountId, null, product._id);
 
     // One-shot alert: acknowledging turns the watch off, preserving the user's
     // chosen target. Re-arm via setTarget/toggle. `newPrice` is accepted (and

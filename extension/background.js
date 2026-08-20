@@ -158,14 +158,18 @@ async function getSession() {
 }
 
 /**
- * The scope argument every watch call carries: `{sessionToken}` when signed in,
- * `{}` when not. Spread into the args rather than passed as null, because the
- * backend's validator is `v.optional(v.string())` and an absent token is the
- * anonymous path — the normal state of this product, not a degraded one.
+ * The scope argument every participation call carries — watches AND
+ * comments:add/vote/report, plus comments:list for vote-marking:
+ * `{sessionToken}` when signed in, `{}` when not. Spread into the args rather
+ * than passed as null, because the backend's validator is
+ * `v.optional(v.string())` and an absent token gets the backend's own answer —
+ * SIGN_IN_REQUIRED from the mutations, the signed-out shape from the queries —
+ * rather than an ArgumentValidationError.
  *
- * A stale or revoked token needs no special handling here: the backend resolves
- * it to null and answers with this browser's own watches, which is the same
- * thing that happens when there was never a token at all.
+ * A stale or revoked token needs no special handling here: the backend
+ * resolves it to null and answers exactly as it would with no token at all.
+ * Participation requires sign-in as of 2026-08-20; reading history, reading
+ * threads, and reporting observations stay anonymous.
  */
 async function scopeArg() {
   const session = await getSession();
@@ -233,6 +237,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     switch (msg.type) {
       case "auth:state":
         return authState();
+      // The panel's sign-in card asks for the popup, where the sign-in sheet
+      // lives — a content script cannot open it itself. chrome.action.openPopup
+      // exists from Chrome 127 and can still refuse (no focused window, or the
+      // gesture didn't survive the message hop); either failure reaches the
+      // card as a message-layer error, and its toast says where the popup is.
+      case "auth:openPopup": {
+        if (!chrome.action || !chrome.action.openPopup) throw new Error("unsupported");
+        await chrome.action.openPopup();
+        return { ok: true };
+      }
       case "auth:request":
         // Always answers ok, for any syntactically valid address — the backend
         // deliberately can't tell you whether an account exists.
@@ -325,16 +339,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // the shopper is browsing.
           ...(msg.shelfStore ? { shelfStore: msg.shelfStore } : {}),
         });
+      // Reading stays anonymous; the token, when there is one, only marks the
+      // caller's own votes in the answer.
       case "comments:list":
-        return convexQuery("comments:list", { productId: msg.productId, deviceId });
-      // The session decides the author: signed in with a claimed handle, the
-      // backend signs the comment with that handle and ignores displayName
-      // outright, so a caller can never post a verified comment as someone else.
+        return convexQuery("comments:list", {
+          productId: msg.productId,
+          ...(await scopeArg()),
+        });
+      // The session decides the author: the backend signs the comment with the
+      // account's claimed handle, and there is no displayName argument any
+      // more — participation requires sign-in, and a caller who could pick the
+      // name on a ticked comment could wear anyone's. A signed-out call gets
+      // the backend's SIGN_IN_REQUIRED refusal, which the panel surfaces while
+      // keeping the typed body.
       case "comments:add":
         return convexMutation("comments:add", {
           productId: msg.productId,
           deviceId,
-          displayName: msg.displayName,
           body: msg.body,
           // Forwarding this is what makes a reply a reply. It was dropped here
           // while the renderer read it, so replies typed in the panel landed at
@@ -344,11 +365,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           ...(await scopeArg()),
         });
       case "comments:vote":
-        return convexMutation("comments:vote", { commentId: msg.commentId, deviceId, value: msg.value });
+        return convexMutation("comments:vote", {
+          commentId: msg.commentId,
+          value: msg.value,
+          ...(await scopeArg()),
+        });
       case "comments:report":
-        return convexMutation("comments:report", { commentId: msg.commentId, deviceId });
-      // The watch calls are the ones an account changes the answer to: signed
-      // in, the scope is the person's whole watchlist rather than this browser's.
+        return convexMutation("comments:report", {
+          commentId: msg.commentId,
+          ...(await scopeArg()),
+        });
+      // Watches are account-scoped, full stop: signed in, the scope is the
+      // person's whole watchlist on every browser; signed out, the mutations
+      // refuse SIGN_IN_REQUIRED and the queries answer the signed-out shape.
+      // deviceId still rides on toggle/setTarget only — it names this
+      // browser's pre-sign-in row so the backend can adopt it into the account
+      // at the moment of the write.
       case "watch:toggle":
         return convexMutation("watches:toggle", {
           deviceId,
@@ -364,7 +396,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
       case "watch:setTriggers":
         return convexMutation("watches:setTriggers", {
-          deviceId,
           productId: msg.productId,
           storeNum: msg.storeNum,
           price: msg.price,
@@ -380,10 +411,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case "stores:learn":
         return learnStoreNames(msg.names);
       case "watch:dashboard":
-        return convexQuery("watches:dashboard", { deviceId, ...(await scopeArg()) });
+        return convexQuery("watches:dashboard", { ...(await scopeArg()) });
       case "watch:status":
         return convexQuery("watches:status", {
-          deviceId,
           productId: msg.productId,
           ...(await scopeArg()),
         });
@@ -507,12 +537,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== ALARM) return;
   await flushEvents(); // hourly, and only when something is buffered
   try {
-    const deviceId = await getDeviceId();
-    // Read once and reuse for the acks: a sign-out landing mid-loop would
-    // otherwise disarm the account's rows for some drops and this browser's for
-    // the rest, from one pass over one list.
+    // Alerts are account-scoped now: signed out, there is nothing to check —
+    // skip cleanly rather than ask the server a question whose answer is [].
+    // Read the token once and reuse it for the acks: a sign-out landing
+    // mid-loop would otherwise ack some drops and refuse the rest, from one
+    // pass over one list.
     const scope = await scopeArg();
-    const drops = await convexQuery("watches:check", { deviceId, ...scope });
+    if (!scope.sessionToken) return;
+    const drops = await convexQuery("watches:check", { ...scope });
     for (const d of drops) {
       const { title, message } = await notificationFor(d);
       chrome.notifications.create(d.urlPath, {
@@ -523,7 +555,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         priority: 1,
       });
       await convexMutation("watches:ack", {
-        deviceId,
         productId: d.productId,
         newPrice: d.currentPrice,
         ...scope,

@@ -186,19 +186,30 @@ export default defineSchema({
     // one table over: an account-scoped teardown must never scan comments.
     .index("by_account", ["accountId"]),
 
+  // Votes and reports are keyed by ACCOUNT since participation moved behind
+  // sign-in (2026-08-20): a deviceId is client-forgeable, so "one vote per
+  // device" was one vote per curl call, and the auto-hide threshold below it
+  // was five curl calls. Rows written before that carry deviceId and no
+  // accountId — they stay as counted history (the score they built is real)
+  // but no longer match any voter, which is acceptable: the worst case is a
+  // person re-voting once on a comment they voted on anonymously.
   reports: defineTable({
     commentId: v.id("comments"),
-    deviceId: v.string(),
+    // Legacy anonymous rows only; the write path no longer records a device.
+    deviceId: v.optional(v.string()),
+    accountId: v.optional(v.id("accounts")),
   })
-    .index("by_comment_device", ["commentId", "deviceId"])
+    .index("by_comment_account", ["commentId", "accountId"])
     .index("by_comment", ["commentId"]),
 
   votes: defineTable({
     commentId: v.id("comments"),
-    deviceId: v.string(),
+    // Legacy anonymous rows only; the write path no longer records a device.
+    deviceId: v.optional(v.string()),
+    accountId: v.optional(v.id("accounts")),
     value: v.union(v.literal(1), v.literal(-1)),
   })
-    .index("by_comment_device", ["commentId", "deviceId"])
+    .index("by_comment_account", ["commentId", "accountId"])
     .index("by_comment", ["commentId"]),
 
   watches: defineTable({
@@ -206,15 +217,12 @@ export default defineSchema({
     productDocId: v.id("products"),
     priceAtWatch: v.number(),
     active: v.boolean(),
-    // Set when the device signs in (auth:verifyCode adopts the device's
-    // existing watches) and on anything written while signed in, so a row is
-    // account-linked from birth rather than at the next sign-in. Optional
-    // forever: anonymous use is the default and keeps working untouched, and a
-    // call with no session still reads and writes by deviceId alone. When a
-    // session does resolve this field is the scope watches.ts reads by — a
-    // second, wider handle on the same row, never a replacement for the first,
-    // which is why auth:deleteAccount can clear it back off and leave the
-    // device owning its watches exactly as before.
+    // The scope watches.ts reads and writes by (as of 2026-08-20 every watch
+    // is account-scoped; the mutations refuse SIGN_IN_REQUIRED without a
+    // session). Optional only for legacy pre-gating rows: a device-keyed row
+    // with no accountId is invisible to every read until auth:verifyCode
+    // adopts it into the signing-in account — deviceId names the browser that
+    // wrote the row, accountId names its owner.
     accountId: v.optional(v.id("accounts")),
 
     // ---------------------------------------------------------------------
@@ -307,18 +315,21 @@ export default defineSchema({
   }).index("by_deviceId", ["deviceId"]),
 
   // -------------------------------------------------------------------------
-  // Optional accounts
+  // Accounts
   //
-  // Identity in Jackdaw is the anonymous deviceId in browser storage, and it
-  // stays that way: nothing below is required to use anything. An account
-  // exists for exactly one reason — clearing browser data currently destroys a
-  // person's alerts with no way back — so it is a durable handle that ADOPTS
-  // what the device already has (auth:verifyCode), never a gate in front of it.
+  // Reading stays anonymous — price history, product stats and comment
+  // threads never ask who you are. Participation does not (as of 2026-08-20):
+  // posting, voting, reporting and every watch/alert path require a signed-in
+  // account, because the deviceId is client-forgeable and the account is the
+  // only identity the server can actually vouch for. The account still ADOPTS
+  // what the device wrote before sign-in (auth:verifyCode), and it is what
+  // makes alerts survive cleared browser data.
   //
   // The email address is the only personal data Jackdaw has ever stored, which
   // is why deleteAccount removes the row outright and merely unlinks the
-  // watches: deleting the account must not cost an anonymous user the alerts
-  // they had before they ever signed in.
+  // watches. Note what unlinking now means: with alerts account-scoped, an
+  // unlinked row is dormant until a future sign-in on that device adopts it —
+  // it no longer fires on its own.
   // -------------------------------------------------------------------------
 
   accounts: defineTable({
