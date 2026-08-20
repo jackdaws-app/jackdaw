@@ -1509,9 +1509,23 @@
     );
     const scale = Math.min((W - 48) / srcCssW, 1);
     ctx.drawImage(src, 24, 76, srcCssW * scale, srcCssH * scale);
+    // Footer: the one surface strangers see. Wordmark and tagline on the
+    // left, the address on the right — discovery without clutter.
+    ctx.font = "700 11px system-ui, sans-serif";
+    ctx.letterSpacing = "1.5px";
+    ctx.fillStyle = dark ? "#cdd6e4" : "#16233a";
+    ctx.fillText("JACKDAW", 24, H - 16);
+    const wmW = ctx.measureText("JACKDAW").width;
+    ctx.letterSpacing = "0px";
+    ctx.fillStyle = dark ? "#22c55e" : "#16a34a";
+    ctx.beginPath();
+    ctx.arc(24 + wmW + 6, H - 20, 2.5, 0, Math.PI * 2);
+    ctx.fill();
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillStyle = dark ? "#5b667a" : "#9aa1ab";
-    ctx.fillText("Jackdaw · community price history", 24, H - 16);
+    ctx.fillStyle = dark ? "#8b94a8" : "#6b7280";
+    ctx.fillText("Community price history", 24 + wmW + 15, H - 16);
+    ctx.fillStyle = dark ? "#4ade80" : "#15803d";
+    ctx.fillText("jackdaws.app", W - 24 - ctx.measureText("jackdaws.app").width, H - 16);
 
     const blob = await new Promise((r) => out.toBlob(r, "image/png"));
     let copied = false;
