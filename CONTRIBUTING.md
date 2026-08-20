@@ -84,7 +84,7 @@ npx tsc --noEmit
 ```
 
 ```bash
-cp extension/content.js /tmp/x.mjs && node --check /tmp/x.mjs
+cp extension/content.js /tmp/x.js && node --check /tmp/x.js
 ```
 
 (`background.js` and `config.js` are ES modules, so copy those to `.mjs`; the rest are

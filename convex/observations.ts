@@ -262,8 +262,9 @@ export const report = mutation({
     await bump(ctx, "obs:total");
     await bump(ctx, `obs:store:${storeNum}`);
     await bump(ctx, `obs:day:${utcDay(now)}`);
-    // Category mix, for the partnership pitch. Keyed off the normalized
-    // category so "Solid State Drives" and "solid state drives" are one row.
+    // Category mix, for the admin panel's category bars. Keyed off the
+    // normalized category so "Solid State Drives" and "solid state drives"
+    // are one row.
     const catKey = categoryKey(category);
     if (catKey !== null) await bump(ctx, `obs:cat:${catKey}`);
 

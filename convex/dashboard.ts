@@ -391,8 +391,8 @@ export const stats = query({
 // The one figure in this panel that is a statement about a MARKET rather than
 // about Jackdaw. "Median price in Networking moved -2.4% over 90 days" is a
 // derived aggregate; the readings behind it are not, and no endpoint here
-// exports them. That distinction is the whole reason this is worth showing a
-// retail partner at all — see DATA-POLICY.md for what is and isn't collected.
+// exports them. That distinction is the whole reason the aggregate is worth
+// showing at all — see DATA-POLICY.md for what is and isn't collected.
 //
 // NOT SCOPED TO A STORE, though the original sketch was ("movement in
 // Networking at Duluth"). Micro Center prices nationally: the same SKU carries

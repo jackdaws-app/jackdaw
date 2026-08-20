@@ -21,16 +21,46 @@ as something with rules rather than decoration.
 
 **`extension/` is plain, no-build vanilla JavaScript.** No bundler, no transpiler, no
 framework, no dependencies. What you write is what ships. Prefer small readable functions
-over clever abstractions. Files are ES modules; syntax-check before you commit:
+over clever abstractions. The module split is per-file — `background.js` and `config.js`
+are ES modules (the manifest declares the service worker `type: module`); every other
+`extension/*.js` is a classic script. Syntax-check before you commit, with the extension
+that matches, because module parsing is strict mode and can fail a classic script that
+is perfectly fine:
 
 ```bash
-cp extension/content.js /tmp/x.mjs && node --check /tmp/x.mjs
+cp extension/content.js /tmp/x.js && node --check /tmp/x.js       # classic scripts
+cp extension/background.js /tmp/x.mjs && node --check /tmp/x.mjs  # the two ES modules
 ```
+
+**Site libraries are vendored into `site/vendor/`, never loaded from a third-party
+origin.** A CDN `<script>` — or a `fonts.googleapis.com` stylesheet link — makes every
+visitor's browser announce its IP to a third party before the page draws, which breaks the
+project's privacy posture on the one surface that markets it. Vendoring something new has
+licensing steps: see [CONTRIBUTING.md](CONTRIBUTING.md) and `site/vendor/NOTICE.md`.
 
 **All extension UI renders inside a Shadow DOM** (`#jackdaw-root` on `documentElement`).
 Host CSS cannot reach us and ours cannot reach the host — that isolation is load-bearing,
 because the panel renders inside a page Micro Center controls and can restyle at will.
 Don't add styles outside the shadow root.
+
+**The Shadow DOM isolation is not only CSS.** Content scripts run inside a page the
+retailer controls, so the session token — a bearer credential — never crosses to them: it
+lives in the service worker, and message replies carry derived facts (an address, a count,
+a status), never the token itself. Nothing in the platform enforces this — content scripts
+can read `chrome.storage.local` too — so the rule covers where the token may be stored as
+much as what a reply may say. A feature that needs an account-scoped call from the panel
+sends the request to the service worker and gets the result back.
+
+**A content script outlives the extension that injected it.** A reload or an auto-update
+orphans the running instance: the DOM and the closures survive, and every `chrome.*` call
+from then on throws "Extension context invalidated" — uncaught, into the retailer's own
+console. Never call `chrome.storage` or `chrome.runtime` directly in `content.js` or
+`catalog.js`; go through each file's existing guards. They are deliberately not identical:
+`content.js`'s wrappers degrade to empty results so callers fall through to their
+defaults, while `catalog.js`'s settings read returns instead — its switches default to on
+when absent, so a dead context must never be readable as "nothing stored." Only the exact
+wording "context invalidated" means orphaned; "Receiving end does not exist" is an asleep
+service worker the next call wakes.
 
 **`convex/` follows the existing function patterns** — object-form definitions, explicit
 validators, indexes rather than filters. Typecheck before you commit:
@@ -45,6 +75,22 @@ cross it and start failing in production for the heaviest users first. Bump a co
 on write; cap every `take`; if a query samples, say what it sampled in its own return
 value so the UI can label it.
 
+**A mutation that throws rolls back everything it wrote — including the evidence of its
+own refusal.** Convex mutations are transactional: counter bumps, consumed rate-limit
+tokens, and `ctx.scheduler.runAfter` calls all unwind with the throw. So anything that
+must leave a mark when it says no — a lockout counter, a spent rate-limit token — returns
+its verdict in band (`{ok: false, reason}`) and commits; the throw, where callers need
+one, happens in an action outside the transaction. Don't "normalize" an in-band refusal
+into a thrown error: the pattern is the lockout. The corollary is that a rejection on a
+path that must throw is not countable at all — a counter placed beside a throw
+typechecks, passes CI, and reads zero forever with no error anywhere. Don't add it.
+
+**Queries and mutations are retried once on transport failure; actions never are, on
+purpose.** An action can spend a single-use secret — a sign-in code — and a retry after a
+lost response spends it again, then tells the user their correct code was wrong. Keep
+resilience work on the query/mutation side, and give any new call that consumes a
+one-shot secret the no-retry path.
+
 **Escape a value at the boundary where it changes syntax.** A string that is correct at
 rest can still be wrong the instant it is concatenated into something with its own
 grammar. A stored product path ending `...with-900&#181;m-fiber-holder` — an undecoded
@@ -53,6 +99,11 @@ the right value to keep, and becomes a truncated path plus a stray fragment the 
 is glued onto an origin. `encodeURI` is not the fix: it deliberately leaves `#` and `&`
 alone as reserved characters. Escape the one character whose meaning changes, at the
 construction site, and leave the stored value alone.
+
+**A vote patches its own row in place — it never rebuilds the thread or re-renders the
+chart.** A full re-render looks identical in a quick test and destroys chart state and
+scroll position with it. When verifying anything near the chart, check canvas object
+identity across the interaction, not just that the numbers look right.
 
 ## Visual rules
 
@@ -100,6 +151,12 @@ construction site, and leave the stored value alone.
   px, which silently clipped the cents off every four-figure price for the life of the
   file. Reserve what `measureText` says you need, and draw from the same array you
   measured.
+- **A fixed overlay is verified at its host's shortest height, never its natural one.**
+  Any `position: fixed` surface needs a viewport-tied ceiling and a designated scroll
+  child, and the check happens at the smallest host it can meet. Without both, over a
+  short host the overlay grows past the top edge and "scrolling doesn't work" because
+  nothing inside it was ever scrollable — a state invisible at the comfortable height
+  every other check ran at, which is how one shipped that way.
 
 ## Motion rules
 
@@ -112,6 +169,9 @@ construction site, and leave the stored value alone.
 - **Hover effects gate behind `(hover:hover) and (pointer:fine)`.**
 - **Delight is rare by budget.** Routine interactions stay quick and quiet; the elaborate
   moments (an all-time low, a first visit) are elaborate precisely because they are rare.
+- **Idle animation is rare, staggered, and never simultaneous** — one idle element moves
+  at a time, on long cycles. The best idle motion is state: the bell rings only while an
+  alert is armed, so the movement carries information rather than decoration.
 - **Hero moments are layered construction, never uniform scale.** Scaling one finished
   element up reads as "zoom" or "spawn." Build it: the surface opens, then the glyph draws
   on, then the letters cascade. Hero animations here run roughly 2× slower than typical UI
@@ -131,6 +191,13 @@ Each of these cost real debugging time. They look like bugs in your code and are
   distinct `@keyframes` name, or a class cycle plus a forced reflow (`void el.offsetWidth`).
 - **Don't run reveal animations on a hidden element** — they burn invisibly. Set state
   silently before the reveal, then let the reveal choreography animate it.
+- **A reaction whose trigger condition has no solutions fails silently, at every width,
+  forever.** An animation that never plays is indistinguishable from one that was never
+  specified. When you author a causal reaction — a neighbour responding to something
+  passing — prove it fires by measuring the reacting element move, and if the condition
+  cannot have witnesses in practice, move the reaction to an event that does. The honest
+  fix is usually the physical one too: a neighbour can only react to what actually
+  transmits an impulse to it.
 - **SVG `d:` keyframes only interpolate between identically-structured paths** — same
   command sequence, same point count. QA multi-pose sequences by rendering a frozen
   pose-sheet in the browser (negative `animation-delay` plus `animation-play-state:
@@ -138,6 +205,14 @@ Each of these cost real debugging time. They look like bugs in your code and are
 - **`offset-path` coordinates are relative to the containing block's top-left**, not the
   element's own `top`/`left`, which it overrides. Author paths in the parent's coordinate
   space and verify frozen frames in-browser.
+- **An absolutely-positioned `<canvas>` in a grid container needs BOTH
+  `grid-column: 1 / -1` and an explicit `width: 100%`.** The span fixes the containing
+  block (an abspos grid child resolves it from its auto-placed grid area, not the padding
+  box); the width fixes the size (a canvas is a replaced element — `width: auto` takes
+  the intrinsic attribute width, and `left: 0; right: 0` never stretches it, so it sizes
+  from its own backing store, which the JS sized from the canvas). Two independent bugs
+  that present identically: remove either declaration as redundant and the canvas is one
+  column wide.
 - **`requestAnimationFrame` never fires in a backgrounded tab.** Anything rAF-gated reads
   as never applied, and CSS transitions are suspended too — you will measure a frozen
   intermediate value and conclude the code is broken. Front the tab before measuring.
@@ -217,12 +292,25 @@ measurement first, and go read the code it claims to describe.**
   you read out is the sort's, not the animation's. Instrument the launch, or don't claim it.
 - **Collapse sampled positions in 2-D.** Two things passing each other share one axis and
   never both; a 1-D key silently merges them and loses both tracks.
+- **Window a gesture capture to one half of the gesture.** A lift-and-return sampled
+  whole mixes elements leaving with elements arriving, and the departure tracks settle
+  far off-canvas — which reads as a broken arrival. Restrict frames to after the
+  departure phase has expired.
 - **Reading canvas state inside a draw hook reads the *previous* value** where the state is
   set after the shape is described, and a shape drawn inside a translated context reports
   its untranslated coordinates. Both invent defects that aren't there.
 - **A behaviour on a long cooldown is unreachable in any realistic observation window, and
   its absence proves nothing.** Trigger it directly, through its real entry point where
   one exists.
+- **A repertoire scheduled on real timers can't be driven by synthetic events across
+  slow tool round-trips.** A refused hover is silent and races the page's own scheduler,
+  so what you record looks like alternation bugs and is scheduling coincidence. Install
+  an in-page driver instead: one script that observes transitions as they start, acts at
+  offsets the schedule guarantees safe, and logs with its own timestamps.
+- **Two recorder traps on SVG.** An SVG element's `.className` is an `SVGAnimatedString`
+  — it serializes as `{}` and compares by reference, so read `getAttribute("class")`.
+  And an element at rest reports `transform: "none"`, not the identity matrix, so an
+  is-it-moving filter must exclude both.
 - **Check for clipping ancestors separately from measuring extents.**
   `getBoundingClientRect` reports the same box whether or not an ancestor cuts it, so an
   `overflow` change that decapitates an animation is invisible to a rect-based probe. Note
@@ -245,6 +333,11 @@ measurement first, and go read the code it claims to describe.**
   already paused everything it reached before it throws, so an unrelated reveal is left
   parked mid-fade and the page looks broken. Filter to exactly what you are freezing, and
   resume strays with `play()`.
+- **A valid freeze has two preconditions.** Kill the page's own timers first, so a
+  scheduler can't add classes mid-freeze. And when a freeze assembles a phase by adding
+  its classes at once rather than in live sequence, an animation whose timeline differs
+  from the live cycle's holds a *different* fill point — check that the frozen value
+  equals the live one rather than assuming it.
 - **Virtual time does not advance scroll.** A headless virtual-time budget lands an
   `IntersectionObserver`-driven reveal at an unpredictable instant, so three budgets give
   three readings that each look like a different bug. Capture end state under forced
@@ -255,6 +348,9 @@ measurement first, and go read the code it claims to describe.**
   plainly fine. Read the viewport before believing any width. If it is 0, no width
   measurement on that page means anything, and a zero-sized element is not evidence of a
   layout bug.
+- **An extension page carries no viewport meta, so a driven preview lays it out at the
+  ~980px legacy fallback** — nothing like the real 1:1 popup window. Add
+  `width=device-width` to the harness before believing any width measured there.
 - **A backgrounded tab suspends the rendering pipeline, so `IntersectionObserver` never
   delivers — not even its initial callback.** An IO-driven reveal then sits unrevealed
   indefinitely and is indistinguishable from a broken one. That is worst for anything
@@ -302,6 +398,15 @@ when you're writing code.
     counts ride along with the sighting. Fixtures cannot cover this: a fixture is markup
     you wrote to match the selector you just wrote. Only the live site is authority, and
     only a counter notices when it changes.
+  - **The one exception runs the other way: a snapshot row clears what it did not
+    observe.** Shelf stock is one row per (product, store), overwritten in place — a
+    per-store stock history is inventory intelligence, a different product with a
+    different legal posture, so no change may make old counts reconstructible. And
+    because the row is a snapshot under one timestamp, an unobserved field is cleared
+    rather than carried: a stale count under a fresh timestamp makes the row lie about
+    its own age. The price series carries; the shelf row clears; the asymmetry is
+    deliberate. It holds only while the batch reader is the row's only writer — a second
+    source that cannot see the open-box line would turn the clear into a flicker.
 - **A rule that only exists in the client is one caller away from being violated.** If a
   value must never be stored, the refusal belongs at the write boundary, not in the code
   that happens to read it back. A shelf row for a store with no shelves was unreachable for
@@ -328,6 +433,18 @@ this is enforced in the UI copy, not just in comments.
   something that cannot fire.
 - **Flag truncation and sampling in the return value**, and surface it in the label.
 
+## Decided questions
+
+Some questions look open and are settled. Re-raising one of these in a PR spends your
+round trip on relitigating rather than reviewing.
+
+- **The comment filter blocks vulgarity as well as slurs, deliberately.** The panel
+  renders inside the retailer's own product page, which puts it in the retail-review
+  category (Amazon, Newegg and Best Buy all filter) rather than the forum category the
+  threading borrows its conventions from. PRs trimming the list toward forum norms will
+  be declined. A rejected comment keeps the typed body in the box — don't change that
+  either.
+
 ## Copy has registers
 
 Legal documents (PRIVACY, TERMS) use standard legal structure and tone — numbered
@@ -337,11 +454,13 @@ never leak into legal text.
 
 ## Before you open a PR
 
-- `node --check` each extension file you touched (they're ES modules — copy to `.mjs`).
+- `node --check` each extension file you touched (`.mjs` for `background.js`/`config.js`, `.js` for the rest — module parsing is strict mode).
 - `npx tsc --noEmit` if you touched `convex/`.
 - Load the unpacked extension and drive the change on a real page. Click through it.
 - If it's visual: check both themes and measure contrast. If it moves: check
   `prefers-reduced-motion`.
+- If it adds or touches a fixed overlay: check it at the smallest host it can meet, with
+  a designated scroll child inside it.
 - Say in the PR what you actually verified and how. "Tested" is not information; "drove it
   on a category page at 96 results per page, both themes, contrast 4.9 light / 5.3 dark"
   is.

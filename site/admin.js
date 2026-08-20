@@ -25,7 +25,7 @@
     const wrap = $("kpis");
     wrap.textContent = "";
     const cards = [
-      // The two the partnership conversation actually turns on, first.
+      // The two most defensible figures in the panel, first.
       ["Shoppers sent", t.alertsClicked, "alert clicks to a product page", true],
       [
         "Watched value",
@@ -175,9 +175,8 @@
   }
 
   // ── Category price movement ──
-  // The only card here describing a MARKET rather than describing Jackdaw, and
-  // therefore the only figure a retail partner has any reason to care about
-  // beyond a row count. It is also the easiest one to overstate, so the
+  // The only card here describing a MARKET rather than describing Jackdaw. It
+  // is also the easiest one to overstate, so the
   // denominator is printed on every row rather than once in a footnote: the
   // median rests on `measured` products, out of `sampled` that we looked at,
   // out of a category whose real size we cannot know — we see what our users

@@ -1051,7 +1051,9 @@ const PHONE_PATTERN = /(?:\d[\s\-().+]{0,2}){9}\d/;
 
 const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/i;
 
-// Modest word-boundary blocklist of unambiguous profanity/slurs (lowercase).
+// Word-boundary blocklist (lowercase). It deliberately includes plain vulgarity,
+// not just slurs: the panel renders inside the retailer's own product page —
+// retail-review territory, not a forum — so don't trim it toward forum norms.
 const PROFANITY = [
   "fuck",
   "fucker",

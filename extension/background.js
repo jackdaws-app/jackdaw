@@ -433,8 +433,7 @@ const money = (p) =>
  * Two phrases are deliberate and should not be softened away: "may already be
  * gone" on open box, and "stock isn't held" on restock. Micro Center sells
  * reservations as their own feature ("Reserve Now"); an alert of ours that
- * reads like one is both untrue and the kind of thing that makes a retail
- * partnership conversation start badly.
+ * reads like one is simply untrue.
  */
 async function notificationFor(d) {
   const where = await storeLabel(d.storeNum);
