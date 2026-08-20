@@ -509,7 +509,7 @@
     const header = el("div", "jd-header");
     const brand = el("div", "jd-brand");
     brand.innerHTML =
-      `<span class="jd-live" title="Live community data"></span>` +
+      `<span class="jd-live" title="Community price history"></span>` +
       `<svg class="jd-flit" viewBox="8 2 76 96" fill="currentColor" aria-hidden="true">` +
       `<g class="jd-flit-wings">` +
       `<path d="M55 46.2 Q51 38 47.5 30.5 Q44.5 23.5 40.5 15.5 L38.6 21.5 L35.2 17.5 L34.6 24 L31.6 21.5 L32 28 L29.5 26.5 Q32.5 34 36 40.5 Q38.5 44.6 40 47.8 Z"/>` +
@@ -641,7 +641,7 @@
    * armed at one location be named while browsing another.
    */
   let storeNames = null;
-  function harvestStoreNames() {
+  function readStoreNames() {
     if (storeNames) return storeNames;
     const names = {};
     for (const node of document.querySelectorAll(".storeName")) {
@@ -657,7 +657,7 @@
   }
 
   /** A store's name if this page knows it, else null — never a guess. */
-  const storeNameFor = (num) => harvestStoreNames()[num] || null;
+  const storeNameFor = (num) => readStoreNames()[num] || null;
 
   /**
    * Hand the service worker the same map, so an alert firing hours later with
@@ -665,7 +665,7 @@
    * and it never leaves the browser.
    */
   function learnStoreNames() {
-    const names = harvestStoreNames();
+    const names = readStoreNames();
     if (Object.keys(names).length) send({ type: "stores:learn", names });
   }
 
@@ -748,7 +748,8 @@
     if (history && history.points.length) {
       const stats = computeStats(history.points);
       card.append(el("div", "jd-popover-hint",
-        `Current ${fmtPrice(product.price)} · typical ${fmtPrice(window.__jackdawChart.typicalPrice(history.points))} · all-time low ${fmtPrice(stats.lowest)}`));
+        `Current ${fmtPrice(product.price)} · typical ${fmtPrice(window.__jackdawChart.typicalPrice(history.points))} · ` +
+        `${stats.provisional ? "lowest seen (once)" : "lowest seen"} ${fmtPrice(stats.lowest)}`));
       // The meter measures a distance that only matters while the price
       // trigger is live. With it switched off the target is a saved number,
       // not a countdown — drawing the bar anyway would promise a price alert
@@ -1261,7 +1262,7 @@
           body.append(
             signInCard(
               "Open box across stores",
-              "Every store holding an open-box unit of this one, cheapest first. Sign in to see the list.",
+              "Every store where shoppers have seen an open-box unit of this one, cheapest first. Sign in to see the list.",
             ),
           );
           return;
@@ -1360,7 +1361,14 @@
 
       const note = el("div", "mk-note");
       const first = history.points.reduce((m, p) => Math.min(m, p.firstSeenAt), Infinity);
-      note.textContent = `Community-tracked since ${fmtDate(first)} · ${sightings} sighting${sightings === 1 ? "" : "s"} · store #${product.storeNum}`;
+      // The series and the count both pool every store (refreshAll sends no
+      // storeNum), so a store number here reads as a scope the figures do not
+      // have. Name it as where the shopper is standing, and only when that is a
+      // real place — the chart's own overlay makes the same 029/000 exclusion.
+      const noteWhere = physicalStore() ? storeNameFor(product.storeNum) : null;
+      note.textContent =
+        `Community-tracked since ${fmtDate(first)} · ${sightings} sighting${sightings === 1 ? "" : "s"}` +
+        (noteWhere ? ` · browsing ${noteWhere}` : "");
       leftCol.append(note);
     } else if (historyFailed) {
       const failed = el("div", "mk-empty mk-failed");
@@ -1461,6 +1469,12 @@
     return { lowest, highest, lowestAt, highestAt, provisional: false };
   }
 
+  // The share image is the only Jackdaw surface a stranger meets before they
+  // have installed anything, so its footer carries the invitation and the
+  // address. Kept as constants because they are the copy most likely to change.
+  const SHARE_JOIN = "Join the flock";
+  const SHARE_URL = "jackdaws.app";
+
   // Compose chart + verdict into a PNG; copy to clipboard, download as fallback.
   async function shareChart(btn) {
     try {
@@ -1524,8 +1538,14 @@
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillStyle = dark ? "#8b94a8" : "#6b7280";
     ctx.fillText("Community price history", 24 + wmW + 15, H - 16);
+    // The invitation and the address travel together, right-aligned as one
+    // group: the tagline on the left says what this is, this says how to join.
+    const joinW = ctx.measureText(SHARE_JOIN).width;
+    const urlW = ctx.measureText(SHARE_URL).width;
+    const joinX = W - 24 - (joinW + 8 + urlW);
+    ctx.fillText(SHARE_JOIN, joinX, H - 16);
     ctx.fillStyle = dark ? "#4ade80" : "#15803d";
-    ctx.fillText("jackdaws.app", W - 24 - ctx.measureText("jackdaws.app").width, H - 16);
+    ctx.fillText(SHARE_URL, joinX + joinW + 8, H - 16);
 
     const blob = await new Promise((r) => out.toBlob(r, "image/png"));
     let copied = false;

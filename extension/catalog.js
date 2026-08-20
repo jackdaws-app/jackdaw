@@ -2,7 +2,7 @@
 //
 // Two halves over one reading of the grid. The COLLECTOR reports what the page
 // already rendered; the BADGES annotate each card with what shoppers have seen
-// that product cost before. They share `harvest()` on purpose — a badge and the
+// that product cost before. They share `readGrid()` on purpose — a badge and the
 // batch quoting different prices for the same card would be one of them lying,
 // and reading the DOM twice is how that happens. Each half has its own switch
 // in the popup, because contributing and reading are different consents.
@@ -37,9 +37,13 @@
   const CATALOG_KEY = "jdCatalog";
   const MAX_ITEMS = 96; // Micro Center's largest "items per page"; the backend caps identically
 
-  // Page-local completion receipt for the sequential browser driver. It holds
-  // only rendered product ids and the backend verdict; it is neither sent to
-  // Micro Center nor stored in Jackdaw's database.
+  // Page-local completion receipt: this page's own verdict, written to a data
+  // attribute on the page's root so Jackdaw's verification tooling can read what
+  // happened on a page a tester opened themselves. It holds only ids the page
+  // had already rendered, plus the collector version and the backend verdict.
+  // Nothing is sent to Micro Center and nothing is stored in Jackdaw's database
+  // — but the attribute is readable by any script on the page, which makes the
+  // extension detectable there.
   const RECEIPT_ATTR = "data-jackdaw-catalog-receipt";
   const COLLECTOR_VERSION = (() => {
     try {
@@ -52,9 +56,10 @@
   // Recently-reported suppression. `store:product` -> [sentAtMs, fullSignature]
   const SENT_KEY = "jdSent";
   const SENT_WINDOW_MS = 10 * 60 * 1000;
-  // A complete 20-page watcher pass plus headroom. Entries still expire on
-  // time; this cap prevents overlap near the end of a pass from evicting the
-  // first pages and turning one browser into apparent corroborating readers.
+  // Sized for a long browsing session at the largest results-per-page, with
+  // headroom. Entries still expire on time; the cap keeps the earliest pages of
+  // one session from being evicted while they are still inside the window,
+  // which would turn one browser into apparent corroborating readers.
   const SENT_MAX = 2200;
 
   // Reloading or auto-updating Jackdaw orphans an already-injected content
@@ -126,7 +131,7 @@
   }
 
   /**
-   * Selector health for ONE harvest, filled in as the cards are read.
+   * Selector health for ONE grid read, filled in as the cards are read.
    *
    * Three numbers per reader — see `recordSelectorHealth` in `convex/lib.ts`
    * for what they mean and why they are only advisory. In short: `found`
@@ -384,11 +389,11 @@
    * would let the number a badge shows drift from the number the batch
    * reported. One read, one truth.
    */
-  function harvest() {
+  function readGrid() {
     const cards = document.querySelectorAll("li.product_wrapper");
     // Fresh per pass. The tally describes THIS reading of the grid; carrying it
     // across passes would double-count a re-render and make every number a sum
-    // over an unknown number of harvests.
+    // over an unknown number of grid reads.
     tally = newTally();
     const seen = new Set();
     const visible = new Set();
@@ -424,7 +429,7 @@
   }
 
   function emitNoStoreReceipt(status, storeNum) {
-    const { items, visibleProductIds } = harvest();
+    const { items, visibleProductIds } = readGrid();
     emitReceipt({
       ...receiptContext(storeNum, items, visibleProductIds),
       status,
@@ -1055,8 +1060,8 @@
     if (ran) return;
     ran = true;
 
-    // One read of the grid, shared by both halves — see harvest().
-    const { items, els, tally, visibleProductIds } = harvest();
+    // One read of the grid, shared by both halves — see readGrid().
+    const { items, els, tally, visibleProductIds } = readGrid();
 
     // There is deliberately no `items.length === 0` bail here any more. A page
     // that produced no readings is the one page whose selector tally matters,
@@ -1117,7 +1122,7 @@
         emitNoStoreReceipt("no_store", String(storeNum || "000"));
         return;
       }
-      // One harvest, shortly after the store is known, so the initial render
+      // One grid read, shortly after the store is known, so the initial render
       // has settled. Deliberately not observing the DOM for later additions:
       // a report describes what was on screen when somebody looked at it, and
       // a collector that kept watching would be measuring the page rather than

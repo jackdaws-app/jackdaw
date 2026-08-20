@@ -72,7 +72,7 @@
 
   // ---------- Store names ----------
   // The same number→name map the service worker keeps for notifications,
-  // harvested from Micro Center's own store picker. A watch can outlive every
+  // read from Micro Center's own store picker. A watch can outlive every
   // tab that taught us the name, so an unknown number still has to read as
   // something — "store #045" is honest, just less useful.
 
@@ -161,7 +161,10 @@
   function subFor(r) {
     if (!r.alertPrice) return "Price alert off";
     if (!(r.currentPrice > 0)) return `No sightings yet · target ${fmt(r.target)}`;
-    if (r.met) return `Target ${fmt(r.target)} · ${r.inStock ? "in stock" : "out of stock"}`;
+    // A sighting off the newest stored row, not the live page — the popup is
+    // never on microcenter.com, so the retailer's-own-claim exemption that
+    // licenses content.js's bare form does not reach here.
+    if (r.met) return `Target ${fmt(r.target)} · ${r.inStock ? "seen in stock" : "seen out of stock"}`;
     return `${fmt(Math.max(r.currentPrice - r.target, 0))} above your ${fmt(r.target)} target`;
   }
 

@@ -124,6 +124,11 @@ async function learnStoreNames(names) {
   return { ok: true, known: Object.keys(known).length };
 }
 
+// 029 "Shippable Items" and 000 (page-world's unknown fallback) name no
+// shelf, so they can never be where something was seen. content.js keeps its
+// own copy — a service worker and a content script share no module.
+const NON_PHYSICAL_STORES = new Set(["029", "000"]);
+
 /** "Westmont" if we've seen it, else "store #045" — never a bare number. */
 async function storeLabel(storeNum) {
   const { [STORE_NAMES_KEY]: known = {} } = await chrome.storage.local.get(STORE_NAMES_KEY);
@@ -412,7 +417,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           ...(await scopeArg()),
         });
       // Store numbers are all the backend knows; the names live on Micro
-      // Center's own page. content.js harvests the picker whenever somebody
+      // Center's own page. content.js reads the picker whenever somebody
       // loads a product page and parks the map here, so a notification fired
       // hours later from a service worker with no tab open can still say
       // "Westmont" instead of "store #045". Display only — nothing is sent.
@@ -490,9 +495,15 @@ async function notificationFor(d) {
       message: `${d.name}\n${price} · seen ${seen} — stock isn't held`,
     };
   }
+  // The price trigger is store-blind by design (watches.ts takes the newest row
+  // from ANY store), so `d.storeNum` can be a pseudo-store — and "seen at
+  // store #029" names a place with no shelves. Drop the place, keep the age.
+  const placed = !NON_PHYSICAL_STORES.has(d.storeNum);
   return {
     title: `Price drop: ${price}`,
-    message: `${d.name}\nYour target ${money(d.priceAtWatch)} · seen at ${where} ${seen}`,
+    message:
+      `${d.name}\nYour target ${money(d.priceAtWatch)}` +
+      (placed ? ` · seen at ${where} ${seen}` : ` · seen ${seen}`),
   };
 }
 
