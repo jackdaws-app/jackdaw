@@ -8,12 +8,12 @@ like a company.
 
 **Please do not open a public issue.**
 
-Two private channels, either is fine:
+Two private channels; either is fine:
 
-- **GitHub private vulnerability reporting** — the *Security* tab on this repository,
-  "Report a vulnerability". This is the preferred route: it is private, it threads, and
+- **GitHub private vulnerability reporting**: the *Security* tab on this repository,
+  "Report a vulnerability". This is the preferred route. It is private, it threads, and
   it does not depend on mail delivery working.
-- **Email** — `security@jackdaws.app`.
+- **Email**: `security@jackdaws.app`.
 
 Include what you did, what happened, and what you expected. A rough proof of concept is
 worth more than a scanner's output. If you are not sure whether something is a
@@ -36,7 +36,7 @@ serious time on this expecting to be compensated.
 This is the one request that is specific to this project rather than boilerplate.
 
 Jackdaw's production backend is deliberately kept clean of test data, and several of its
-counters have **no decrement path** — a write cannot be undone, only outnumbered. A
+counters have **no decrement path**: a write cannot be undone, only outnumbered. A
 handful of test observations or alert clicks permanently and undetectably corrupt figures
 that are meant to describe real shoppers.
 
@@ -46,50 +46,52 @@ backend you can do anything to. If a finding genuinely cannot be demonstrated wi
 production, describe it and we will work out how to confirm it together.
 
 Likewise, please do not test against **microcenter.com**. It is not ours, its operators
-did not sign up for it, and the entire legal posture of this project rests on Jackdaw
-reading only pages a user already opened and never issuing a request of its own.
+did not sign up for it, and the project's legal posture rests on Jackdaw reading only
+pages a user already opened and never issuing a request of its own.
 
 ## Scope
 
-**In scope** — anything in this repository:
+**In scope**: anything in this repository.
 
-- The extension (`extension/`) — including the content scripts, which run inside a page
+- The extension (`extension/`), including the content scripts, which run inside a page
   a third party controls, and the service worker that holds every backend credential.
-- The Convex backend (`convex/`) — function authorization especially. Every public
+- The Convex backend (`convex/`), function authorization especially. Every public
   function is reachable by anyone over the plain HTTP API, whether or not a page loads.
 - The site and admin panel (`site/`).
 
-What is worth the most attention, in rough order: **session tokens and account email
-addresses**; **admin authorization** on `convex/dashboard.ts` and `convex/policy.ts` —
-where the load-bearing test is `isAdmin === true` and never truthiness, since absent is
-what every ordinary account carries, so a loosened comparison would not fail but would
-silently admit everyone who has ever signed in; anything that lets one device or account
-read or write **another's watches**, since a
-watch list says which products a specific person is following; and the comment identity
-system, where the verified handle is only worth something if it cannot be worn by
-somebody else.
+What is worth the most attention, in rough order:
+
+- **Session tokens and account email addresses.**
+- **Admin authorization** in `convex/dashboard.ts` and `convex/policy.ts`. The
+  load-bearing test is `isAdmin === true`, never truthiness: absent is what every
+  ordinary account carries, so a loosened comparison would silently admit every
+  signed-in account.
+- Anything that lets one device or account read or write **another's watches**. A
+  watch list says which products a specific person is following.
+- The **comment identity** system. The verified handle is only worth something if it
+  cannot be worn by somebody else.
 
 **Out of scope:**
 
 - **Micro Center's website.** Not ours. Report it to them.
 - Reports that Jackdaw collects the data it documents itself collecting. What is gathered
   and why is set out in [DATA-POLICY.md](DATA-POLICY.md) and [PRIVACY.md](PRIVACY.md).
-  Disagreeing with a documented design decision is a conversation, not a vulnerability —
+  Disagreeing with a documented design decision is a conversation, not a vulnerability;
   open an issue.
 - Missing hardening headers, absent rate limits, and similar findings on a **static
   marketing site** with no user input, unless you can show something they actually let
   you do.
 - Anything requiring a compromised device, a malicious browser extension already
-  installed alongside Jackdaw, or physical access. A page's own scripts cannot reach the
-  panel's shadow DOM in a way we can defend against from inside it, and a hostile
-  extension outranks us by construction.
+  installed alongside Jackdaw, or physical access. The host page is in the same
+  category: its scripts can always reach UI injected into it, and there is no defence
+  we can mount from inside the page. A hostile extension outranks us by construction.
 - Denial of service by volume, and reports generated by running a scanner against a
   deployment.
 
 ## Safe harbour
 
-If you make a good-faith effort to follow this document — report privately, avoid
-production, avoid other people's data, do not degrade the service for anyone else — no
+If you make a good-faith effort to follow this document (report privately, avoid
+production, avoid other people's data, do not degrade the service for anyone else), no
 legal action will be pursued over your research, and we will say so in writing if you
 need it.
 
@@ -99,24 +101,15 @@ disrupting the service, or holding a finding for leverage.
 ## Known and accepted
 
 Stated up front so nobody spends an evening rediscovering them. These are documented
-trade-offs, not oversights, and each is written up where it lives:
+trade-offs, not oversights:
 
-- **Admin rate limiting does not throttle credential guessing.** A Convex mutation that
-  throws rolls back its own transaction, including the rate limiter's write, so a rejected
-  attempt costs an attacker nothing. `convex/lib.ts` explains this in full. Admin access
-  has **two doors** — an account whose `isAdmin` is true, or a legacy 256-bit shared
-  `ADMIN_KEY` — and the limiter is keyed to a single shared bucket that cannot tell them
-  apart, so it is a ceiling on sustained *authorized* traffic rather than a lock. The
-  account door is throttled by a different mechanism: sign-in codes are consumed by an
-  *action* that commits its attempt counter in band, specifically so a lockout survives a
-  thrown refusal. The key door has no equivalent.
-
-  **Today the key is the only door the panel can use.** `requireAdmin` accepts both, but
-  nothing in `site/` sends a session token — the account path is implemented in the backend
-  and not yet wired into the front end, so the unthrottled door is currently the one in use.
-  Retiring the key is an env var rather than an edit (unsetting `ADMIN_KEY` makes that
-  branch unreachable with no code change, and fails closed), but it is not safe to do until
-  the panel can sign in.
+- **Rate limiting does not throttle credential guessing on paths that refuse by
+  throwing.** A Convex mutation that throws rolls back its own writes, including the
+  rate limiter's, so a rejected attempt costs an attacker nothing; `convex/lib.ts`
+  explains this in full. The design compensates where it matters: the admin key is a
+  256-bit random value, so guessing it is not a practical attack, and sign-in codes are
+  consumed by an action that commits its attempt counter before refusing, so brute force
+  there hits a lockout.
 - **Selector-health figures are self-reported by the content script** and are advisory
   only. Nothing depends on them and the admin panel says so on the page.
 - **A content script cannot outlive its extension safely** in the general case. Jackdaw
