@@ -461,7 +461,9 @@
         }
         const dateEl = document.createElement("div");
         dateEl.className = "jd-tt-date";
-        dateEl.textContent = fmtDateFull(t) + (seg.inStock ? "" : " · out of stock");
+        // "Seen", because a chart segment is recorded history, not live truth —
+        // the same idiom as "last seen" on every other stock figure.
+        dateEl.textContent = fmtDateFull(t) + (seg.inStock ? "" : " · seen out of stock");
         if (!seg.inStock) dateEl.classList.add("jd-tt-oos");
         tooltip.append(dateEl);
         const tw = tooltip.offsetWidth;
