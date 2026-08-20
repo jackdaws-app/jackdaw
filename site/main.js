@@ -1285,7 +1285,7 @@
          each bird a shade different so the three never move as one object. The
          lean is slower than the notice on purpose: the turn comes first and the
          body follows, which is the lag that makes it read as a living thing
-         rather than as a slaved parameter. */
+         rather than as a driven parameter. */
       const k = (aim > a0 ? 0.13 : 0.045) + (b.i % 3) * 0.012;
       b.noticeA = a0 + (aim - a0) * k;
       b.noticeD = d0 + (dir * aim - d0) * (k * 0.62);

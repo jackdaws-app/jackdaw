@@ -106,8 +106,9 @@ not. Reading is never gated on contributing.
 ## 7. No ads, no paywall, no data sales
 
 Jackdaw is free and open source under the AGPL-3.0. There is no advertising, no paid tier,
-and no sale or licensing of collected data to anyone. If donations are ever accepted they
-cover hosting costs, and no feature sits behind them.
+and no sale or licensing of collected data to anyone. Donations are accepted and cover
+hosting, the domain, and the Chrome Web Store fee. No feature sits behind them, and there
+are no supporter perks or donor-only builds.
 
 ## 8. Changes
 

@@ -30,7 +30,9 @@
       [
         "Watched value",
         stats.watchedValue,
-        stats.watchedValueTruncated ? "inventory awaited (floor)" : "inventory awaited",
+        stats.watchedValueTruncated
+          ? "sum of active alert targets (floor)"
+          : "sum of active alert targets",
         true,
         money,
       ],
