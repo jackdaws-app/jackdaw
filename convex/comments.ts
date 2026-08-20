@@ -14,7 +14,7 @@ import {
   utcDay,
 } from "./lib";
 
-const AUTO_HIDE_REPORT_THRESHOLD = 3;
+const AUTO_HIDE_REPORT_THRESHOLD = 5;
 
 // ---------------------------------------------------------------------------
 // Who a comment is from

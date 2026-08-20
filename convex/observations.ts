@@ -49,6 +49,7 @@ export const report = mutation({
     ok: v.boolean(),
     throttled: v.boolean(),
     rateLimited: v.boolean(),
+    implausible: v.boolean(),
     selectorsRejected: v.boolean(),
   }),
   handler: async (ctx, args) => {
@@ -114,7 +115,7 @@ export const report = mutation({
       device.lastReportAt !== undefined &&
       now - device.lastReportAt < THROTTLE_MS
     ) {
-      return { ok: true, throttled: true, rateLimited: false, selectorsRejected: false };
+      return { ok: true, throttled: true, rateLimited: false, implausible: false, selectorsRejected: false };
     }
 
     // Global per-device cap on price reports (token bucket, 120/hour).
@@ -126,7 +127,45 @@ export const report = mutation({
     // refused either way; only the signalling differs.
     if (!(await tryRateLimit(ctx, "priceReport", deviceId))) {
       await bump(ctx, `abuse:ratelimited:day:${utcDay(now)}`);
-      return { ok: false, throttled: false, rateLimited: true, selectorsRejected: false };
+      return { ok: false, throttled: false, rateLimited: true, implausible: false, selectorsRejected: false };
+    }
+
+    // Plausibility clamp, mirroring the catalog batch's PRICE_OUTLIER skip
+    // (same PRICE_MIN_RATIO / PRICE_MAX_RATIO constants below). Baseline: the
+    // newest price point for this product across ANY store — Micro Center
+    // prices nationally (watches.fireFor reads newest-any-store for the same
+    // reason), so a reading implausible against the freshest national figure
+    // is implausible, full stop. Cold start (no product or no prior point)
+    // accepts, same as the batch path.
+    //
+    // Ordering is deliberate: AFTER the rate limit, so probing the clamp
+    // costs quota, and BEFORE the device row is stamped, so a refused write
+    // never throttles the legit report that follows it. Refused in-band, not
+    // thrown, for the same transactional reason as `rateLimited` above.
+    const existing = await ctx.db
+      .query("products")
+      .withIndex("by_productId", (q) => q.eq("productId", productId))
+      .unique();
+    if (existing !== null) {
+      const baseline = await ctx.db
+        .query("pricePoints")
+        .withIndex("by_product", (q) => q.eq("productDocId", existing._id))
+        .order("desc")
+        .first();
+      if (
+        baseline !== null &&
+        (args.price < baseline.price * PRICE_MIN_RATIO ||
+          args.price > baseline.price * PRICE_MAX_RATIO)
+      ) {
+        await bump(ctx, `abuse:implausible:day:${utcDay(now)}`);
+        return {
+          ok: false,
+          throttled: false,
+          rateLimited: false,
+          implausible: true,
+          selectorsRejected: false,
+        };
+      }
     }
 
     if (device === null) {
@@ -141,10 +180,6 @@ export const report = mutation({
     }
 
     // Upsert the product by Microcenter productId.
-    const existing = await ctx.db
-      .query("products")
-      .withIndex("by_productId", (q) => q.eq("productId", productId))
-      .unique();
     let productDocId;
     if (existing === null) {
       productDocId = await ctx.db.insert("products", {
@@ -204,13 +239,23 @@ export const report = mutation({
       .order("desc")
       .first();
 
+    // Server-side twin of the extractor's own sanity check: an open-box
+    // figure at or above the new price is a misread or a forgery, never a
+    // real used unit. Dropped, not refused — and dropping lands on the
+    // CARRY-FORWARD side (resolved from `latest`), because an unobserved
+    // open box must never clear or alter a stored one.
+    const openBoxPrice =
+      args.openBoxPrice !== undefined && args.openBoxPrice >= args.price
+        ? latest?.openBoxPrice
+        : args.openBoxPrice;
+
     // Open-box prices are the "same" when both absent or within $0.01.
     const openBoxSame =
       latest !== null &&
       (latest.openBoxPrice === undefined
-        ? args.openBoxPrice === undefined
-        : args.openBoxPrice !== undefined &&
-          Math.abs(latest.openBoxPrice - args.openBoxPrice) <= 0.01);
+        ? openBoxPrice === undefined
+        : openBoxPrice !== undefined &&
+          Math.abs(latest.openBoxPrice - openBoxPrice) <= 0.01);
 
     if (
       latest !== null &&
@@ -230,7 +275,7 @@ export const report = mutation({
         price: args.price,
         inStock: args.inStock,
         availability,
-        openBoxPrice: args.openBoxPrice,
+        openBoxPrice,
         // Carried, never observed. A product page states no "Original price",
         // so this path has nothing to say about the field — and writing what it
         // has (nothing) would CLEAR a figure the grid learned, which is the
@@ -272,7 +317,7 @@ export const report = mutation({
     // single observation and anything larger is a client inventing numbers.
     const selectorsOk = await recordSelectorHealth(ctx, args.selectors, 1, now);
 
-    return { ok: true, throttled: false, rateLimited: false, selectorsRejected: !selectorsOk };
+    return { ok: true, throttled: false, rateLimited: false, implausible: false, selectorsRejected: !selectorsOk };
   },
 });
 
@@ -303,20 +348,23 @@ export const report = mutation({
 
 const CATALOG_MAX_ITEMS = 96; // Micro Center's largest "items per page"
 
-// A catalog price more than 5x, or less than a fifth of, the last price known
-// for that (product, store) is refused. Both directions are far likelier to be
+// A reported price more than 5x, or less than a fifth of, the last price
+// known for the product is refused — BOTH collection paths use these: the
+// catalog batch clamps against the newest (product, store) row, and the
+// single product-page `report` above clamps against the newest row from any
+// store. Both directions are far likelier to be
 // a misread than a real move: a grid card sits next to a member price, a
 // financing figure and a bundle total, and any of those landing in `price`
 // would otherwise write a fake all-time low that a watch then fires on. A
 // genuine clearance that deep still lands the moment anyone opens the product
 // page, which is the higher-fidelity source; a parse error never gets to
 // impersonate one. Skipped items are counted and returned, never silent.
-const CATALOG_MIN_RATIO = 0.2;
-const CATALOG_MAX_RATIO = 5;
+const PRICE_MIN_RATIO = 0.2;
+const PRICE_MAX_RATIO = 5;
 
 // A list price is bounded on one side by the shelf price it must exceed, and on
 // the other by nothing at all — so it gets its own ceiling rather than reusing
-// CATALOG_MAX_RATIO. 5x would refuse a real 80%-off clearance; 20x refuses the
+// PRICE_MAX_RATIO. 5x would refuse a real 80%-off clearance; 20x refuses the
 // misread that put a shelf full of digits in the strike. The two clamps answer
 // different questions and are deliberately not the same number.
 const CATALOG_MAX_LIST_RATIO = 20;
@@ -724,8 +772,8 @@ export const reportBatch = mutation({
 
       if (
         latest !== null &&
-        (raw.price < latest.price * CATALOG_MIN_RATIO ||
-          raw.price > latest.price * CATALOG_MAX_RATIO)
+        (raw.price < latest.price * PRICE_MIN_RATIO ||
+          raw.price > latest.price * PRICE_MAX_RATIO)
       ) {
         skipped++;
         skippedItems.push({ productId: raw.productId, reason: "PRICE_OUTLIER" });

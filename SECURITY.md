@@ -110,6 +110,15 @@ trade-offs, not oversights:
   256-bit random value, so guessing it is not a practical attack, and sign-in codes are
   consumed by an action that commits its attempt counter before refusing, so brute force
   there hits a lockout.
+- **Anonymous use is anonymous to us too.** Jackdaw deliberately collects no IP
+  address, fingerprint or account for anonymous use, so anonymous requests cannot be
+  strongly tied to a person or a machine, and anything measured per device can be
+  inflated by a determined client. The design accepts this rather than trying to
+  identify people: contributed data is validated against what is already known instead
+  of being trusted on arrival, community signals influence what is shown but never
+  decide anything irreversible, and moderation outcomes can be reversed by a
+  maintainer. A way to make one client's input do lasting or irreversible damage
+  despite that is exactly the report we want.
 - **Selector-health figures are self-reported by the content script** and are advisory
   only. Nothing depends on them and the admin panel says so on the page.
 - **A content script cannot outlive its extension safely** in the general case. Jackdaw
