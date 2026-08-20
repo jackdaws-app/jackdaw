@@ -3,8 +3,10 @@ import { internalMutation, query } from "./_generated/server";
 import {
   categoryKey,
   conditionFromName,
+  isPhysicalStore,
   normalizeSku,
   readSummary,
+  resolveSession,
   widenSummary,
 } from "./lib";
 import type { PriceSummary } from "./lib";
@@ -391,5 +393,144 @@ export const history = query({
               observedAt: shelfRow.observedAt,
             },
     };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Open box, across every store at once
+// ---------------------------------------------------------------------------
+
+// Stores considered per product. Micro Center operates ~28 locations, so 64 is
+// generous headroom rather than a working limit — it exists so this read can
+// never scale with a table.
+const OPEN_BOX_MAX_STORES = 64;
+// Window over the product's price series used only to ENUMERATE stores that
+// have no shelf row. Same budget as `history`'s series read.
+const OPEN_BOX_POINT_WINDOW = 1000;
+
+/**
+ * Which physical stores currently hold an open-box unit of one product — a
+ * snapshot of today's belief, never a series.
+ *
+ * The open-box price is the one genuinely per-store price on the page (one
+ * physical returned unit at one location), so unlike everything else in this
+ * file the answer is a list of stores. The per-store belief is carried by the
+ * NEWEST pricePoints row for that (product, store): a number means "an
+ * open-box unit at this price", absent means observed-absent or never-seen —
+ * the carry-forward rule in observations.ts. Unit counts come from storeStock,
+ * the one-row-per-(product, store) snapshot, and stay a snapshot: nothing here
+ * can reconstruct a history, by the same schema constraint that makes the
+ * table safe to have at all.
+ *
+ * ACCOUNT-GATED, in the watches.dashboard style: a cross-store shopping view
+ * belongs to the participation tier, and a signed-out caller gets the empty
+ * signed-out shape rather than a throw, so a signed-out surface renders an
+ * invitation instead of a console error. Reading one product's own page data
+ * stays anonymous (`history` above); this is the aggregation, not the reading.
+ *
+ * BOUNDED BY CONSTRUCTION. Stores are enumerated from the product's shelf rows
+ * (at most one per store) plus the store numbers appearing in the newest
+ * OPEN_BOX_POINT_WINDOW points, both take-capped; then ONE newest-row read per
+ * store. A store whose last sighting of any kind has fallen out of the window
+ * is not enumerated — its belief is older than anything this snapshot should
+ * relay anyway. Pseudo-stores (029/000) have no shelves and are filtered the
+ * same way every shelf read filters them.
+ *
+ * NO unitsAtLeast FIELD, deliberately: storeStock.atLeast qualifies `units`
+ * (the "25+ IN STOCK" cap on general stock), not `openBoxUnits` — the open-box
+ * count on a grid card ("2 open box from $339.96") is never displayed capped,
+ * so relaying the flag here would attach a caveat to the wrong number.
+ */
+export const openBoxAcross = query({
+  args: {
+    productId: v.string(),
+    sessionToken: v.optional(v.string()),
+  },
+  returns: v.object({
+    signedIn: v.boolean(),
+    stores: v.array(
+      v.object({
+        storeNum: v.string(),
+        openBoxPrice: v.number(),
+        // From the store's shelf snapshot; null when only a product page has
+        // ever seen this store's unit (a product page shows the price with no
+        // count beside it).
+        openBoxUnits: v.union(v.number(), v.null()),
+        // When the price belief was last confirmed: the newest price point's
+        // own lastSeenAt. Every surface shows age beside a per-store fact — the
+        // freshness is the honesty.
+        lastSeenAt: v.number(),
+        // When the shelf count was taken, when a shelf row exists. Reported
+        // separately because the two readings can come from different visits.
+        shelfObservedAt: v.union(v.number(), v.null()),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    // Signed out is an empty list, not an error — same rule as
+    // watches.dashboard, so a signed-out panel renders a sign-in card.
+    const signedOut = { signedIn: false, stores: [] };
+    if (args.sessionToken === undefined || args.sessionToken.length === 0) {
+      return signedOut;
+    }
+    const resolved = await resolveSession(ctx, args.sessionToken);
+    if (resolved === null) return signedOut;
+
+    const product = await ctx.db
+      .query("products")
+      .withIndex("by_productId", (q) => q.eq("productId", args.productId))
+      .unique();
+    if (product === null) return { signedIn: true, stores: [] };
+
+    // Every store this product has a shelf snapshot for. One row per store by
+    // construction, so the cap is headroom, not truncation.
+    const shelfRows = await ctx.db
+      .query("storeStock")
+      .withIndex("by_product_store", (q) => q.eq("productDocId", product._id))
+      .take(OPEN_BOX_MAX_STORES);
+    const shelfByStore = new Map(shelfRows.map((r) => [r.storeNum, r]));
+
+    // Plus every store appearing in the recent price series — a store a
+    // product page has seen holds an open-box belief with no shelf row.
+    const recentPoints = await ctx.db
+      .query("pricePoints")
+      .withIndex("by_product", (q) => q.eq("productDocId", product._id))
+      .order("desc")
+      .take(OPEN_BOX_POINT_WINDOW);
+
+    const candidateStores = new Set<string>(shelfByStore.keys());
+    for (const point of recentPoints) {
+      if (candidateStores.size >= OPEN_BOX_MAX_STORES) break;
+      candidateStores.add(point.storeNum);
+    }
+
+    const stores = [];
+    for (const storeNum of candidateStores) {
+      // A pseudo-store (029 "Shippable Items", 000 unknown) names no shelf,
+      // so it can hold no open-box unit — same filter as every shelf read.
+      if (!isPhysicalStore(storeNum)) continue;
+      // The newest row for this (product, store) carries the current belief,
+      // exactly as the write paths' carry-forward maintains it.
+      const newest = await ctx.db
+        .query("pricePoints")
+        .withIndex("by_product_store", (q) =>
+          q.eq("productDocId", product._id).eq("storeNum", storeNum),
+        )
+        .order("desc")
+        .first();
+      if (newest === null || newest.openBoxPrice === undefined) continue;
+      const shelf = shelfByStore.get(storeNum);
+      stores.push({
+        storeNum,
+        openBoxPrice: newest.openBoxPrice,
+        openBoxUnits: shelf?.openBoxUnits ?? null,
+        lastSeenAt: newest.lastSeenAt,
+        shelfObservedAt: shelf?.observedAt ?? null,
+      });
+    }
+
+    // Cheapest first: the row a cross-store shopper acts on is the low one.
+    stores.sort((a, b) => a.openBoxPrice - b.openBoxPrice);
+    return { signedIn: true, stores };
   },
 });

@@ -562,7 +562,7 @@
 }
 .mk-stat.jd-at-low .mk-stat-value { color: var(--jd-green-deep); }
 
-.jd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.jd-chips { position: relative; display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .jd-chip {
   display: inline-block;
   font-size: 11px;
@@ -592,6 +592,54 @@
   border-color: rgba(217, 119, 6, 0.3);
   background: #fdf8f0;
 }
+/* The amber chips are buttons (they open the cross-store popover). A button
+   inherits neither color nor font, so both are stated. */
+.jd-chip-btn {
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.jd-chip-btn:hover { background: #fbf1e2; }
+
+/* Cross-store open-box popover, anchored under the clicked chip */
+.jd-obpop {
+  position: absolute;
+  z-index: 5;
+  width: 280px;
+  max-width: calc(100% - 4px);
+  background: #fff;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(22, 35, 58, 0.14);
+  padding: 10px 12px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s var(--ease-out);
+}
+.jd-obpop.jd-obpop-in { opacity: 1; transform: none; }
+.jd-obpop-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--jd-navy);
+  margin-bottom: 6px;
+}
+.jd-obpop-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.jd-obpop-row + .jd-obpop-row { border-top: 1px solid var(--jd-hairline); }
+.jd-obpop-store { color: var(--jd-ink); font-weight: 600; margin-right: auto; }
+.jd-obpop-price { color: #92400e; font-weight: 600; font-variant-numeric: tabular-nums; }
+.jd-obpop-units { color: #6b7280; font-variant-numeric: tabular-nums; }
+.jd-obpop-age { color: #6b7280; font-size: 11px; }
+.jd-obpop-stale { color: #b45309; }
+.jd-obpop-note { color: #6b7280; font-size: 11px; padding: 2px 0; }
+.jd-obpop .mk-signin { margin: 2px 0 0; }
 
 /* ---------- Chart ---------- */
 .jd-chart {
@@ -1069,6 +1117,14 @@
 #jackdaw-drawer.jd-dark .jd-chip-low { color: #4ade80; border-color: rgba(74, 222, 128, 0.3); background: rgba(22, 163, 74, 0.1); }
 #jackdaw-drawer.jd-dark .jd-chip-high,
 #jackdaw-drawer.jd-dark .jd-chip-ob { color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); background: rgba(217, 119, 6, 0.1); }
+#jackdaw-drawer.jd-dark .jd-chip-btn:hover { background: rgba(217, 119, 6, 0.2); }
+#jackdaw-drawer.jd-dark .jd-obpop { background: #16213a; border-color: #253049; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+#jackdaw-drawer.jd-dark .jd-obpop-row + .jd-obpop-row { border-top-color: #253049; }
+#jackdaw-drawer.jd-dark .jd-obpop-title { color: #cdd6e4; }
+#jackdaw-drawer.jd-dark .jd-obpop-store { color: #e8edf5; }
+#jackdaw-drawer.jd-dark .jd-obpop-price { color: #fbbf24; }
+#jackdaw-drawer.jd-dark .jd-obpop-units, #jackdaw-drawer.jd-dark .jd-obpop-age, #jackdaw-drawer.jd-dark .jd-obpop-note { color: #94a3b8; }
+#jackdaw-drawer.jd-dark .jd-obpop-stale { color: #fbbf24; }
 #jackdaw-drawer.jd-dark .mk-empty { background: rgba(22, 163, 74, 0.08); border-color: rgba(74, 222, 128, 0.25); }
 #jackdaw-drawer.jd-dark .mk-empty-title { color: #4ade80; }
 #jackdaw-drawer.jd-dark .mk-comment { border-top-color: #1e293e; }
@@ -1514,6 +1570,7 @@
   .jd-live, .jd-live::after { animation: none; opacity: 1; }
   .jd-flit, .jd-flit-wings { animation: none; display: none; }
   .jd-popover { animation: jd-fade 0.15s ease; }
+  .jd-obpop { transition: opacity 0.2s ease; transform: none; }
   .jd-ib-expand svg, .jd-ib-share svg, .jd-ib-theme svg, .jd-ib-min svg, .jd-watch.jd-watching svg { animation: none; }
   .jd-coach, .jd-tour, .jd-tour-pop { animation: jd-fade 0.2s ease; }
   .jd-tour-hole { transition: none; }

@@ -339,6 +339,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // the shopper is browsing.
           ...(msg.shelfStore ? { shelfStore: msg.shelfStore } : {}),
         });
+      // Cross-store open-box snapshot. Account-gated on the backend: signed
+      // out it answers the empty shape, and the panel invites sign-in instead
+      // of surfacing an error. Store numbers only — names live client-side.
+      case "openbox:across":
+        return convexQuery("products:openBoxAcross", {
+          productId: msg.productId,
+          ...(await scopeArg()),
+        });
       // Reading stays anonymous; the token, when there is one, only marks the
       // caller's own votes in the answer.
       case "comments:list":

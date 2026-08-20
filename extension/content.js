@@ -1195,6 +1195,96 @@
           el("span", "jd-chip", `Advertised list: ${fmtPrice(newest.listPrice)}${run}`),
         );
       }
+      // Cross-store open-box view, behind a click on either amber chip. The
+      // aggregation is participation-tier (the backend answers signed-in
+      // only), so signed out the popover carries the standard sign-in card
+      // instead of a second loud surface on the anonymous panel. Every row is
+      // a sighting with an age, never a live count — same honesty as the
+      // "Last seen" chip, and readings older than the 48h store-signal window
+      // amber their age the way the rest of the product does.
+      let obPop = null;
+      function closeObPop() {
+        if (!obPop) return;
+        obPop.pop.remove();
+        obPop.anchor.setAttribute("aria-expanded", "false");
+        drawerEl.removeEventListener("click", obPop.onAway, true);
+        drawerEl.removeEventListener("keydown", obPop.onKey, true);
+        obPop = null;
+      }
+      function obChipButton(label) {
+        const b = el("button", "jd-chip jd-chip-ob jd-chip-btn", label);
+        b.setAttribute("aria-haspopup", "true");
+        b.setAttribute("aria-expanded", "false");
+        b.addEventListener("click", () => toggleObPop(b));
+        return b;
+      }
+      async function toggleObPop(anchor) {
+        if (obPop && obPop.anchor === anchor) {
+          closeObPop();
+          return;
+        }
+        closeObPop();
+        const pop = el("div", "jd-obpop");
+        pop.setAttribute("role", "group");
+        pop.setAttribute("aria-label", "Open box across stores");
+        pop.append(el("div", "jd-obpop-title", "Open box, every store"));
+        const body = el("div", "jd-obpop-body");
+        body.append(el("div", "jd-obpop-note", "Checking stores…"));
+        pop.append(body);
+        chips.append(pop);
+        pop.style.top = anchor.offsetTop + anchor.offsetHeight + 6 + "px";
+        pop.style.left = Math.max(0, Math.min(anchor.offsetLeft, chips.clientWidth - 280)) + "px";
+        // Dismissal: a click anywhere else in the drawer, or Escape. Capture
+        // phase on the drawer, so the opening click (already past capture by
+        // the time these are added) cannot dismiss its own popover.
+        const onAway = (ev) => {
+          if (pop.contains(ev.target) || anchor.contains(ev.target)) return;
+          closeObPop();
+        };
+        const onKey = (ev) => {
+          if (ev.key === "Escape") closeObPop();
+        };
+        drawerEl.addEventListener("click", onAway, true);
+        drawerEl.addEventListener("keydown", onKey, true);
+        obPop = { pop, anchor, onAway, onKey };
+        anchor.setAttribute("aria-expanded", "true");
+        requestAnimationFrame(() => pop.classList.add("jd-obpop-in"));
+        const res = await send({ type: "openbox:across", productId: product.productId });
+        if (!obPop || obPop.pop !== pop) return; // closed while loading
+        body.textContent = "";
+        if (!res || res.error || !res.result) {
+          body.append(el("div", "jd-obpop-note", "Couldn't check right now"));
+          return;
+        }
+        const data = res.result;
+        if (!data.signedIn) {
+          body.append(
+            signInCard(
+              "Open box across stores",
+              "Every store holding an open-box unit of this one, cheapest first. Sign in to see the list.",
+            ),
+          );
+          return;
+        }
+        if (!data.stores.length) {
+          body.append(el("div", "jd-obpop-note", "No open-box units seen at any store"));
+          return;
+        }
+        for (const st of data.stores) {
+          const row = el("div", "jd-obpop-row");
+          row.append(el("span", "jd-obpop-store", storeNameFor(st.storeNum) || `store #${st.storeNum}`));
+          row.append(el("span", "jd-obpop-price", fmtPrice(st.openBoxPrice)));
+          if (st.openBoxUnits != null) {
+            row.append(el("span", "jd-obpop-units", st.openBoxUnits + (st.openBoxUnits === 1 ? " unit" : " units")));
+          }
+          const age = el("span", "jd-obpop-age", fmtRel(st.lastSeenAt));
+          if (Date.now() - st.lastSeenAt > 48 * 3_600_000) age.classList.add("jd-obpop-stale");
+          row.append(age);
+          body.append(row);
+        }
+        body.append(el("div", "jd-obpop-note", "Sightings, not live inventory"));
+      }
+
       // This store's open-box reading, resolved BEFORE the historical chip
       // below so that chip can stand down when it would only repeat the number.
       // The count comes off a grid card and the price off the same card in the
@@ -1222,7 +1312,7 @@
         // (`cheapest` is a minimum over every point including this store's own),
         // so what survives the test always reads as "it has been cheaper".
         if (!shelfOb || Math.abs(shelfOb.openBoxPrice - cheapest.openBoxPrice) > 0.01) {
-          chips.append(el("span", "jd-chip jd-chip-ob", `Open-box seen from ${fmtPrice(cheapest.openBoxPrice)} (${fmtDate(cheapest.lastSeenAt)})`));
+          chips.append(obChipButton(`Open-box seen from ${fmtPrice(cheapest.openBoxPrice)} (${fmtDate(cheapest.lastSeenAt)})`));
         }
       }
       // What was on the shelf at this store the last time anyone's screen
@@ -1245,9 +1335,7 @@
       if (shelfOb) {
         const where = storeNameFor(history.shelf.storeNum) || `store #${history.shelf.storeNum}`;
         chips.append(
-          el(
-            "span",
-            "jd-chip jd-chip-ob",
+          obChipButton(
             `Open box at ${where}: ${history.shelf.openBoxUnits} from ${fmtPrice(shelfOb.openBoxPrice)} · ${fmtRel(history.shelf.observedAt)}`,
           ),
         );
