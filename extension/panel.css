@@ -555,6 +555,52 @@
 .mk-stat-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #9aa1ab; font-weight: 600; }
 .mk-stat-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .mk-stat-sub { font-size: 11px; color: var(--jd-muted); }
+
+/* The numbers behind the chart. Three columns — statistic, price, when —
+   using `display: contents` on the row so every cell joins one grid and the
+   prices align on a single edge whatever the labels do. */
+.mk-table {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0 14px;
+  background: #fff;
+  border: 1px solid var(--jd-hairline);
+  border-radius: 9px;
+  padding: 1px 11px;
+  margin-bottom: 10px;
+}
+.mk-tr { display: contents; }
+.mk-th,
+.mk-tv,
+.mk-tw {
+  padding: 7px 0;
+  border-top: 1px solid var(--jd-hairline);
+  align-self: center;
+}
+.mk-table > .mk-tr:first-child > * { border-top: 0; }
+.mk-th {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: #6b7280;
+}
+.mk-tv {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--jd-ink);
+}
+.mk-tw {
+  font-size: 11px;
+  color: var(--jd-muted);
+  text-align: right;
+}
+/* Open box is one physical used unit at one location — the amber the chips and
+   the chart already use for it, so the three surfaces name it the same way. */
+.mk-tr-ob .mk-th,
+.mk-tr-ob .mk-tv { color: #92400e; }
 /* spell: when the current price IS the all-time low, the stat quietly glows */
 .mk-stat.jd-at-low {
   border-color: rgba(22, 163, 74, 0.35);
@@ -1107,6 +1153,7 @@
 #jackdaw-drawer.jd-dark .jd-watch { border-color: #2a3752; color: #8b94a8; }
 #jackdaw-drawer.jd-dark .jd-watch.jd-watching { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); background: rgba(22, 163, 74, 0.12); }
 #jackdaw-drawer.jd-dark .mk-stat,
+#jackdaw-drawer.jd-dark .mk-table,
 #jackdaw-drawer.jd-dark .jd-chart,
 #jackdaw-drawer.jd-dark .jd-chip,
 #jackdaw-drawer.jd-dark .mk-input,
@@ -1114,6 +1161,12 @@
 #jackdaw-drawer.jd-dark .mk-stat.jd-at-low { background: linear-gradient(180deg, #16213a, #14283a); border-color: rgba(74, 222, 128, 0.35); }
 #jackdaw-drawer.jd-dark .mk-stat.jd-at-low .mk-stat-value { color: #4ade80; }
 #jackdaw-drawer.jd-dark .jd-chip { color: #aeb8c9; }
+#jackdaw-drawer.jd-dark .mk-th { color: #98a2b5; }
+#jackdaw-drawer.jd-dark .mk-th,
+#jackdaw-drawer.jd-dark .mk-tv,
+#jackdaw-drawer.jd-dark .mk-tw { border-top-color: #253049; }
+#jackdaw-drawer.jd-dark .mk-tr-ob .mk-th,
+#jackdaw-drawer.jd-dark .mk-tr-ob .mk-tv { color: #fbbf24; }
 #jackdaw-drawer.jd-dark .jd-chip-low { color: #4ade80; border-color: rgba(74, 222, 128, 0.3); background: rgba(22, 163, 74, 0.1); }
 #jackdaw-drawer.jd-dark .jd-chip-high,
 #jackdaw-drawer.jd-dark .jd-chip-ob { color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); background: rgba(217, 119, 6, 0.1); }

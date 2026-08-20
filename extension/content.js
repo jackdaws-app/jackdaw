@@ -1301,8 +1301,13 @@
       }
 
       const obPoints = history.points.filter((p) => p.openBoxPrice != null);
+      // Hoisted: the chip below and the stats table both want the cheapest
+      // open-box reading, and deriving it twice invites them to disagree.
+      const obSeen = obPoints.length
+        ? obPoints.reduce((a, b) => (a.openBoxPrice <= b.openBoxPrice ? a : b))
+        : null;
       if (obPoints.length) {
-        const cheapest = obPoints.reduce((a, b) => (a.openBoxPrice <= b.openBoxPrice ? a : b));
+        const cheapest = obSeen;
         // Two amber chips carrying the same figure is noise, and on sparse data
         // it is the DEFAULT rather than an edge case: the first open-box price a
         // product ever gets is simultaneously the cheapest ever seen and the one
@@ -1359,8 +1364,63 @@
         }),
       );
 
+      // The detail behind the chart. Deliberately the same figures the cards
+      // above carry, from the same computeStats call — two views of one number,
+      // never two numbers. The chart's own LOW is gated the same way, so all
+      // three agree by construction rather than by coincidence.
+      const firstSeen = history.points.reduce((m, p) => Math.min(m, p.firstSeenAt), Infinity);
+      const newestPoint = history.points.reduce((a, b) => (a.lastSeenAt >= b.lastSeenAt ? a : b));
+      const newestWhere = NON_PHYSICAL_STORES.has(newestPoint.storeNum)
+        ? null
+        : storeNameFor(newestPoint.storeNum);
+      // One open-box row, and the shelf reading wins when there is one: it is
+      // the actionable fact (this store, this many, this fresh) where the
+      // historical minimum is only ever "it has been cheaper somewhere".
+      const obRow = shelfOb
+        ? {
+            label: "Open box",
+            price: shelfOb.openBoxPrice,
+            when:
+              `${storeNameFor(history.shelf.storeNum) || `store #${history.shelf.storeNum}`}` +
+              ` · ${fmtRel(history.shelf.observedAt)}`,
+            tone: "ob",
+          }
+        : obSeen
+          ? {
+              label: "Open box",
+              price: obSeen.openBoxPrice,
+              when: `seen ${fmtDate(obSeen.lastSeenAt)}`,
+              tone: "ob",
+            }
+          : null;
+      leftCol.append(
+        statsTable([
+          {
+            label: "Lowest seen",
+            price: stats.lowest,
+            when: stats.provisional ? "seen once" : fmtDate(stats.lowestAt),
+          },
+          {
+            label: "Typical",
+            price: typical,
+            when: `since ${fmtDate(firstSeen)}`,
+          },
+          {
+            label: "Highest seen",
+            price: stats.highest,
+            when: stats.provisional ? "seen once" : fmtDate(stats.highestAt),
+          },
+          {
+            label: "Last seen",
+            price: newestPoint.price,
+            when: (newestWhere ? `${newestWhere} · ` : "") + fmtRel(newestPoint.lastSeenAt),
+          },
+          obRow,
+        ]),
+      );
+
       const note = el("div", "mk-note");
-      const first = history.points.reduce((m, p) => Math.min(m, p.firstSeenAt), Infinity);
+      const first = firstSeen;
       // The series and the count both pool every store (refreshAll sends no
       // storeNum), so a store number here reads as a scope the figures do not
       // have. Name it as where the shopper is standing, and only when that is a
@@ -1402,6 +1462,28 @@
     paneEl.className = "jd-pane";
     paneEl.append(renderComments());
     updateTabChrome();
+  }
+
+  /**
+   * The numbers behind the chart, as rows: what the statistic is, the price,
+   * and WHEN it was seen. Every row is a dated sighting — with one deliberate
+   * exception. TYPICAL is a duration-weighted median over the whole series, so
+   * there is no instant at which it was observed; it carries a SPAN instead,
+   * and giving it a date would invent an observation that never happened.
+   */
+  function statsTable(rows) {
+    const t = el("div", "mk-table");
+    for (const r of rows) {
+      if (!r) continue;
+      const tr = el("div", "mk-tr" + (r.tone ? ` mk-tr-${r.tone}` : ""));
+      tr.append(
+        el("div", "mk-th", r.label),
+        el("div", "mk-tv", fmtPrice(r.price)),
+        el("div", "mk-tw", r.when),
+      );
+      t.append(tr);
+    }
+    return t;
   }
 
   function stat(label, price, sub, animate) {
@@ -1528,24 +1610,27 @@
     ctx.font = "700 11px system-ui, sans-serif";
     ctx.letterSpacing = "1.5px";
     ctx.fillStyle = dark ? "#cdd6e4" : "#16233a";
-    ctx.fillText("JACKDAW", 24, H - 16);
+    // H-20, not H-16: the right side is a two-line stack now, and a single line
+    // opposite it has to sit at the stack's optical centre, not on either baseline.
+    ctx.fillText("JACKDAW", 24, H - 20);
     const wmW = ctx.measureText("JACKDAW").width;
     ctx.letterSpacing = "0px";
     ctx.fillStyle = dark ? "#22c55e" : "#16a34a";
     ctx.beginPath();
-    ctx.arc(24 + wmW + 6, H - 20, 2.5, 0, Math.PI * 2);
+    ctx.arc(24 + wmW + 6, H - 24, 2.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillStyle = dark ? "#8b94a8" : "#6b7280";
-    ctx.fillText("Community price history", 24 + wmW + 15, H - 16);
+    ctx.fillText("Community price history", 24 + wmW + 15, H - 20);
     // The invitation and the address travel together, right-aligned as one
     // group: the tagline on the left says what this is, this says how to join.
-    const joinW = ctx.measureText(SHARE_JOIN).width;
-    const urlW = ctx.measureText(SHARE_URL).width;
-    const joinX = W - 24 - (joinW + 8 + urlW);
-    ctx.fillText(SHARE_JOIN, joinX, H - 16);
+    // Stacked, and both lines right-aligned to the same edge as the chart: the
+    // invitation reads first, the address sits under it as the thing to type.
+    ctx.textAlign = "right";
+    ctx.fillText(SHARE_JOIN, W - 24, H - 27);
     ctx.fillStyle = dark ? "#4ade80" : "#15803d";
-    ctx.fillText(SHARE_URL, joinX + joinW + 8, H - 16);
+    ctx.fillText(SHARE_URL, W - 24, H - 13);
+    ctx.textAlign = "left";
 
     const blob = await new Promise((r) => out.toBlob(r, "image/png"));
     let copied = false;
