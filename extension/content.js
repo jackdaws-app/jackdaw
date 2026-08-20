@@ -1380,11 +1380,15 @@
 
   async function shareChartInner(btn) {
     if (activeTab !== "chart") switchTab("chart");
-    const src = paneEl && paneEl.querySelector(".jd-chart canvas");
+    const chartRoot = paneEl && paneEl.querySelector(".jd-chart");
+    const src = chartRoot && chartRoot.querySelector("canvas");
     if (!src || !history) {
       toast("Nothing to share yet");
       return;
     }
+    // A freshly-switched-to chart hasn't painted yet (first draw is a rAF
+    // away) and a visible one may be mid draw-in; take the finished frame.
+    if (chartRoot.__finishDraw) chartRoot.__finishDraw();
     const dark = theme === "dark";
     const dpr = 2;
     const srcCssW = src.width / (window.devicePixelRatio || 1);

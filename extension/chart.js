@@ -472,6 +472,10 @@
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) drawProgress = 1;
     update();
+    // The first paint is a rAF away and the draw-in runs 650ms; anything
+    // that copies these pixels (the share button) needs the finished frame
+    // now, not the blank pre-first-frame canvas or a mid-animation one.
+    root.__finishDraw = () => { drawProgress = 1; draw(); };
     return root;
   }
 
