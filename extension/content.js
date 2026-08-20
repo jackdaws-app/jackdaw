@@ -1258,6 +1258,10 @@
         window.__jackdawChart.build(history.points, {
           reveal: pendingReveal,
           theme,
+          // The open-box overlay follows the store already selected on the
+          // page; the price line pools every store (prices are national).
+          shelfStore: physicalStore(),
+          shelfStoreName: storeNameFor(product.storeNum),
           height: chartHeight,
           onHeightChange: (h) => {
             chartHeight = h;

@@ -184,17 +184,6 @@
   to { opacity: 1; }
 }
 
-.jd-store-select {
-  border: 1px solid var(--jd-hairline);
-  background: #fff;
-  color: var(--jd-navy);
-  font-size: 10.5px;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-
 /* Rare-moment spell: sparkle burst on the all-time-low chip (first open only) */
 .jd-chip-low { position: relative; }
 .jd-spark-particle {
@@ -1120,7 +1109,6 @@
 @media (hover: hover) and (pointer: fine) {
   #jackdaw-drawer.jd-dark .jd-range-btn:hover { color: #cdd6e4; }
 }
-#jackdaw-drawer.jd-dark .jd-store-select { background: #16213a; border-color: #253049; color: #cdd6e4; }
 /* Store triggers. The track's resting fill is a light-on-dark wash rather than
    the light theme's ink wash, or an off switch reads as a hole in the card. */
 #jackdaw-drawer.jd-dark .jd-store-name { color: #e6eaf2; }

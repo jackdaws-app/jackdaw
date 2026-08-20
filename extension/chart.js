@@ -1,4 +1,4 @@
-// Interactive price-history chart: range + store filtering, crosshair tooltip,
+// Interactive price-history chart: range filtering, crosshair tooltip,
 // typical-price and all-time-low annotations, observation-density ticks, and
 // a one-time draw-in animation. Canvas-based, no dependencies.
 // Exposed as window.__jackdawChart for content.js (both run in the isolated world).
@@ -66,14 +66,19 @@
     toolbar.className = "jd-chart-toolbar";
     const legend = document.createElement("div");
     legend.className = "jd-legend";
-    const storeWrap = document.createElement("div");
-    storeWrap.className = "jd-ranges";
     const rangeWrap = document.createElement("div");
     rangeWrap.className = "jd-ranges";
-    toolbar.append(legend, storeWrap, rangeWrap);
+    toolbar.append(legend, rangeWrap);
+
+    // Prices are national, so the price line pools every store's readings —
+    // the same pooling the alert path uses. What varies by location is the
+    // open-box unit, so that overlay is scoped to the store the shopper has
+    // already selected on the page (none for pseudo-stores like 029).
+    const shelfStore = opts.shelfStore || null;
+    const obAt = (p) => (shelfStore && p.storeNum === shelfStore ? p.openBoxPrice : null);
 
     // Legend doubles as series toggles (New is the primary line and stays on).
-    const hasOpenBox = points.some((p) => p.openBoxPrice != null);
+    const hasOpenBox = points.some((p) => obAt(p) != null);
     let showOpenBox = true;
     let showTypical = true;
     const key = (label, color, toggleable) => {
@@ -85,7 +90,7 @@
     };
     key("New", "#16a34a", false);
     if (hasOpenBox) {
-      const obKey = key("Open-box", "#d97706", true);
+      const obKey = key("Open-box · " + (opts.shelfStoreName || "#" + shelfStore), "#d97706", true);
       obKey.addEventListener("click", () => {
         showOpenBox = !showOpenBox;
         obKey.classList.toggle("jd-key-off", !showOpenBox);
@@ -134,16 +139,10 @@
 
     root.append(toolbar, stage, resizer);
 
-    const stores = [...new Set(points.map((p) => p.storeNum))].sort();
-    let store = "All";
     let range = null;
     let hover = null;
     let drawProgress = opts.reveal ? 0 : 1; // one-time draw-in
     let drawAnimStart = null;
-
-    function activePoints() {
-      return store === "All" ? points : points.filter((p) => p.storeNum === store);
-    }
 
     function segsFor(pts) {
       const all = pts
@@ -154,51 +153,10 @@
           t1: Math.max(p.lastSeenAt, p.firstSeenAt),
           price: p.price,
           inStock: p.inStock,
-          openBox: p.openBoxPrice != null ? p.openBoxPrice : null,
+          openBox: obAt(p),
         }));
       if (all.length) all[all.length - 1].t1 = Math.max(all[all.length - 1].t1, Date.now());
       return all;
-    }
-
-    // Store filter: pills up to 3 stores, a compact dropdown beyond that.
-    if (stores.length > 3) {
-      const sel = document.createElement("select");
-      sel.className = "jd-store-select";
-      const optAll = document.createElement("option");
-      optAll.value = "All";
-      optAll.textContent = "All stores";
-      sel.append(optAll);
-      for (const s of stores) {
-        const o = document.createElement("option");
-        o.value = s;
-        o.textContent = "Store #" + s;
-        sel.append(o);
-      }
-      sel.addEventListener("change", () => {
-        store = sel.value;
-        syncRanges();
-        update();
-      });
-      storeWrap.append(sel);
-    } else if (stores.length > 1) {
-      const mk = (key, label) => {
-        const b = document.createElement("button");
-        b.className = "jd-range-btn";
-        b.textContent = label;
-        b.addEventListener("click", () => {
-          store = key;
-          syncRanges();
-          update();
-        });
-        storeWrap.append(b);
-        return b;
-      };
-      const storeBtns = new Map([["All", mk("All", "All stores")]]);
-      for (const s of stores) storeBtns.set(s, mk(s, "#" + s));
-      storeWrap.addEventListener("click", () => {
-        for (const [k, b] of storeBtns) b.classList.toggle("jd-range-active", k === store);
-      });
-      storeBtns.get("All").classList.add("jd-range-active");
     }
 
     // Range pills — only ranges the data can fill (plus the first that covers it)
@@ -206,7 +164,7 @@
     function syncRanges() {
       rangeWrap.textContent = "";
       btns.clear();
-      const all = segsFor(activePoints());
+      const all = segsFor(points);
       const spanAll = all.length ? all[all.length - 1].t1 - all[0].t0 : 0;
       const usable = RANGES.filter((_, i) => i === 0 || RANGES[i - 1].ms < spanAll);
       if (!range || !usable.includes(range)) range = usable.find((r) => r.ms >= spanAll) || usable[usable.length - 1];
@@ -225,7 +183,7 @@
     syncRanges();
 
     function visibleSegs() {
-      const all = segsFor(activePoints());
+      const all = segsFor(points);
       if (!all.length) return [];
       const end = all[all.length - 1].t1;
       const start = range.ms === Infinity ? all[0].t0 : end - range.ms;
@@ -266,7 +224,7 @@
         pMax = Math.max(pMax, s.price);
         lowest = Math.min(lowest, s.price); // LOW line tracks the new-price series
       }
-      const typical = typicalPrice(activePoints());
+      const typical = typicalPrice(points);
       const pad = Math.max((pMax - pMin) * 0.18, pMax * 0.03, 1);
       const yMin = pMin - pad, yMax = pMax + pad;
 
