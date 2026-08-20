@@ -1499,7 +1499,14 @@
     ctx.font = "12px system-ui, sans-serif";
     ctx.fillStyle = dark ? "#8b94a8" : "#6b7280";
     const typical = window.__jackdawChart.typicalPrice(history.points);
-    ctx.fillText(`Current ${fmtPrice(product.price)} · typical ${fmtPrice(typical)} · Micro Center store #${product.storeNum}`, 24, 56);
+    // Price history is national; the store matters only as where this
+    // shopper is browsing, so it reads as a place, not a reading's scope.
+    const shareWhere = storeNameFor(product.storeNum);
+    ctx.fillText(
+      `Current ${fmtPrice(product.price)} · typical ${fmtPrice(typical)} · Micro Center` +
+        (shareWhere ? ` · ${shareWhere}` : ""),
+      24, 56
+    );
     const scale = Math.min((W - 48) / srcCssW, 1);
     ctx.drawImage(src, 24, 76, srcCssW * scale, srcCssH * scale);
     ctx.font = "11px system-ui, sans-serif";

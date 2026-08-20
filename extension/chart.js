@@ -37,23 +37,41 @@
   const PALETTES = {
     light: {
       grid: "rgba(120, 130, 145, 0.14)",
-      axis: "#8a92a0",
+      axis: "#6b7280",
       tick: "rgba(22, 35, 58, 0.18)",
       typicalLine: "rgba(22, 35, 58, 0.3)",
-      typicalText: "rgba(22, 35, 58, 0.55)",
+      typicalText: "rgba(22, 35, 58, 0.78)",
       cross: "rgba(22, 35, 58, 0.35)",
       crossDot: "#16233a",
       crossRing: "#fff",
+      line: "#16a34a",
+      fillTop: "rgba(22, 163, 74, 0.18)",
+      fillBottom: "rgba(22, 163, 74, 0)",
+      oos: "#dc2626",
+      ob: "#d97706",
+      lowLine: "rgba(22, 163, 74, 0.55)",
+      lowText: "#0e7a37",
+      tagBg: "#15803d",
+      tagText: "#fff",
     },
     dark: {
       grid: "rgba(148, 163, 184, 0.12)",
-      axis: "#7c8598",
+      axis: "#98a2b5",
       tick: "rgba(203, 213, 225, 0.22)",
       typicalLine: "rgba(203, 213, 225, 0.3)",
-      typicalText: "rgba(203, 213, 225, 0.6)",
+      typicalText: "rgba(203, 213, 225, 0.85)",
       cross: "rgba(203, 213, 225, 0.4)",
       crossDot: "#e6eaf2",
       crossRing: "#0f1726",
+      line: "#22c55e",
+      fillTop: "rgba(34, 197, 94, 0.16)",
+      fillBottom: "rgba(34, 197, 94, 0)",
+      oos: "#f87171",
+      ob: "#f59e0b",
+      lowLine: "rgba(74, 222, 128, 0.5)",
+      lowText: "#4ade80",
+      tagBg: "#22c55e",
+      tagText: "#0c1220",
     },
   };
 
@@ -88,9 +106,9 @@
       legend.append(b);
       return b;
     };
-    key("New", "#16a34a", false);
+    key("New", pal.line, false);
     if (hasOpenBox) {
-      const obKey = key("Open-box · " + (opts.shelfStoreName || "#" + shelfStore), "#d97706", true);
+      const obKey = key("Open-box · " + (opts.shelfStoreName || "#" + shelfStore), pal.ob, true);
       obKey.addEventListener("click", () => {
         showOpenBox = !showOpenBox;
         obKey.classList.toggle("jd-key-off", !showOpenBox);
@@ -236,7 +254,9 @@
       // cannot survive a product costing more than the one it was tuned on.
       const ticks = [];
       for (let i = 0; i <= 3; i++) ticks.push(fmtPrice(yMin + ((yMax - yMin) * i) / 3));
+      ctx.font = "600 " + AXIS_FONT; // the endpoint tag is bold — measure worst case
       const labelW = Math.max(...ticks.map((s) => ctx.measureText(s).width));
+      ctx.font = AXIS_FONT;
       // 10 clears the gridline overhang the label sits beside, 4 keeps it off
       // the edge; floored at the old value so short-price charts are unchanged.
       const padR = Math.max(Math.ceil(labelW) + 14, 52);
@@ -247,16 +267,24 @@
 
       ctx.clearRect(0, 0, W, H);
 
+      // 1px strokes land on half-pixels so they cover one device row, not a
+      // fuzzy two. Only hairlines are snapped; the data line keeps true coords.
+      const crisp = (v) => Math.round(v) + 0.5;
+
       // grid + right-axis labels — drawn from the same `ticks` the gutter was
       // measured from, so the width that was reserved is the width that lands.
+      // Labels right-align against one rail (ragged left edges read untidy).
       ctx.font = AXIS_FONT;
       ctx.strokeStyle = pal.grid;
       ctx.fillStyle = pal.axis;
+      ctx.lineWidth = 1;
+      ctx.textAlign = "right";
       for (let i = 0; i <= 3; i++) {
-        const yy = y(yMin + ((yMax - yMin) * i) / 3);
+        const yy = crisp(y(yMin + ((yMax - yMin) * i) / 3));
         ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR + 6, yy); ctx.stroke();
-        ctx.fillText(ticks[i], W - padR + 10, yy + 3);
+        ctx.fillText(ticks[i], W - 4, yy + 3);
       }
+      ctx.textAlign = "left";
       // x labels: start, middle, end
       ctx.fillText(fmtDate(t0), padL, H - 8);
       const midLabel = fmtDate(t0 + span / 2);
@@ -268,7 +296,7 @@
       ctx.strokeStyle = pal.tick;
       ctx.lineWidth = 1;
       for (const s of segs) {
-        const tx = x(s.t0);
+        const tx = crisp(x(s.t0));
         ctx.beginPath(); ctx.moveTo(tx, H - padB + 2); ctx.lineTo(tx, H - padB + 5); ctx.stroke();
       }
 
@@ -281,8 +309,8 @@
 
       // area fill
       const grad = ctx.createLinearGradient(0, padT, 0, H - padB);
-      grad.addColorStop(0, "rgba(22, 163, 74, 0.20)");
-      grad.addColorStop(1, "rgba(22, 163, 74, 0.01)");
+      grad.addColorStop(0, pal.fillTop);
+      grad.addColorStop(1, pal.fillBottom);
       ctx.beginPath();
       ctx.moveTo(x(segs[0].t0), y(segs[0].price));
       for (let i = 0; i < segs.length; i++) {
@@ -308,14 +336,15 @@
         ctx.lineTo(x(s.t1), y(s.price));
         if (i + 1 < segs.length) ctx.lineTo(x(segs[i + 1].t0), y(s.price));
       }
-      ctx.strokeStyle = "#16a34a";
-      ctx.lineWidth = 1.75;
+      ctx.strokeStyle = pal.line;
+      ctx.lineWidth = 2;
       ctx.lineJoin = "round";
+      ctx.lineCap = "round";
       ctx.stroke();
 
       // out-of-stock overlay
-      ctx.strokeStyle = "#dc2626";
-      ctx.lineWidth = 1.75;
+      ctx.strokeStyle = pal.oos;
+      ctx.lineWidth = 2;
       for (const s of segs) {
         if (!s.inStock) {
           ctx.beginPath();
@@ -326,8 +355,9 @@
       }
 
       // open-box series (Keepa-style second line; gaps where none was seen)
-      ctx.strokeStyle = "#d97706";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = pal.ob;
+      ctx.fillStyle = pal.ob;
+      ctx.lineWidth = 1.75;
       for (let i = 0; showOpenBox && i < segs.length; i++) {
         const s = segs[i];
         if (s.openBox == null) continue;
@@ -339,15 +369,21 @@
           ctx.lineTo(x(n.t0), y(n.openBox));
         }
         ctx.stroke();
+        // sighting dot: where this open-box reading began
+        ctx.beginPath();
+        ctx.arc(x(s.t0), y(s.openBox), 2, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore(); // end sweep clip
 
       // typical-price dotted line (only once it separates visually from LOW)
+      ctx.letterSpacing = "0.5px";
       if (showTypical && Math.abs(y(typical) - y(lowest)) > 9) {
         ctx.setLineDash([2, 5]);
         ctx.strokeStyle = pal.typicalLine;
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(padL, y(typical)); ctx.lineTo(W - padR + 6, y(typical)); ctx.stroke();
+        const ty = crisp(y(typical));
+        ctx.beginPath(); ctx.moveTo(padL, ty); ctx.lineTo(W - padR + 6, ty); ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = pal.typicalText;
         ctx.font = "600 9px system-ui, sans-serif";
@@ -356,18 +392,37 @@
 
       // all-time-low dotted annotation
       ctx.setLineDash([3, 4]);
-      ctx.strokeStyle = "rgba(22, 163, 74, 0.55)";
+      ctx.strokeStyle = pal.lowLine;
       ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(padL, y(lowest)); ctx.lineTo(W - padR + 6, y(lowest)); ctx.stroke();
+      const wy = crisp(y(lowest));
+      ctx.beginPath(); ctx.moveTo(padL, wy); ctx.lineTo(W - padR + 6, wy); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = "#0e7a37";
+      ctx.fillStyle = pal.lowText;
       ctx.font = "600 9px system-ui, sans-serif";
       ctx.fillText("LOW " + fmtPrice(lowest), padL + 2, y(lowest) - 4);
+      ctx.letterSpacing = "0px";
 
       // live price marker: DOM dot (CSS pulse) pinned to the line's end
       const lineEnd = { x: x(t1), y: y(segs[segs.length - 1].price) };
       liveDot.style.opacity = drawProgress >= 1 ? "1" : "0";
       liveDot.style.transform = `translate(${lineEnd.x - 4}px, ${lineEnd.y - 4}px)`;
+
+      // current-price tag on the axis rail (arrives with the dot, after the
+      // sweep — a tag showing the ending before the line gets there spoils it)
+      if (drawProgress >= 1) {
+        const tagText = fmtPrice(segs[segs.length - 1].price);
+        ctx.font = "600 " + AXIS_FONT;
+        const tw2 = ctx.measureText(tagText).width;
+        const tagH = 16;
+        const tagY = Math.min(Math.max(lineEnd.y - tagH / 2, padT), H - padB - tagH);
+        ctx.fillStyle = pal.tagBg;
+        ctx.beginPath();
+        ctx.roundRect(W - padR + 6, tagY, Math.min(tw2 + 10, padR - 8), tagH, 4);
+        ctx.fill();
+        ctx.fillStyle = pal.tagText;
+        ctx.fillText(tagText, W - padR + 11, tagY + 11.5);
+        ctx.font = AXIS_FONT;
+      }
 
       // crosshair
       if (hover != null) {
@@ -380,8 +435,14 @@
         ctx.strokeStyle = pal.cross;
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 3]);
-        ctx.beginPath(); ctx.moveTo(hx, padT); ctx.lineTo(hx, H - padB); ctx.stroke();
+        const cx2 = crisp(hx);
+        ctx.beginPath(); ctx.moveTo(cx2, padT); ctx.lineTo(cx2, H - padB); ctx.stroke();
         ctx.setLineDash([]);
+        if (showOpenBox && seg.openBox != null) {
+          ctx.beginPath(); ctx.arc(hx, y(seg.openBox), 3, 0, Math.PI * 2);
+          ctx.fillStyle = pal.ob; ctx.fill();
+          ctx.lineWidth = 1.5; ctx.strokeStyle = pal.crossRing; ctx.stroke();
+        }
         ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2);
         ctx.fillStyle = pal.crossDot; ctx.fill();
         ctx.lineWidth = 2; ctx.strokeStyle = pal.crossRing; ctx.stroke();
