@@ -464,6 +464,9 @@ body.dark .pop-sheet-card { background: #131e30; }
 
 .pop-sheet-title { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
 .pop-sheet-body { font-size: 11.5px; color: var(--jd-muted); margin-bottom: 12px; line-height: 1.5; }
+/* Policy link on the sign-in sheet. The body above it already carries the
+   bottom margin, so this only reclaims the gap it needs before the field. */
+.pop-sheet-fine { font-size: 11px; margin: -6px 0 12px; }
 
 .pop-field {
   display: block;

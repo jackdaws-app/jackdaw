@@ -13,7 +13,7 @@ Community price tracking for Micro Center. Chrome extension + Convex backend, fr
   - `chart.js`: dependency-free canvas chart with range and store filters, an open-box series, typical and low lines, a crosshair tooltip, and drag-resize.
   - `background.js`: anonymous device ID, all backend calls, hourly alert notifications.
   - `config.js`: `CONVEX_URL`, the one line to point at your own deployment.
-- `convex/`: the backend. Observations with dedupe and throttling, price history, threaded comments with votes and moderation, watches and alert triggers, optional email-code accounts with claimed comment handles, rate limiting, and content filters.
+- `convex/`: the backend. Observations with dedupe and throttling, price history, threaded comments with votes and moderation, watches and alert triggers, email-code accounts with claimed comment handles — anonymous to read and contribute, signed in to post, vote, report or set an alert — rate limiting, and content filters.
 - `site/`: the marketing site (jackdaws.app), the policy pages, and `admin.html`, the maintainer's metrics and moderation panel. `site/vendor/` holds third-party files; see the licence note below.
 - `DATA-POLICY.md`: where every reading comes from, the zero-additional-requests rule, and what is deliberately never sent.
 - `CONVENTIONS.md`: the house style. [CONTRIBUTING.md](CONTRIBUTING.md) covers scope and process.

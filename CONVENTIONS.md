@@ -445,6 +445,33 @@ round trip on relitigating rather than reviewing.
   be declined. A rejected comment keeps the typed body in the box — don't change that
   either.
 
+- **The email address is used for exactly what `PRIVACY.md` §2 says, and nothing else.**
+  Today that is two things: the sign-in code, and price alerts the person switched on. The
+  sentence someone read when they typed the address is a ceiling, not an opening position
+  — a use invented afterwards is not covered by consent collected beforehand, however
+  reasonable it sounds in isolation. Widening it means amending the policy, publishing the
+  amendment, and asking existing account holders again. It never means reinterpreting the
+  old sentence to cover the new use. Three consequences, written down so they don't have
+  to be re-derived by someone under time pressure:
+  - **The address list is never disclosed outside the project, in any form** — including
+    forms aggregated enough to look harmless but narrow enough to rejoin. Figures about
+    how much the extension is used come from `counters`, which hold counts and were
+    collected as counts. The addresses were collected under a sentence promising the
+    opposite, and consent gathered later does not reach backwards over them.
+  - **No advertising, affiliate links or sponsored content in any message, ever.** The
+    Chrome Web Store Limited Use terms that `PRIVACY.md` §4 commits to bar it outright,
+    and an extension that mails offers to the shoppers it watches is the exact thing this
+    project's collection posture exists to be nothing like.
+  - **`accounts.email` is never joined to the observation record.** An account and a
+    device ID meet in two places — `watches` and `comments` — and nowhere else. That
+    separation is what makes `PRIVACY.md` §1's "not linked to any identity" a property of
+    the schema rather than a statement about our intentions.
+
+  One operational note, because it is why this is not only a policy question: the sending
+  domain that delivers sign-in codes is the same one any bulk message would leave on.
+  Spam complaints against it do not cost you a mailing — they cost everyone the ability to
+  sign in.
+
 ## Copy has registers
 
 Legal documents (PRIVACY, TERMS) use standard legal structure and tone — numbered

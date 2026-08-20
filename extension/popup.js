@@ -588,9 +588,26 @@
     sheetBody.append(
       sheetHead(
         "Sign in",
-        "Alerts, comments and votes live with your account, so they follow you to any browser you sign in to. No password — we email you a 6-digit code.",
+        "Alerts, comments, votes and your own store's readings live with your account, so they follow you to any browser. No password — we email you a 6-digit code.",
       ),
     );
+
+    // The only place Jackdaw asks for personal data, so it is the one place
+    // that owes the policy a link rather than assuming the welcome page was
+    // read. Opens in a tab: a popup that navigates away loses the half-typed
+    // address and the sheet it was typed into.
+    const fine = el("div", "pop-sheet-fine");
+    const policy = document.createElement("a");
+    policy.className = "pop-link";
+    policy.href = "https://jackdaws.app/privacy.html";
+    policy.target = "_blank";
+    policy.rel = "noopener";
+    policy.append(el("span", "pop-link-text", "What we do with your address"));
+    const policyArrow = el("span", "pop-link-arrow", "\u2192");
+    policyArrow.setAttribute("aria-hidden", "true");
+    policy.append(policyArrow);
+    fine.append(policy);
+    sheetBody.append(fine);
 
     const emailStep = el("div", "pop-step");
     const emailWrap = el("div");

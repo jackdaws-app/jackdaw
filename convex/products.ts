@@ -206,10 +206,18 @@ export const history = query({
     // chart keeps every store's prices.
     shelfStore: v.optional(v.string()),
     // Decides whether the STORE-SCOPED fields come back. The national price
-    // series never depends on it: PRIVACY.md promises aggregate price history
-    // is public by design, and it is the product. What is gated is what that
-    // promise does not cover and what no other endpoint should hand out
-    // unmetered — the shelf snapshot and the per-store open-box price.
+    // series never depends on it: PRIVACY.md §5 promises aggregate price
+    // history is public by design, and it is the product. What is gated is the
+    // pair that promise does not cover — the shelf snapshot and the per-store
+    // open-box price — and the reason is that they are a MEMBER BENEFIT, said
+    // plainly in PRIVACY.md §2. It is NOT abuse control, and calling it that
+    // would be a rationale that reads healthy precisely where it does nothing:
+    // rateLimiter.limit() takes a mutation ctx, so no query in this codebase
+    // can be metered or counted, and one throwaway address buys exactly the
+    // reads an anonymous caller already had. Same failure mode this file
+    // records for selector health and for the client-side call counter that
+    // was declined for the same reason — an instrument that only ever measures
+    // our own well-behaved client.
     sessionToken: v.optional(v.string()),
   },
   returns: v.union(
