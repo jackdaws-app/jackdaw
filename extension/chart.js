@@ -1,5 +1,5 @@
 // Interactive price-history chart: range filtering, crosshair tooltip,
-// typical-price and all-time-low annotations, observation-density ticks, and
+// typical-price and range-low annotations, observation-density ticks, and
 // a one-time draw-in animation. Canvas-based, no dependencies.
 // Exposed as window.__jackdawChart for content.js (both run in the isolated world).
 (() => {
@@ -172,6 +172,11 @@
           price: p.price,
           inStock: p.inStock,
           openBox: obAt(p),
+          // The same rule products.ts and computeStats apply: a lone grid card
+          // may be DRAWN, but it may not name the record. `source` is absent on
+          // responses from an older backend, and absent-is-not-catalog keeps
+          // those deployments reading exactly as they did.
+          corrob: p.reportCount > 1 || p.source !== "catalog",
         }));
       if (all.length) all[all.length - 1].t1 = Math.max(all[all.length - 1].t1, Date.now());
       return all;
@@ -240,7 +245,9 @@
       for (const s of segs) {
         pMin = Math.min(pMin, s.price, s.openBox != null ? s.openBox : Infinity);
         pMax = Math.max(pMax, s.price);
-        lowest = Math.min(lowest, s.price); // LOW line tracks the new-price series
+        // Corroborated readings only — an uncorroborated sighting is still
+        // plotted, it just cannot define the annotated low.
+        if (s.corrob) lowest = Math.min(lowest, s.price);
       }
       const typical = typicalPrice(points);
       const pad = Math.max((pMax - pMin) * 0.18, pMax * 0.03, 1);
@@ -378,7 +385,20 @@
 
       // typical-price dotted line (only once it separates visually from LOW)
       ctx.letterSpacing = "0.5px";
-      if (showTypical && Math.abs(y(typical) - y(lowest)) > 9) {
+      // No corroborated reading in range means no low line to separate from —
+      // and without this guard y(Infinity) is NaN, which silently kills TYPICAL too.
+      const hasLow = isFinite(lowest);
+      // The window tag below is a DISCLOSURE, not decoration: name the range
+      // only when it is actually hiding a lower corroborated price. The range
+      // pills offer the first range that covers the data, so most charts open
+      // on a window that hides nothing — tagging those would imply history
+      // outside the window that does not exist.
+      let lowestAll = Infinity;
+      for (const p of points) {
+        if (p.reportCount > 1 || p.source !== "catalog") lowestAll = Math.min(lowestAll, p.price);
+      }
+      const lowIsAllTime = !isFinite(lowestAll) || lowest <= lowestAll;
+      if (showTypical && (!hasLow || Math.abs(y(typical) - y(lowest)) > 9)) {
         ctx.setLineDash([2, 5]);
         ctx.strokeStyle = pal.typicalLine;
         ctx.lineWidth = 1;
@@ -390,16 +410,25 @@
         ctx.fillText("TYPICAL " + fmtPrice(typical), padL + 2, y(typical) - 4);
       }
 
-      // all-time-low dotted annotation
-      ctx.setLineDash([3, 4]);
-      ctx.strokeStyle = pal.lowLine;
-      ctx.lineWidth = 1;
-      const wy = crisp(y(lowest));
-      ctx.beginPath(); ctx.moveTo(padL, wy); ctx.lineTo(W - padR + 6, wy); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = pal.lowText;
-      ctx.font = "600 9px system-ui, sans-serif";
-      ctx.fillText("LOW " + fmtPrice(lowest), padL + 2, y(lowest) - 4);
+      // Low annotation: the lowest CORROBORATED price inside the VISIBLE range.
+      // Both qualifiers are load-bearing, and this canvas asserted neither — it
+      // travels into the share image, where no reader can check it.
+      if (hasLow) {
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = pal.lowLine;
+        ctx.lineWidth = 1;
+        const wy = crisp(y(lowest));
+        ctx.beginPath(); ctx.moveTo(padL, wy); ctx.lineTo(W - padR + 6, wy); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = pal.lowText;
+        ctx.font = "600 9px system-ui, sans-serif";
+        // The window is part of the claim: an unlabelled LOW on a 1M chart
+        // reads as a record when it is a one-month minimum.
+        ctx.fillText(
+          (lowIsAllTime ? "LOW " : `LOW (${range.key}) `) + fmtPrice(lowest),
+          padL + 2, y(lowest) - 4,
+        );
+      }
       ctx.letterSpacing = "0px";
 
       // live price marker: DOM dot (CSS pulse) pinned to the line's end
