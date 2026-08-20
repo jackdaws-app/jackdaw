@@ -153,9 +153,10 @@ export const report = mutation({
         .order("desc")
         .first();
       if (
-        baseline !== null &&
-        (args.price < baseline.price * PRICE_MIN_RATIO ||
-          args.price > baseline.price * PRICE_MAX_RATIO)
+        (baseline !== null &&
+          (args.price < baseline.price * PRICE_MIN_RATIO ||
+            args.price > baseline.price * PRICE_MAX_RATIO)) ||
+        outsideLifetimeBounds(args.price, existing)
       ) {
         await bump(ctx, `abuse:implausible:day:${utcDay(now)}`);
         return {
@@ -362,6 +363,42 @@ const CATALOG_MAX_ITEMS = 96; // Micro Center's largest "items per page"
 const PRICE_MIN_RATIO = 0.2;
 const PRICE_MAX_RATIO = 5;
 
+// A SECOND anchor, and the reason it exists is that the first one moves. The
+// baseline above is the newest point, which every accepted write replaces — so
+// it bounds one STEP, never a sequence: five individually legal 0.2x writes
+// walk a $1,000 product to $0.32, and watches.fireFor reads the newest row from
+// any store, so every watcher fires on the way down. deviceId is client-chosen,
+// so rotation defeats both the 60s throttle and the rate-limit bucket that
+// would otherwise slow the walk.
+//
+// The all-time extremes are used the opposite way round on purpose: a DOWNWARD
+// walk never raises `highAny`, so that is the anchor that bounds it, and an
+// upward walk never lowers `lowAny`. Deliberately far looser than the step
+// clamp — a genuine clearance can be 80% off and must still land — so this is a
+// backstop against a compounding sequence, not a second opinion on any single
+// reading. Cold start (no summary yet) is unanchored, exactly as before.
+const PRICE_FLOOR_RATIO = 0.05;
+const PRICE_CEILING_RATIO = 20;
+
+/**
+ * The walk-proof half of the clamp. Returns true when `price` is outside what
+ * the product's own rolling summary can justify, whatever the newest row says.
+ */
+function outsideLifetimeBounds(
+  price: number,
+  summary: { lowAny?: number; highAny?: number } | null,
+): boolean {
+  if (summary === null) return false;
+  const { lowAny, highAny } = summary;
+  if (typeof highAny === "number" && highAny > 0 && price < highAny * PRICE_FLOOR_RATIO) {
+    return true;
+  }
+  if (typeof lowAny === "number" && lowAny > 0 && price > lowAny * PRICE_CEILING_RATIO) {
+    return true;
+  }
+  return false;
+}
+
 // A list price is bounded on one side by the shelf price it must exceed, and on
 // the other by nothing at all — so it gets its own ceiling rather than reusing
 // PRICE_MAX_RATIO. 5x would refuse a real 80%-off clearance; 20x refuses the
@@ -477,7 +514,7 @@ export const reportBatch = mutation({
   // Refused in band for the same reason `report` is: the caller discards the
   // result, so a refusal can be counted instead of rolling itself back. The
   // Counts remain convenient for the ordinary extension UI. The bounded item
-  // outcomes also let a sequential browser driver prove that every card on a
+  // outcomes also let Jackdaw's own verification tooling prove that every card on a
   // page either landed or had a specific refusal, instead of guessing which
   // item an aggregate skip count referred to. These are response metadata only
   // and do not add fields to any stored document.
@@ -771,9 +808,10 @@ export const reportBatch = mutation({
         .first();
 
       if (
-        latest !== null &&
-        (raw.price < latest.price * PRICE_MIN_RATIO ||
-          raw.price > latest.price * PRICE_MAX_RATIO)
+        (latest !== null &&
+          (raw.price < latest.price * PRICE_MIN_RATIO ||
+            raw.price > latest.price * PRICE_MAX_RATIO)) ||
+        outsideLifetimeBounds(raw.price, existing)
       ) {
         skipped++;
         skippedItems.push({ productId: raw.productId, reason: "PRICE_OUTLIER" });

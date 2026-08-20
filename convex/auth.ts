@@ -818,10 +818,9 @@ export const claimHandle = mutation({
  * Required by the Chrome Web Store, and the honest reading of GDPR/CCPA
  * erasure for the one piece of personal data Jackdaw holds.
  *
- * WATCHES ARE UNLINKED, NOT DELETED. The device that owns them is still the
- * anonymous owner it was before anyone signed in, and taking someone's alerts
- * away as a side effect of removing their email address would be a bug wearing
- * a privacy costume. Clearing accountId puts the row back exactly as it was.
+ * WATCHES GO WITH THE ACCOUNT. Alerts require an account, so an unlinked watch
+ * would be dormant data with no owner and no path back to it. See
+ * sweepAccountRows, and PRIVACY.md §6, which documents the hard delete.
  *
  * COMMENTS ARE UNLINKED TOO, and for a second reason on top of that one: the
  * words stay because deleting an account must not silently delete other

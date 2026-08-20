@@ -63,8 +63,9 @@ export const summaries = query({
   ),
   handler: async (ctx, args) => {
     // Micro Center's largest page is 96 cards; the collector caps there too.
-    // A caller asking for more is not a grid, so this refuses to be used as a
-    // bulk export endpoint.
+    // This bounds the read cost of ONE call and matches the largest real grid.
+    // It is not an export control: a caller who already holds product ids can
+    // paginate. What it does guarantee is that no single call can scan.
     if (args.productIds.length > 96) {
       throw new Error("TOO_MANY_PRODUCTS");
     }
@@ -117,11 +118,17 @@ export const recompute = internalMutation({
     });
     let changed = 0;
     for (const product of page.page) {
-      const rows = await ctx.db
-        .query("pricePoints")
-        .withIndex("by_product", (q) => q.eq("productDocId", product._id))
-        .order("asc")
-        .take(1000);
+      // Same reason as `history` above, and it matters more here: on a product
+      // past 1000 points an ascending take would rebuild the summary from stale
+      // rows and write lastPrice/lastSeenAt BACKWARDS over correct
+      // incrementally-maintained values, then report the drift it just created.
+      const rows = (
+        await ctx.db
+          .query("pricePoints")
+          .withIndex("by_product", (q) => q.eq("productDocId", product._id))
+          .order("desc")
+          .take(1000)
+      ).reverse();
       // Built with the same helper the write paths use, from an empty start —
       // so this compares two independent routes to the same numbers rather
       // than re-deriving one from the other.
@@ -260,20 +267,25 @@ export const history = query({
     if (product === null) return null;
 
     const storeNum = args.storeNum;
-    const rows =
+    // DESC then reverse, never ASC: `take` truncates at the far end of the scan,
+    // so ascending order would hand back the OLDEST 1000 rows and freeze the
+    // chart, `currentPrice` and `observedAt` on ancient data while every surface
+    // went on labelling them fresh. Callers still receive them oldest-first.
+    const rows = (
       storeNum !== undefined
         ? await ctx.db
             .query("pricePoints")
             .withIndex("by_product_store", (q) =>
               q.eq("productDocId", product._id).eq("storeNum", storeNum),
             )
-            .order("asc")
+            .order("desc")
             .take(1000)
         : await ctx.db
             .query("pricePoints")
             .withIndex("by_product", (q) => q.eq("productDocId", product._id))
-            .order("asc")
-            .take(1000);
+            .order("desc")
+            .take(1000)
+    ).reverse();
 
     const points = rows.map((r) => ({
       storeNum: r.storeNum,
