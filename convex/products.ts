@@ -205,6 +205,12 @@ export const history = query({
     // by location, so the panel asks about the store being browsed while the
     // chart keeps every store's prices.
     shelfStore: v.optional(v.string()),
+    // Decides whether the STORE-SCOPED fields come back. The national price
+    // series never depends on it: PRIVACY.md promises aggregate price history
+    // is public by design, and it is the product. What is gated is what that
+    // promise does not cover and what no other endpoint should hand out
+    // unmetered — the shelf snapshot and the per-store open-box price.
+    sessionToken: v.optional(v.string()),
   },
   returns: v.union(
     v.null(),
@@ -223,6 +229,10 @@ export const history = query({
         // the product rather than being left for the reader to spot in `name`.
         condition: v.union(v.literal("refurbished"), v.null()),
       }),
+      // Whether the store-scoped fields below were populated. The client needs
+      // to tell "nobody has seen an open-box unit" from "you are not signed in",
+      // because one is an empty state and the other is an invitation.
+      signedIn: v.boolean(),
       points: v.array(pointValidator),
       stats: v.object({
         lowestPrice: v.union(v.number(), v.null()),
@@ -240,8 +250,8 @@ export const history = query({
         observedAt: v.union(v.number(), v.null()),
         observedStore: v.union(v.string(), v.null()),
       }),
-      // Present only when `shelfStore` was asked for and that store has been
-      // seen. `units` is what one shopper's screen said; `atLeast` marks Micro
+      // Null for a signed-out caller, whatever was asked for. Otherwise present
+      // only when `shelfStore` was asked for and that store has been seen. `units` is what one shopper's screen said; `atLeast` marks Micro
       // Center's own capped display ("25+"). `openBoxUnits` is how many used
       // units that store had — null on a product this store has only ever been
       // seen through a product page, which shows the open-box price with no
@@ -287,12 +297,23 @@ export const history = query({
             .take(1000)
     ).reverse();
 
+    // Store-scoped fields only. A refused session is simply signed out — the
+    // price history still returns in full, so a signed-out panel renders a
+    // complete chart and an invitation, never an error.
+    const signedIn =
+      args.sessionToken !== undefined &&
+      args.sessionToken.length > 0 &&
+      (await resolveSession(ctx, args.sessionToken)) !== null;
+
     const points = rows.map((r) => ({
       storeNum: r.storeNum,
       price: r.price,
       inStock: r.inStock,
       availability: r.availability ?? null,
-      openBoxPrice: r.openBoxPrice ?? null,
+      // Store-scoped, so it follows the same gate as the shelf. The price,
+      // dates and stock flag beside it do not: those are the aggregate history
+      // PRIVACY.md §5 promises is public by design.
+      openBoxPrice: signedIn ? (r.openBoxPrice ?? null) : null,
       listPrice: r.listPrice ?? null,
       firstSeenAt: r.firstSeenAt,
       lastSeenAt: r.lastSeenAt,
@@ -357,7 +378,7 @@ export const history = query({
 
     const shelfStore = args.shelfStore;
     const shelfRow =
-      shelfStore === undefined
+      shelfStore === undefined || !signedIn
         ? null
         : await ctx.db
             .query("storeStock")
@@ -384,6 +405,7 @@ export const history = query({
         // which is the safe direction.
         condition: product.condition ?? null,
       },
+      signedIn,
       points,
       stats: {
         lowestPrice,

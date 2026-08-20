@@ -552,7 +552,11 @@
   border-radius: 9px;
   padding: 8px 10px;
 }
-.mk-stat-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #9aa1ab; font-weight: 600; }
+/* #6b7280, not #9aa1ab: at 9.5px on the card's white, the old grey measured
+   2.61:1 and had since the cards shipped — it passed every both-themes check
+   because it clears 6:1 on the dark card. Same token as .mk-th so the cards and
+   the table below them read as one family. */
+.mk-stat-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; font-weight: 600; }
 .mk-stat-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .mk-stat-sub { font-size: 11px; color: var(--jd-muted); }
 
@@ -597,6 +601,10 @@
   color: var(--jd-muted);
   text-align: right;
 }
+/* The signed-out stand-in for the open-box chips. Dashed, because it marks an
+   absence with a way to fill it rather than a figure. */
+.jd-chip-gated { border-style: dashed; font-weight: 500; }
+
 /* Open box is one physical used unit at one location — the amber the chips and
    the chart already use for it, so the three surfaces name it the same way. */
 .mk-tr-ob .mk-th,
@@ -1161,7 +1169,8 @@
 #jackdaw-drawer.jd-dark .mk-stat.jd-at-low { background: linear-gradient(180deg, #16213a, #14283a); border-color: rgba(74, 222, 128, 0.35); }
 #jackdaw-drawer.jd-dark .mk-stat.jd-at-low .mk-stat-value { color: #4ade80; }
 #jackdaw-drawer.jd-dark .jd-chip { color: #aeb8c9; }
-#jackdaw-drawer.jd-dark .mk-th { color: #98a2b5; }
+#jackdaw-drawer.jd-dark .mk-th,
+#jackdaw-drawer.jd-dark .mk-stat-label { color: #98a2b5; }
 #jackdaw-drawer.jd-dark .mk-th,
 #jackdaw-drawer.jd-dark .mk-tv,
 #jackdaw-drawer.jd-dark .mk-tw { border-top-color: #253049; }

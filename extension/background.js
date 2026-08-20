@@ -343,6 +343,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // store's points, and only the shelf snapshot is scoped to wherever
           // the shopper is browsing.
           ...(msg.shelfStore ? { shelfStore: msg.shelfStore } : {}),
+          // The store-scoped fields (shelf snapshot, per-store open-box price)
+          // come back only with a session. The price series does not depend on
+          // it. The token stays in the service worker, as everywhere else.
+          ...(await scopeArg()),
         });
       // Cross-store open-box snapshot. Account-gated on the backend: signed
       // out it answers the empty shape, and the panel invites sign-in instead

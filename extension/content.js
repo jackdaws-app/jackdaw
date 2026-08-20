@@ -1084,7 +1084,14 @@
 
       const s = el("div", "mk-stats");
       const animateNums = pendingReveal;
-      const current = stat("Current", product.price, product.inStock ? "in stock" : "out of stock", animateNums);
+      // No stock word here. It WAS the live dataLayer's own claim rather than a
+      // recorded sighting, which is why it was allowed to be present-tense —
+      // but rendered unattributed in a row whose other cards say "seen", it
+      // read as Jackdaw's claim about a shelf, and `dataLayer.inStock` is not
+      // ours to interpret. Micro Center's page states its own availability
+      // inches away, and the chart still shows out-of-stock stretches as
+      // dated sightings, so nothing is lost by not repeating it.
+      const current = stat("Current", product.price, "on this page", animateNums);
       if (atLow) current.classList.add("jd-at-low");
       s.append(
         current,
@@ -1300,6 +1307,11 @@
         if (here.length) shelfOb = here.reduce((a, b) => (a.lastSeenAt >= b.lastSeenAt ? a : b));
       }
 
+      // Signed out, the backend returns no shelf and no per-store open-box
+      // price at all, so their absence here is a permissions state rather than
+      // an empty one — say which, instead of rendering nothing and letting it
+      // read as "this product has never had an open-box unit".
+      const obGated = history.signedIn === false;
       const obPoints = history.points.filter((p) => p.openBoxPrice != null);
       // Hoisted: the chip below and the stats table both want the cheapest
       // open-box reading, and deriving it twice invites them to disagree.
@@ -1345,6 +1357,17 @@
             `Open box at ${where}: ${history.shelf.openBoxUnits} from ${fmtPrice(shelfOb.openBoxPrice)} · ${fmtRel(history.shelf.observedAt)}`,
           ),
         );
+      }
+      if (obGated) {
+        // Same amber family as the real open-box chips, so the shopper can see
+        // what kind of thing is behind it, and it routes to the one sign-in
+        // face every other gated surface uses.
+        const b = el("button", "jd-chip jd-chip-ob jd-chip-btn jd-chip-gated", "Open box · sign in");
+        b.addEventListener("click", async () => {
+          const res = await send({ type: "auth:openPopup" });
+          if (!res || res.error) toast("Click the Jackdaw icon in your Chrome toolbar to sign in");
+        });
+        chips.append(b);
       }
       leftCol.append(chips);
 
