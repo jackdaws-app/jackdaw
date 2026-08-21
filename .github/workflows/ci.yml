@@ -29,45 +29,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Convex types
-        run: npx tsc --noEmit
-
-      - name: Extension syntax
-        # extension/ is no-build vanilla JS that never passes through a bundler, so a
-        # syntax error reaches the shopper. background.js and config.js are ES modules
-        # (manifest declares the service worker as type: module); the rest are classic
-        # scripts injected by the manifest or a <script> tag, and node only applies
-        # module parsing to .mjs.
-        run: |
-          fail=0
-          for f in extension/*.js; do
-            b=$(basename "$f" .js)
-            case "$b" in
-              background|config) ext=mjs ;;
-              *)                 ext=js  ;;
-            esac
-            cp "$f" "/tmp/ci-check.$ext"
-            if ! node --check "/tmp/ci-check.$ext"; then
-              echo "::error file=$f::syntax error"
-              fail=1
-            fi
-          done
-          exit $fail
-
-      - name: Stylesheet syntax
-        # A CSS syntax error does not throw — the browser's error recovery swallows the
-        # NEXT rule whole and carries on, so a stray brace silently deletes a rule and
-        # nothing anywhere reports it. Two of them shipped in popup.css for two days and
-        # were found only because a minifier happened to parse the file. esbuild is the
-        # parser we already have; any warning fails the build.
-        run: |
-          fail=0
-          for f in extension/*.css site/*.css; do
-            out=$(npx esbuild "$f" --outfile=/dev/null --log-level=warning 2>&1)
-            if [ -n "$out" ]; then
-              echo "::error file=$f::$(echo "$out" | head -1)"
-              echo "$out"
-              fail=1
-            fi
-          done
-          exit $fail
+      # The checks themselves live in scripts/check.sh so that this workflow and
+      # `npm test` cannot drift apart — a contributor runs the same three gates
+      # locally that decide the check here.
+      - name: Types, syntax, stylesheets
+        run: npm test

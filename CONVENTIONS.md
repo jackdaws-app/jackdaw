@@ -47,16 +47,36 @@ Don't add styles outside the shadow root.
 **The Shadow DOM isolation is not only CSS.** Content scripts run inside a page the
 retailer controls, so the session token — a bearer credential — never crosses to them: it
 lives in the service worker, and message replies carry derived facts (an address, a count,
-a status), never the token itself. Nothing in the platform enforces this — content scripts
-can read `chrome.storage.local` too — so the rule covers where the token may be stored as
-much as what a reply may say. A feature that needs an account-scoped call from the panel
-sends the request to the service worker and gets the result back.
+a status), never the token itself. The storage half of that is enforced by the browser
+now (see the next rule); the reply half is not, and stays a rule you have to keep. A
+feature that needs an account-scoped call from the panel sends the request to the service
+worker and gets the result back.
+
+**Content scripts have no direct storage access at all — every read and write goes
+through the service worker.** `background.js` restricts `chrome.storage.local` to trusted
+contexts at startup, so a `chrome.storage.local.get` in `content.js` or `catalog.js` does
+not fall back to anything: it throws "Access to storage is not allowed from this context."
+The gateway is `settings:get` / `settings:set`, and it is an allowlist, not a pass-through
+— `CONTENT_READABLE` and `CONTENT_WRITABLE` in `background.js` name the keys a content
+script may see and the (smaller) set it may change. A key that is on neither list is
+simply absent from the reply, and a write to one answers `{ok: false}`.
+
+This is the most violable rule in the extension, because breaking it is invisible while
+you write it: a raw `chrome.storage` call reads as ordinary code, passes `node --check`,
+passes CI, and fails only in a real page. **Adding a preference means adding its key to an
+allowlist** — put it in `CONTENT_READABLE` if a content script reads it, and in
+`CONTENT_WRITABLE` only if a content script must change it. The access level is per
+storage area and cannot be set per key, which is why the allowlists exist rather than a
+narrower restriction; it also sets a browser floor, so `manifest.json` declares
+`minimum_chrome_version`. Don't lower it without checking that the restriction still
+applies.
 
 **A content script outlives the extension that injected it.** A reload or an auto-update
 orphans the running instance: the DOM and the closures survive, and every `chrome.*` call
 from then on throws "Extension context invalidated" — uncaught, into the retailer's own
-console. Never call `chrome.storage` or `chrome.runtime` directly in `content.js` or
-`catalog.js`; go through each file's existing guards. They are deliberately not identical:
+console. Never call `chrome.runtime` directly in `content.js` or `catalog.js` — go
+through each file's existing guards — and reach storage only through the gateway above,
+whose calls are wrapped by those same guards. They are deliberately not identical:
 `content.js`'s wrappers degrade to empty results so callers fall through to their
 defaults, while `catalog.js`'s settings read returns instead — its switches default to on
 when absent, so a dead context must never be readable as "nothing stored." Only the exact
@@ -482,19 +502,23 @@ never leak into legal text.
 
 ## Before you open a PR
 
-- `node --check` each extension file you touched (`.mjs` for `background.js`/`config.js`, `.js` for the rest — module parsing is strict mode).
-- `npx tsc --noEmit` if you touched `convex/`.
+- `npm test` — the backend type-check, a syntax check of every extension script (as a
+  module for `background.js`/`config.js`, as a classic script for the rest, because module
+  parsing is strict mode), and an esbuild parse of every stylesheet. Same script CI runs.
 - Load the unpacked extension and drive the change on a real page. Click through it.
 - If it's visual: check both themes and measure contrast. If it moves: check
   `prefers-reduced-motion`.
 - If it adds or touches a fixed overlay: check it at the smallest host it can meet, with
   a designated scroll child inside it.
+- If it added a preference: its key is in `CONTENT_READABLE` (and `CONTENT_WRITABLE` if a
+  content script writes it), and no content script touches `chrome.storage` directly. CI
+  cannot see either mistake.
 - Say in the PR what you actually verified and how. "Tested" is not information; "drove it
   on a category page at 96 results per page, both themes, contrast 4.9 light / 5.3 dark"
   is.
 
-CI runs the mechanical half automatically on every pull request — the backend type-check,
-a syntax check of every extension script, and an esbuild parse of every stylesheet. It
-cannot see any of the rules above it: nothing machine-checks a contrast ratio, a
+CI runs `npm test` on every pull request, which is the same `scripts/check.sh` you ran
+locally — the two cannot drift, because there is only one copy of the checks. It cannot
+see any of the rules above it: nothing machine-checks a contrast ratio, a
 reduced-motion fallback, or whether an animation reads as handwriting. A green check means
 the files parse, not that the change is right.

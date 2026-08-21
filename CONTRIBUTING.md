@@ -79,24 +79,21 @@ Use whatever tools you like. The requirement is about you, not the tool:
 
 ## Checks
 
-Run these before opening a PR:
+One command, before opening a PR:
 
 ```bash
-npx tsc --noEmit
+npm test
 ```
 
-```bash
-cp extension/content.js /tmp/x.js && node --check /tmp/x.js
-```
+That runs `scripts/check.sh`: `tsc --noEmit` over the backend, `node --check` over every
+`extension/*.js` (as a module for `background.js` and `config.js`, as a classic script for
+the rest), and an esbuild parse of every stylesheet. It is the same script CI runs, so a
+green run locally is the check that will decide your PR. Every gate runs even after one
+fails, so you see all of it at once.
 
-(`background.js` and `config.js` are ES modules, so copy those to `.mjs`; the rest are
-classic scripts and `.js` is right. Repeat for each file you touched.) Then load the
-extension unpacked and drive the change on a real page.
-
-CI runs the mechanical half on every pull request: `tsc --noEmit`, `node --check` over
-each `extension/*.js`, and an esbuild parse of every stylesheet. Run them locally first
-anyway. CI tells you a file is broken. Only driving the page tells you the change is
-right, and that is what makes it review-ready.
+Then load the extension unpacked and drive the change on a real page. CI tells you a file
+is broken. Only driving the page tells you the change is right, and that is what makes it
+review-ready.
 
 ## Running the project
 
