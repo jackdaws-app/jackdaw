@@ -31,4 +31,20 @@ crons.hourly(
   {},
 );
 
+// Sign-in codes are written the moment a code is REQUESTED, before any
+// account exists, so an address typed into the sign-in box and then abandoned
+// is data we hold on behalf of someone who never became a user. Nothing in a
+// read path clears it: a consumed code is inert but immortal. The policy says
+// an unfinished sign-in expires, so something has to make that true on its own
+// rather than when a maintainer remembers.
+//
+// Bounded per run and reports `more` — at a volume where one daily pass stops
+// keeping up, raise the frequency rather than the cap.
+crons.daily(
+  "purge spent sign-in codes and dead sessions",
+  { hourUTC: 8, minuteUTC: 10 },
+  internal.auth.purgeExpired,
+  {},
+);
+
 export default crons;
