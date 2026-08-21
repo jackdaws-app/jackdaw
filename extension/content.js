@@ -1025,10 +1025,25 @@
     if (!alive()) return;
     const a = await send({ type: "auth:state" });
     if (!a || a.error || !a.result) return;
-    if (a.result.signedIn !== account.signedIn || a.result.handle !== account.handle) {
-      account = a.result;
-      if (drawerEl && drawerEl.classList.contains("jd-open")) renderActive();
+    const signedInChanged = a.result.signedIn !== account.signedIn;
+    if (!signedInChanged && a.result.handle === account.handle) return;
+    account = a.result;
+    if (signedInChanged) {
+      // Re-rendering is not enough when the ANSWER to signed-in changed: the
+      // payload in memory was fetched under the old answer, and the gated
+      // fields are absent from it. A signed-out history carries no shelf
+      // snapshot and no per-point open-box price, so redrawing the signed-in
+      // panel over it shows a signed-in person the signed-out data and no
+      // reason why. refreshAll re-reads history, comments and auth together.
+      //
+      // It runs on sign-OUT too, and has to: the reverse leaves gated data on
+      // screen after the credential that earned it is gone.
+      refreshAll();
+      return;
     }
+    // Handle alone moved — that only reaches the composer, so a redraw of the
+    // data already in hand is the whole fix.
+    if (drawerEl && drawerEl.classList.contains("jd-open")) renderActive();
   });
 
   // ---------- Rendering ----------

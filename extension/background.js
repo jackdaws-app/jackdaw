@@ -204,7 +204,7 @@ async function scopeArg() {
  * out: being offline is not a credential problem, and dropping someone's
  * account state every time their wifi drops would be its own bug.
  */
-async function authState() {
+async function authState({ withEmail } = { withEmail: true }) {
   const session = await getSession();
   if (session === null) return { signedIn: false };
   try {
@@ -226,7 +226,12 @@ async function authState() {
         [SESSION_KEY]: { ...session, email: me.email, handle },
       });
     }
-    return { signedIn: true, email: me.email, handle, emailAlerts: me.emailAlerts === true };
+    return {
+      signedIn: true,
+      ...(withEmail ? { email: me.email } : {}),
+      handle,
+      emailAlerts: me.emailAlerts === true,
+    };
   } catch {
     // Offline: the cached address and handle are the last true things we know.
     // emailAlerts is deliberately NOT cached and reports false here — a switch
@@ -235,7 +240,13 @@ async function authState() {
     // showing it off is the one that cannot mislead anybody into thinking they
     // are unsubscribed when they are not. The popup marks this state stale and
     // the switch reads from the backend the moment the network returns.
-    return { signedIn: true, email: session.email, handle: session.handle ?? null, emailAlerts: false, stale: true };
+    return {
+      signedIn: true,
+      ...(withEmail ? { email: session.email } : {}),
+      handle: session.handle ?? null,
+      emailAlerts: false,
+      stale: true,
+    };
   }
 }
 
@@ -252,7 +263,7 @@ async function contributing() {
   return jdCatalog === true;
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     // client-side signal, no backend round trip of its own
     if (msg.type === "event") {
@@ -262,7 +273,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const deviceId = await getDeviceId();
     switch (msg.type) {
       case "auth:state":
-        return authState();
+        // A content script gets the signed-in flag and the handle; the popup
+        // and the extension's own pages also get the address. `sender.tab` is
+        // set only for a message from a tab, which is exactly the content
+        // scripts — extension pages have no tab here.
+        //
+        // The address was never READ in a content script; it was simply being
+        // handed to one. Sending a piece of account data across the boundary
+        // that the far side has no use for is the whole shape of the thing
+        // this file's own comment warns about, so it stops at the boundary
+        // rather than relying on the far side not to look.
+        return authState({ withEmail: sender.tab === undefined });
       // The panel's sign-in card asks for the popup, where the sign-in sheet
       // lives — a content script cannot open it itself. chrome.action.openPopup
       // exists from Chrome 127 and can still refuse (no focused window, or the
