@@ -788,12 +788,20 @@
               : "Alerts still reach you in this browser. Turning this on adds an email, which is what reaches you when the browser is closed.",
           onChange: async (on) => {
             const res = await send({ type: "auth:emailAlerts", on });
+            // The service worker wraps every successful reply as { result },
+            // and only `error` sits on the envelope itself — so the payload
+            // has to be unwrapped before `ok` means anything. Reading res.ok
+            // here found undefined on every call, which reverted the switch
+            // and reported failure after the server had already accepted it.
+            const r = res && res.result;
             // The switch must never show a state the server did not accept —
             // it is a consent control, so an optimistic paint that silently
-            // failed is the one outcome it cannot have.
-            const settled = res && res.ok ? res.emailAlerts === true : auth.emailAlerts === true;
+            // failed is the one outcome it cannot have. It must also never
+            // show a REFUSAL the server did not make, which is what the bug
+            // did: consent that was recorded and then denied on screen.
+            const settled = r && r.ok ? r.emailAlerts === true : auth.emailAlerts === true;
             auth = { ...auth, emailAlerts: settled };
-            if (!res || !res.ok) showError("Couldn't save that. Try again.");
+            if (!r || !r.ok) showError("Couldn't save that. Try again.");
             return settled;
           },
         }),
