@@ -150,9 +150,23 @@ function ageLabel(observedAt) {
 // adopts the watches this device already has rather than starting over.
 //
 // The session token is a bearer credential — whoever holds it is the account —
-// so it lives only in the service worker's storage and is NEVER returned to a
-// caller. Content scripts run inside a page Micro Center controls; they get to
-// know *whether* someone is signed in, and their address, and nothing else.
+// and it is NEVER returned to a caller. Content scripts run inside a page Micro
+// Center controls; they get to know *whether* someone is signed in, and their
+// address, and nothing else.
+//
+// What that does NOT mean, and what this comment claimed until it was measured:
+// the token is in chrome.storage.local, which the whole extension can read,
+// content scripts included. The page itself cannot — an isolated world is a
+// real boundary — so what stands is that no page script and no message reply
+// ever sees it. Anything running with extension privileges already could.
+//
+// Neither obvious hardening is free, which is why this is written down rather
+// than silently "fixed": storage.session is cleared when the browser closes and
+// would end the 90-day sign-in the account exists to provide, and restricting
+// storage.local's access level is not scoped to one key — it would cut off
+// content.js's own theme and consent reads, which are the reason it has storage
+// access at all. A dedicated trusted-context store for this one key is the
+// shape worth having; see the open item in the handbook.
 
 const SESSION_KEY = "jdSession";
 

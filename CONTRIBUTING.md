@@ -52,7 +52,9 @@ cost a day to discover. A patch that works but violates it will be asked to chan
 **Then:** fork, branch from `main`, keep it to one fix per PR, and describe what you
 verified and how.
 
-`main` is protected and takes no direct pushes. Every change, including the maintainer's,
+`main` takes no direct pushes once the repository is public — branch protection is enabled
+as part of opening it, since GitHub does not offer it on a private repository at this plan.
+Every change, including the maintainer's,
 arrives as a pull request, and `.github/CODEOWNERS` puts one reviewer on all of them. The
 CLA check runs on each PR too. A first-time contributor's workflow run needs manual
 approval before it starts, so a pending check on your first PR is normal and not a

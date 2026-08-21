@@ -191,7 +191,7 @@
      hold six points in the middle of the frame) that would flatten the line by
      up to two thirds of a step. Labels must not be able to redraw the data they
      label. The cost is that the top gridline sits below the top of the plot,
-     which is what Keepa and every brokerage chart look like anyway. */
+     which is what a dense financial time-series chart looks like anyway. */
   const TICK_STEPS = [1, 2, 2.5, 5];
   function niceTicks(lo, hi, want) {
     const span = hi - lo;

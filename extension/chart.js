@@ -361,7 +361,7 @@
         }
       }
 
-      // open-box series (Keepa-style second line; gaps where none was seen)
+      // open-box series (a second line over the same axes; gaps where none was seen)
       ctx.strokeStyle = pal.ob;
       ctx.fillStyle = pal.ob;
       ctx.lineWidth = 1.75;

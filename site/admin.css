@@ -559,7 +559,7 @@
 /* ── Category price movement ──
    A diverging bar, not a filled one: the quantity has a sign, and the reader
    has to see which side of nothing a category sits on before reading how far.
-   Colour follows the price-tracking convention (Keepa, CamelCamelCamel) rather
+   Colour follows the price-tracking convention rather
    than the market one — a price going DOWN is the good news here. */
 .idx-head { display: flex; align-items: center; gap: 12px; }
 /* This is the only card head carrying three things, and `.admin-card-head` does

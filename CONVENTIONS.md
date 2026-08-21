@@ -10,8 +10,9 @@ how to propose one. This file is about the code and the craft.
 ## The bar
 
 The standard for anything a user sees is "immaculate." That is deliberately higher than
-"works," and it is the main reason a PR gets sent back. Reference points: Keepa and
-brokerage charts for data density, Reddit for threaded discussion conventions,
+"works," and it is the main reason a PR gets sent back. Reference points: dense financial
+time-series charts for data density, threaded discussion — replies nested under their
+parent, whole subtrees collapsible — for the comment layer,
 [designspells.com](https://designspells.com) for craft detail.
 
 Practically, it means: measure instead of eyeballing, verify both themes, and treat motion
@@ -440,7 +441,7 @@ round trip on relitigating rather than reviewing.
 
 - **The comment filter blocks vulgarity as well as slurs, deliberately.** The panel
   renders inside the retailer's own product page, which puts it in the retail-review
-  category (Amazon, Newegg and Best Buy all filter) rather than the forum category the
+  category, where filtering is the norm, rather than the open-forum category the
   threading borrows its conventions from. PRs trimming the list toward forum norms will
   be declined. A rejected comment keeps the typed body in the box — don't change that
   either.

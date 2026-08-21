@@ -44,7 +44,7 @@
   // armed against and needn't be the one being browsed right now.
   let triggers = { price: true, openBox: false, restock: false, store: null };
   let commentSort = "top"; // "top" | "new"
-  const collapsedThreads = new Set(); // comment _ids collapsed reddit-style
+  const collapsedThreads = new Set(); // comment _ids whose reply subtree is collapsed
 
   // A content script outlives the extension that injected it. Reloading Jackdaw
   // at chrome://extensions — or Chrome auto-updating it under a shopper with
@@ -1745,7 +1745,7 @@
   function renderComment(c, depth) {
     const wrap = el("div", "mk-thread" + (depth ? " mk-thread-nested" : ""));
 
-    // Reddit-style collapse: clicking a collapsed row (or the thread rail)
+    // Thread collapse: clicking a collapsed row (or the thread rail)
     // toggles this comment and everything beneath it.
     if (collapsedThreads.has(c._id)) {
       const replies = countReplies(c);

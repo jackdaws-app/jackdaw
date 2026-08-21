@@ -111,7 +111,7 @@ export const demo = internalMutation({
       {
         displayName: "DanFromDenver",
         body:
-          "Price matched this against Amazon's $94.99 listing last month with zero hassle — showed the listing at the counter and they knocked it down on the spot. Micro Center's price match is same-day delivery-eligible retailers only, so check the fine print first.",
+          "Price matched this against a competitor's $94.99 listing last month with zero hassle — showed the listing at the counter and they knocked it down on the spot. Micro Center's price match is same-day delivery-eligible retailers only, so check the fine print first.",
         score: 9,
       },
       {
