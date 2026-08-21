@@ -12,5 +12,6 @@ dist/
 # Their public counterparts are CONVENTIONS.md (from CLAUDE.md) and
 # DATA-POLICY.md (from LEGAL-NOTES.md). See jackdaw-private/ for the originals.
 CLAUDE.md
+VERIFICATION-LOG.md
 site/DEPLOY.md
 build.sh
