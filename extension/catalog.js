@@ -76,6 +76,28 @@
     }
   };
 
+  // One round trip to the service worker, resolving null rather than throwing
+  // on any failure — an orphaned context, an unknown type, a worker that died
+  // mid-reply. Every caller here treats null as "no answer" and falls back to
+  // its own default, which is the same contract the raw storage reads had.
+  //
+  // Storage is behind this now. storage.local is restricted to trusted contexts
+  // so the session token cannot be read from inside the retailer's page, and an
+  // access level covers a whole area rather than one key, so the collector's own
+  // suppression cache and switches come through the settings gateway instead.
+  const ask = (msg) =>
+    new Promise((resolve) => {
+      if (!alive()) return resolve(null);
+      try {
+        chrome.runtime.sendMessage(msg, (r) => {
+          void chrome.runtime.lastError;
+          resolve(r || null);
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+
   function emitReceipt(receipt) {
     try {
       document.documentElement.setAttribute(
@@ -469,13 +491,9 @@
   // change an alert is waiting on.
 
   async function readSent() {
-    if (!alive()) return {};
-    try {
-      const { [SENT_KEY]: sent } = await chrome.storage.local.get(SENT_KEY);
-      return sent && typeof sent === "object" && !Array.isArray(sent) ? sent : {};
-    } catch {
-      return {};
-    }
+    const reply = await ask({ type: "settings:get", keys: SENT_KEY });
+    const sent = reply && reply.result && reply.result[SENT_KEY];
+    return sent && typeof sent === "object" && !Array.isArray(sent) ? sent : {};
   }
 
   // The remembered signature carries every field reportBatch can update. Shelf
@@ -668,13 +686,10 @@
           // unchanged object would rewrite storage for no reason.
           if (items.length === 0) return;
           // The reply can land after the extension was reloaded, so this write
-          // needs its own guard even though the send above passed one.
-          if (!alive()) return;
-          try {
-            chrome.storage.local.set({ [SENT_KEY]: prune(sent, stamp) });
-          } catch {
-            /* orphaned between send and reply — the next page load re-reports */
-          }
+          // needs its own guard even though the send above passed one. `ask`
+          // carries it, and swallows an orphan between send and reply — the
+          // next page load simply re-reports.
+          void ask({ type: "settings:set", values: { [SENT_KEY]: prune(sent, stamp) } });
         },
       );
     } catch {
@@ -1017,17 +1032,8 @@
 
   async function paintBadges(shown, els) {
     const ids = shown.map((i) => i.productId);
-    const reply = await new Promise((resolve) => {
-      if (!alive()) return resolve(null);
-      try {
-        chrome.runtime.sendMessage({ type: "catalog:summaries", productIds: ids }, (r) => {
-          void chrome.runtime.lastError;
-          resolve(r);
-        });
-      } catch {
-        resolve(null); // orphaned — the grid keeps its own prices, just unbadged
-      }
-    });
+    // orphaned resolves null — the grid keeps its own prices, just unbadged
+    const reply = await ask({ type: "catalog:summaries", productIds: ids });
     const rows = reply && reply.result;
     if (!Array.isArray(rows) || rows.length === 0) return;
     const byId = new Map(rows.map((r) => [r.productId, r]));
@@ -1073,13 +1079,9 @@
     // context must not fall through to `{}` here the way the other reads do —
     // that would paint badges from a dead context. Stop instead; the next load
     // works normally. (Contributing reads `{}` as unanswered, which is off.)
-    if (!alive()) return;
-    let settings;
-    try {
-      settings = await chrome.storage.local.get([CATALOG_KEY, BADGES_OFF_KEY]);
-    } catch {
-      return;
-    }
+    const reply = await ask({ type: "settings:get", keys: [CATALOG_KEY, BADGES_OFF_KEY] });
+    if (!reply || !reply.result) return;
+    const settings = reply.result;
     // Contributing takes an explicit true and nothing else: absent means the
     // popup's consent card hasn't been answered, and an unanswered question
     // sends nothing. The tally rides this switch with the sightings —

@@ -69,22 +69,27 @@
   }
   // Never throws and never rejects: a dead context yields {} / a no-op, so every
   // caller reads it as "nothing stored" and carries on with its defaults.
+  //
+  // These no longer touch chrome.storage directly. The service worker restricts
+  // storage.local to trusted contexts so that the session token is unreachable
+  // from code running inside Micro Center's page, and an access level covers a
+  // whole AREA rather than one key — so the preferences below travel by message
+  // like everything else. The gateway there answers for an allowlist, which is
+  // what stops this from being a way back to the token.
+  //
+  // `send` supplies the orphan handling these used to do for themselves, and
+  // does it better: it treats only the explicit "context invalidated" wording as
+  // orphaned, where the old try/catch here called it on any storage failure at
+  // all. The one real cost is that a read now wakes a sleeping service worker,
+  // which is why the theme read sits beside the panel.css fetch rather than
+  // anywhere later.
   const store = {
     async get(keys) {
-      if (!alive()) return orphaned(), {};
-      try {
-        return await chrome.storage.local.get(keys);
-      } catch {
-        return orphaned(), {};
-      }
+      const res = await send({ type: "settings:get", keys });
+      return res && !res.error && res.result ? res.result : {};
     },
     async set(obj) {
-      if (!alive()) return orphaned();
-      try {
-        await chrome.storage.local.set(obj);
-      } catch {
-        orphaned();
-      }
+      await send({ type: "settings:set", values: obj });
     },
   };
 

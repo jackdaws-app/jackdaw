@@ -2,6 +2,32 @@
 // the price-drop alert loop (hourly check of watched products).
 import { CONVEX_URL } from "./config.js";
 
+// ---------- The storage boundary ----------
+//
+// storage.local defaults to being readable by content scripts, and content
+// scripts run inside a page Micro Center controls. The session token lives
+// here, so the default is wrong for this extension: an isolated world keeps
+// the PAGE out, but it does not keep our own page-injected code out, and the
+// token is a bearer credential.
+//
+// Restricting the area is the only lever available — an access level is per
+// AREA, never per key — so this necessarily cuts content.js and catalog.js off
+// from the eight preference keys they legitimately read. They ask the settings
+// gateway below for those instead. That is the whole trade: one more message
+// hop on a handful of reads, in exchange for the token being unreachable from
+// anything running inside the retailer's page.
+//
+// Not feature-detected on purpose. `setAccessLevel` reached storage.local only
+// in Chrome 140 (it is badged 102+ on the shared StorageArea interface, which
+// covers storage.session and reads as if it covered everything). A guarded call
+// that no-ops on older Chrome would leave the token exposed exactly there while
+// every line here read as though it were protected — the failure this codebase
+// keeps recording. The manifest declares the floor instead, so Chrome simply
+// does not deliver this version to a browser that cannot enforce it.
+chrome.storage.local
+  .setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
+  .catch((e) => console.error("[jackdaw] storage lockdown failed:", e));
+
 async function getDeviceId() {
   const { deviceId } = await chrome.storage.local.get("deviceId");
   if (deviceId) return deviceId;
@@ -151,22 +177,21 @@ function ageLabel(observedAt) {
 //
 // The session token is a bearer credential — whoever holds it is the account —
 // and it is NEVER returned to a caller. Content scripts run inside a page Micro
-// Center controls; they get to know *whether* someone is signed in, and their
-// address, and nothing else.
+// Center controls; they get to know *whether* someone is signed in and under
+// what handle, and nothing else.
 //
-// What that does NOT mean, and what this comment claimed until it was measured:
-// the token is in chrome.storage.local, which the whole extension can read,
-// content scripts included. The page itself cannot — an isolated world is a
-// real boundary — so what stands is that no page script and no message reply
-// ever sees it. Anything running with extension privileges already could.
+// Two boundaries hold that now, where for a while only the first did. No
+// message reply carries the token, and since the lockdown at the top of this
+// file storage.local is unreadable from a content script, so it cannot be
+// fetched around the reply either. The page's own scripts were never in
+// reach — an isolated world is a real boundary — but our code inside that page
+// was, and "it never reads it" is a property of today's source rather than of
+// the system.
 //
-// Neither obvious hardening is free, which is why this is written down rather
-// than silently "fixed": storage.session is cleared when the browser closes and
-// would end the 90-day sign-in the account exists to provide, and restricting
-// storage.local's access level is not scoped to one key — it would cut off
-// content.js's own theme and consent reads, which are the reason it has storage
-// access at all. A dedicated trusted-context store for this one key is the
-// shape worth having; see the open item in the handbook.
+// storage.session was the other candidate and is the wrong one: it is cleared
+// on browser restart, which would end the 90-day sign-in the account exists to
+// provide. It survives service-worker termination fine; a browser close is what
+// it cannot survive.
 
 const SESSION_KEY = "jdSession";
 
@@ -258,6 +283,70 @@ async function authState({ withEmail } = { withEmail: true }) {
 // switch on — contributes. Absent means the question hasn't been answered
 // yet, and an unanswered question sends nothing: consent has to come before
 // collection, not after it.
+// ---------- The settings gateway ----------
+//
+// What content.js and catalog.js use instead of storage.local, now that the
+// area is closed to them. The allowlists are the entire point of routing it
+// through here: a blanket get/set proxy would hand a content script the session
+// token by a second route and leave the lockdown decorative.
+//
+// Read and write are separate sets because they are not the same set. jdBadges
+// is a display switch the popup owns and the collector only consults, so a
+// content script can read it and cannot write it. Everything else here is
+// either a preference the drawer itself sets or a "once" flag it trips.
+//
+// A key absent from these lists is not an oversight to be corrected by adding
+// it — deviceId, jdSession, jdEvents and jdStoreNames are deliberately
+// unreachable, and a content script that wants something derived from them
+// asks for the derived answer through its own message type instead.
+const CONTENT_READABLE = new Set([
+  "jdTheme", // drawer + panel theme
+  "jdChartH", // chart height the shopper dragged to
+  "jdFlightDone", // first-visit bird flight, once
+  "jdCoachDone", // coach mark, once
+  "jdTourDone", // drawer tour, once
+  "jdCatalog", // contribution consent — the tour's 4th step answers it
+  "jdSent", // the collector's per-page suppression cache
+  "jdBadges", // grid badge display switch (read only; the popup writes it)
+]);
+const CONTENT_WRITABLE = new Set([
+  "jdTheme",
+  "jdChartH",
+  "jdFlightDone",
+  "jdCoachDone",
+  "jdTourDone",
+  "jdCatalog",
+  "jdSent",
+]);
+
+// A refused key is dropped, not thrown over. These calls sit under the theme
+// read that runs before the drawer paints and under the collector's suppression
+// read on every grid page; a throw there would cost a visible failure over a
+// key nothing was going to find anyway. The drop is asymmetric on purpose —
+// unreadable comes back absent, which every caller already handles as "nothing
+// stored", and unwritable is simply not written.
+async function settingsGet(keys) {
+  const wanted = (Array.isArray(keys) ? keys : [keys]).filter(
+    (k) => typeof k === "string" && CONTENT_READABLE.has(k),
+  );
+  if (wanted.length === 0) return {};
+  return chrome.storage.local.get(wanted);
+}
+
+async function settingsSet(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return { ok: false };
+  const allowed = {};
+  let any = false;
+  for (const [k, v] of Object.entries(obj)) {
+    if (!CONTENT_WRITABLE.has(k)) continue;
+    allowed[k] = v;
+    any = true;
+  }
+  if (!any) return { ok: false };
+  await chrome.storage.local.set(allowed);
+  return { ok: true };
+}
+
 async function contributing() {
   const { jdCatalog } = await chrome.storage.local.get("jdCatalog");
   return jdCatalog === true;
@@ -272,6 +361,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     const deviceId = await getDeviceId();
     switch (msg.type) {
+      // Content scripts lost direct storage access when the area was locked
+      // down; these two are the replacement, and they answer for the allowlists
+      // only. Extension pages (popup, welcome) are trusted contexts and still
+      // read storage.local directly — they have no reason to come through here.
+      case "settings:get":
+        return settingsGet(msg.keys);
+      case "settings:set":
+        return settingsSet(msg.values);
       case "auth:state":
         // A content script gets the signed-in flag and the handle; the popup
         // and the extension's own pages also get the address. `sender.tab` is
