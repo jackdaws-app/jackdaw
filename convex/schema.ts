@@ -306,6 +306,13 @@ export default defineSchema({
     // value. Targets change, so that figure is a bounded live sum rather than
     // a counter.
     .index("by_active", ["active"])
+    // The email sweep's candidate set. `emailedAt` is in the key because the
+    // sweep's cap is a `take`, which runs BEFORE any filter: on `by_active`
+    // alone, watches already emailed went on occupying the first slots every
+    // hour and everything past the cap was starved permanently rather than
+    // merely delayed. Keyed this way the cap only ever consumes rows that
+    // still owe an email, so truncation becomes a backlog that drains.
+    .index("by_active_emailed", ["active", "emailedAt"])
     // Account-scoped reads: the delete-account unlink sweep, and the watchlist
     // a signed-in caller sees on every browser. Same active-first shape as
     // by_device_active, for the same reason.

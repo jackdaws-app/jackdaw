@@ -863,7 +863,22 @@ export const dashboard = query({
         .order("desc")
         .take(perProduct);
 
-      const latest = recent.length > 0 ? recent[0] : null;
+      // Creation order is NOT observation order. `observations.record` patches
+      // the newest row for a (product, store) pair when the reading has not
+      // changed, so a re-observation bumps an older row's lastSeenAt without
+      // inserting anything. These rows span every store, so the newest-CREATED
+      // row can be stale while an older-created one carries the most recent
+      // reading — which is how the popup came to show a price nobody had seen
+      // most recently. Current state reads the greatest lastSeenAt; the trend
+      // below stays in creation order, which is what a sparkline wants.
+      //
+      // Bounded, and knowingly so: past `perProduct` points a recently
+      // re-observed but old-created row can fall outside the window entirely.
+      // Closing that needs an index carrying lastSeenAt, not a wider take.
+      let latest: Doc<"pricePoints"> | null = null;
+      for (const p of recent) {
+        if (latest === null || p.lastSeenAt > latest.lastSeenAt) latest = p;
+      }
       const currentPrice = latest === null ? 0 : latest.price;
 
       let lowestSoFar: number | null = null;
@@ -1037,9 +1052,15 @@ export const dueForEmail = internalQuery({
     truncated: v.boolean(),
   }),
   handler: async (ctx) => {
+    // Only rows that still owe an email. `take` truncates before any filter
+    // runs, so selecting on `active` alone let already-emailed watches hold
+    // the first EMAIL_SCAN_LIMIT slots on every run — a watch past the cap was
+    // never reached again, which is starvation rather than the delay the
+    // truncation warning describes. `emailedAt: undefined` is exactly the
+    // "armed and unsent" set, so the cap now bounds a draining backlog.
     const rows = await ctx.db
       .query("watches")
-      .withIndex("by_active", (q) => q.eq("active", true))
+      .withIndex("by_active_emailed", (q) => q.eq("active", true).eq("emailedAt", undefined))
       .take(EMAIL_SCAN_LIMIT);
 
     const now = Date.now();

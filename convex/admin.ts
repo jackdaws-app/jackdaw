@@ -2,27 +2,75 @@ import { internalMutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { categoryKey, initCounter, setCounter, utcDay } from "./lib";
 
-// Dev utility: wipe all data. Run with `npx convex run admin:clearAll`.
+// Per-table scan cap for the backfill. Deliberately bounded: the point of the
+// counters is that nothing ever scans a growing table.
+const SCAN_LIMIT = 1000;
+
+// CONVEX_CLOUD_URL is a system variable naming the deployment this code is
+// running on, so it is absent from the typed `env` convex.config.ts declares.
+// Same narrow declaration alerts.ts uses, and for the same reason: @types/node
+// is deliberately not a dependency.
+declare const process: { env: Record<string, string | undefined> };
+
+// The production deployment, named so that a destructive helper can refuse it
+// by name. Already public — `extension/config.js` and `site/config.js` both
+// carry it, because the extension calls it from the browser.
+const PROD_DEPLOYMENT = "insightful-wren-655";
+
+/**
+ * Dev utility: wipe collected data. Run with `npx convex run admin:clearAll`.
+ *
+ * REFUSES ON PRODUCTION, by name and at runtime. `--prod` is one word away
+ * from the normal invocation, this function is destructive and has no undo,
+ * and several counters have no decrement path — so the guard cannot live in a
+ * comment or in a habit. A deploy has already reached prod by accident once.
+ *
+ * Bounded per table and reports `more`, matching the other sweeps here; run it
+ * again while that is true. It deliberately does NOT clear `policyDocs` or
+ * `counters`: the first is published content rather than collected data, and
+ * the second is rebuilt by `backfillCounters`, which is the supported route.
+ */
 export const clearAll = internalMutation({
   args: {},
-  returns: v.number(),
+  returns: v.object({ deleted: v.number(), more: v.boolean() }),
   handler: async (ctx) => {
-    const tables = ["votes", "comments", "pricePoints", "devices", "products"] as const;
+    const url = process.env.CONVEX_CLOUD_URL ?? "";
+    if (url.includes(PROD_DEPLOYMENT)) {
+      throw new ConvexError(
+        "admin:clearAll is refused on production. Production data is not test data and this has no undo.",
+      );
+    }
+    // Every table holding collected or account data, not the five this listed
+    // for its whole life. A partial wipe left accounts, sessions, watches and
+    // shelf rows pointing at products that no longer existed, which is a worse
+    // state to develop against than either a full wipe or none.
+    const tables = [
+      "votes",
+      "reports",
+      "comments",
+      "pricePoints",
+      "storeStock",
+      "watches",
+      "devices",
+      "products",
+      "sessions",
+      "loginCodes",
+      "accounts",
+      "retiredHandles",
+    ] as const;
     let deleted = 0;
+    let more = false;
     for (const table of tables) {
-      const rows = await ctx.db.query(table).take(1000);
+      const rows = await ctx.db.query(table).take(SCAN_LIMIT);
+      if (rows.length === SCAN_LIMIT) more = true;
       for (const row of rows) {
         await ctx.db.delete(row._id);
         deleted++;
       }
     }
-    return deleted;
+    return { deleted, more };
   },
 });
-
-// Per-table scan cap for the backfill. Deliberately bounded: the point of the
-// counters is that nothing ever scans a growing table.
-const SCAN_LIMIT = 1000;
 
 /**
  * One-shot baseline for the metrics counters, so data written before they

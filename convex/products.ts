@@ -103,11 +103,24 @@ export const summaries = query({
  * Internal and cursor-driven: it reads points, so it is the one thing here that
  * genuinely scans, and it must never be reachable from a page.
  */
+// How many points one recompute pass reads per product. A product past this
+// has history the pass cannot see; see the truncation note in the handler.
+const RECOMPUTE_POINT_CAP = 1000;
+
+// The summary fields that are claims about ALL of history rather than about
+// the newest rows, and therefore the ones a windowed pass must not rewrite.
+const LIFETIME_KEYS: readonly string[] = ["lowCorrob", "highCorrob", "lowAny", "highAny"];
+
 export const recompute = internalMutation({
   args: { cursor: v.optional(v.string()), batch: v.optional(v.number()) },
   returns: v.object({
     scanned: v.number(),
     changed: v.number(),
+    // Products whose history exceeded the window, so their lifetime extremes
+    // were left alone rather than rebuilt from a partial view. Reported for
+    // the same reason every other bound here is: a pass that silently covered
+    // less than it claimed reads exactly like a pass that found nothing wrong.
+    windowed: v.number(),
     isDone: v.boolean(),
     cursor: v.union(v.string(), v.null()),
   }),
@@ -117,6 +130,7 @@ export const recompute = internalMutation({
       numItems: Math.min(Math.max(args.batch ?? 50, 1), 200),
     });
     let changed = 0;
+    let windowed = 0;
     for (const product of page.page) {
       // Same reason as `history` above, and it matters more here: on a product
       // past 1000 points an ascending take would rebuild the summary from stale
@@ -127,8 +141,19 @@ export const recompute = internalMutation({
           .query("pricePoints")
           .withIndex("by_product", (q) => q.eq("productDocId", product._id))
           .order("desc")
-          .take(1000)
+          .take(RECOMPUTE_POINT_CAP)
       ).reverse();
+      // A product past the cap has history this pass cannot see, and lowAny /
+      // highAny are LIFETIME claims. Rebuilding them from a window would erase
+      // an all-time low older than the window — and those two fields are the
+      // anchor `outsideLifetimeBounds` refuses implausible prices against, so
+      // narrowing them here quietly moves a guard built to be immovable. The
+      // consistency check would be the thing introducing the inconsistency.
+      //
+      // lastPrice / lastSeenAt stay repairable either way: they describe the
+      // newest rows, which is exactly what a descending take returns.
+      const truncated = rows.length === RECOMPUTE_POINT_CAP;
+      if (truncated) windowed++;
       // Built with the same helper the write paths use, from an empty start —
       // so this compares two independent routes to the same numbers rather
       // than re-deriving one from the other.
@@ -156,6 +181,7 @@ export const recompute = internalMutation({
         "lastSeenAt",
       ] as const;
       for (const k of keys) {
+        if (truncated && LIFETIME_KEYS.includes(k)) continue;
         if (product[k] !== fresh[k]) patch[k] = fresh[k];
       }
       // The lookup key is derived from `category` exactly as the counter keys
@@ -188,6 +214,7 @@ export const recompute = internalMutation({
     return {
       scanned: page.page.length,
       changed,
+      windowed,
       isDone: page.isDone,
       cursor: page.isDone ? null : page.continueCursor,
     };
