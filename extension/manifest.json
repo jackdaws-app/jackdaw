@@ -1,6 +1,5 @@
 {
   "manifest_version": 3,
-  "_comment_minimum_chrome_version": "140 is the floor for chrome.storage.local.setAccessLevel, which background.js uses to keep the session token out of content scripts. The method is documented on the shared StorageArea interface badged 102+, which reads as universally available and is not: only storage.session had it before 140. Declared rather than feature-detected on purpose. A guarded call that silently no-ops would leave the token readable on older Chrome while the code read as if it were protected.",
   "minimum_chrome_version": "140",
   "name": "Jackdaw — Micro Center Price History",
   "version": "0.2.0",
