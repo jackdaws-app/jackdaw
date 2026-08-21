@@ -1,5 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { bump, isPhysicalStore, requireLength, resolveSession } from "./lib";
@@ -219,7 +224,16 @@ async function armOne(
   keep: Doc<"watches">,
   priceAtWatch: number,
 ): Promise<void> {
-  await ctx.db.patch(keep._id, { active: true, priceAtWatch, alertPrice: true });
+  // emailedAt cleared: arming is what "notify me about this product" means,
+  // so a re-armed watch is a NEW alert and is owed its own email. Without
+  // this a watch emailed once would be silent by mail forever after,
+  // however many times the shopper re-armed it. See schema.ts.
+  await ctx.db.patch(keep._id, {
+    active: true,
+    priceAtWatch,
+    alertPrice: true,
+    emailedAt: undefined,
+  });
   for (const row of rows) {
     if (row._id === keep._id) continue;
     if (row.active) await ctx.db.patch(row._id, { active: false });
@@ -949,6 +963,180 @@ export const ack = mutation({
     // loser re-runs against rows that are already off.
     const fired = await disarmAll(ctx, set.rows);
     if (fired) await bump(ctx, "alerts:fired");
+    return null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Email alerts: the scheduled half
+//
+// The browser half above is a PULL — chrome.alarms wakes hourly, calls check(),
+// and raises a toast. It works only while a browser is open, which is exactly
+// the case an email is for: the shopper who armed a watch and closed the laptop.
+//
+// So this half is a PUSH, and the difference is not only direction. check() is
+// stateless and re-reports a live fire every hour on purpose (a toast may have
+// been missed). Mail cannot work that way — see watches.emailedAt in schema.ts.
+// One email per arming, and the marker is what enforces it.
+// ---------------------------------------------------------------------------
+
+// Rows the sweep will look at in one pass, and sends it will prepare from them.
+//
+// The scan bound is the read budget: each eligible row costs its account (once,
+// memoized), its product, and fireFor's own reads — one price point always,
+// plus a shelf row and up to STORE_HISTORY_WINDOW points when a store trigger
+// is armed. Call it a dozen documents at the top end, so 400 rows sits an order
+// of magnitude under the ~16k ceiling even if every one of them is eligible.
+//
+// The send bound is the action's: each send is a network round trip, and an
+// action that tries 500 of them serially will hit its own time limit and lose
+// the tail without recording it. Anything over the cap simply waits for the
+// next sweep — nothing is dropped, because a row is only marked once it has
+// actually been sent.
+const EMAIL_SCAN_LIMIT = 400;
+const EMAIL_SEND_LIMIT = 100;
+
+const emailFireValidator = v.object({
+  watchId: v.id("watches"),
+  accountId: v.id("accounts"),
+  email: v.string(),
+  productId: v.string(),
+  name: v.string(),
+  urlPath: v.string(),
+  priceAtWatch: v.number(),
+  currentPrice: v.number(),
+  storeNum: v.string(),
+  reason: v.union(
+    v.literal("price"),
+    v.literal("openBox"),
+    v.literal("restock"),
+  ),
+  observedAt: v.number(),
+  openBoxPrice: v.optional(v.number()),
+});
+
+/**
+ * Armed watches that are firing, have not been emailed for this arming, and
+ * belong to an account that switched email alerts on. The sweep's only read.
+ *
+ * Three filters and the ORDER of them is the cost model: the cheap field tests
+ * come first so a deployment full of watches belonging to people who never
+ * opted in costs one index scan and nothing else. fireFor is last because it is
+ * the only step that reads other tables.
+ *
+ * `truncated` is returned rather than logged-and-forgotten because a silent cap
+ * reads as "everyone who was owed mail got it". If it is ever true in a real
+ * deployment the sweep interval is too long for the volume, and that is a fact
+ * about the schedule, not about any one watch.
+ */
+export const dueForEmail = internalQuery({
+  args: {},
+  returns: v.object({
+    fires: v.array(emailFireValidator),
+    scanned: v.number(),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("watches")
+      .withIndex("by_active", (q) => q.eq("active", true))
+      .take(EMAIL_SCAN_LIMIT);
+
+    const now = Date.now();
+    const accounts = new Map<Id<"accounts">, Doc<"accounts"> | null>();
+    const fires: Array<typeof emailFireValidator.type> = [];
+    // One send per (account, product): two browsers that each armed the same
+    // product before signing in arrive as two rows, and the person is owed one
+    // email, not one per browser. markEmailed marks the siblings too.
+    const seen = new Set<string>();
+    let truncated = false;
+
+    for (const row of rows) {
+      if (fires.length >= EMAIL_SEND_LIMIT) {
+        truncated = true;
+        break;
+      }
+      // A row with no account has nobody to email — a legacy device-scoped row
+      // that no sign-in has adopted. It still fires in the browser.
+      if (row.accountId === undefined) continue;
+      if (row.emailedAt !== undefined) continue;
+
+      const key = `${row.accountId}:${row.productDocId}`;
+      if (seen.has(key)) continue;
+
+      const accountId = row.accountId;
+      if (!accounts.has(accountId)) {
+        accounts.set(accountId, await ctx.db.get(accountId));
+      }
+      const account = accounts.get(accountId) ?? null;
+      // `=== true`, never truthiness: absent means no, for every account that
+      // predates the field and for every one that has not answered.
+      if (account === null || account.emailAlerts !== true) continue;
+
+      const hit = await fireFor(ctx, row, now);
+      if (hit === null) continue;
+
+      const product = await ctx.db.get(row.productDocId);
+      if (product === null) continue;
+
+      seen.add(key);
+      fires.push({
+        watchId: row._id,
+        accountId,
+        email: account.email,
+        productId: product.productId,
+        name: product.name,
+        urlPath: product.urlPath,
+        priceAtWatch: row.priceAtWatch,
+        currentPrice: hit.currentPrice,
+        storeNum: hit.storeNum,
+        reason: hit.reason,
+        observedAt: hit.observedAt,
+        ...(hit.openBoxPrice === undefined
+          ? {}
+          : { openBoxPrice: hit.openBoxPrice }),
+      });
+    }
+
+    return { fires, scanned: rows.length, truncated };
+  },
+});
+
+/**
+ * Stamp a watch as emailed, and its siblings with it.
+ *
+ * Called only AFTER the send returns, never before: a marker written first
+ * would silence a watch whose mail then failed, and the failure mode of this
+ * ordering is the survivable one — a duplicate email if the marker write loses
+ * a race, rather than a price drop nobody is ever told about.
+ *
+ * Idempotent, and deliberately silent about a row it cannot find: the person
+ * may have acked or deleted the watch during the seconds the send took, and a
+ * throw here would fail a sweep over mail that already went out.
+ */
+export const markEmailed = internalMutation({
+  args: { watchId: v.id("watches"), at: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const watch = await ctx.db.get(args.watchId);
+    if (watch === null) return null;
+    await ctx.db.patch(watch._id, { emailedAt: args.at });
+
+    // The siblings, so a second browser's row for the same product does not
+    // produce a second email on the next sweep. Same scope rule the write paths
+    // use: an account's rows for one product are one watch.
+    if (watch.accountId === undefined) return null;
+    const siblings = await ctx.db
+      .query("watches")
+      .withIndex("by_account_product", (q) =>
+        q.eq("accountId", watch.accountId).eq("productDocId", watch.productDocId),
+      )
+      .take(MAX_ROWS_PER_PRODUCT);
+    for (const row of siblings) {
+      if (row._id === watch._id) continue;
+      if (row.emailedAt !== undefined) continue;
+      await ctx.db.patch(row._id, { emailedAt: args.at });
+    }
     return null;
   },
 });

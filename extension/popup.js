@@ -421,7 +421,15 @@
     });
 
     input.addEventListener("change", async () => {
-      await onChange(input.checked);
+      // A handler MAY return the state that actually settled, and when it does
+      // that is what the switch shows. Local-storage settings return nothing
+      // and keep the optimistic flip, which is right — the write cannot fail.
+      // A setting that crosses the network can, and a consent control left
+      // reading "on" after the server refused is the one wrong state it must
+      // never hold. `typeof` rather than truthiness: a handler returning false
+      // is reporting a state, not declining to.
+      const settled = await onChange(input.checked);
+      if (typeof settled === "boolean") input.checked = settled;
       paint();
       if (!hintEl) setOpen(true);
     });
@@ -756,6 +764,40 @@
       who.insertAdjacentHTML("beforeend", VERIFIED_MARK);
       who.append(el("span", "pop-acct-handle-note", "your name on comments"));
       sheetBody.append(who);
+    }
+
+    // Email alerts: the address's second use, and the only consent surface for
+    // it. PRIVACY.md §2 offers it "if you enable it", so this is that enabling
+    // and it starts off for every account — including accounts that existed
+    // before the switch did, which have never been asked.
+    //
+    // NOT RENDERED WHILE STALE. auth.emailAlerts is deliberately uncached, so
+    // offline it always reads false; drawing a consent switch from a value we
+    // know we could not confirm would let someone toggle a state they cannot
+    // see, and "off" is exactly the reading that would make a person believe
+    // they had unsubscribed when nothing was written.
+    if (!auth.stale) {
+      sheetBody.append(
+        settingRow({
+          on: auth.emailAlerts === true,
+          label: "Email me when an alert fires",
+          noteId: "setNoteEmailAlerts",
+          note: (on) =>
+            on
+              ? "One email per alert, to the address above, when a shopper sees your price. Your browser still tells you too. Every message has an unsubscribe link."
+              : "Alerts still reach you in this browser. Turning this on adds an email, which is what reaches you when the browser is closed.",
+          onChange: async (on) => {
+            const res = await send({ type: "auth:emailAlerts", on });
+            // The switch must never show a state the server did not accept —
+            // it is a consent control, so an optimistic paint that silently
+            // failed is the one outcome it cannot have.
+            const settled = res && res.ok ? res.emailAlerts === true : auth.emailAlerts === true;
+            auth = { ...auth, emailAlerts: settled };
+            if (!res || !res.ok) showError("Couldn't save that. Try again.");
+            return settled;
+          },
+        }),
+      );
     }
 
     const actions = el("div", "pop-actions");

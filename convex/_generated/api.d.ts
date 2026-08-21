@@ -9,9 +9,12 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as alerts from "../alerts.js";
 import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
+import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
+import type * as http from "../http.js";
 import type * as lib from "../lib.js";
 import type * as metrics from "../metrics.js";
 import type * as moderation from "../moderation.js";
@@ -29,9 +32,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  alerts: typeof alerts;
   auth: typeof auth;
   comments: typeof comments;
+  crons: typeof crons;
   dashboard: typeof dashboard;
+  http: typeof http;
   lib: typeof lib;
   metrics: typeof metrics;
   moderation: typeof moderation;

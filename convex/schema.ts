@@ -276,6 +276,25 @@ export default defineSchema({
     // in-store pickup ("Available for In-Store Pickup Only" on most hardware),
     // so stock at YOUR store is the fact that decides whether a trip happens.
     alertRestock: v.optional(v.boolean()),
+
+    // When this watch was EMAILED about, if it has been. Absent means not yet,
+    // which is what every row written before email alerts existed means.
+    //
+    // THE BROWSER TOAST AND THE EMAIL NEED OPPOSITE RULES, which is the whole
+    // reason this field exists. watches:check is stateless and re-reports a
+    // live fire on every hourly alarm, deliberately: a toast is ephemeral and
+    // the shopper may have been away from the machine, so repeating it until
+    // ack is the correct behaviour. An email is not ephemeral. Re-sending it
+    // hourly against an unacked watch would put twenty copies of one price drop
+    // in somebody's inbox overnight and would be indistinguishable, from their
+    // side, from a broken product.
+    //
+    // So the email fires ONCE per arming. armOne clears this, because arming is
+    // what "notify me about this product" means and a re-armed watch is a new
+    // alert; setTriggers deliberately does NOT, because editing which reasons
+    // an already-notified watch may fire for is not a second alert. A brand-new
+    // row has it absent and is eligible immediately.
+    emailedAt: v.optional(v.number()),
   })
     // Watches are soft-deactivated (toggle/ack set active:false rather than
     // deleting), so a device's row count grows without bound. Scoping the
@@ -378,6 +397,21 @@ export default defineSchema({
     // wants this field is auth:listAdmins, a CLI chore — an index here would
     // cost a write on every sign-in to serve it.
     isAdmin: v.optional(v.boolean()),
+
+    // May we email this account when one of its alerts fires? ABSENT MEANS NO,
+    // read as `emailAlerts === true` and never for truthiness — the same rule
+    // alertOpenBox follows two tables up, and for a stronger reason: the one
+    // direction this comparison must never drift is toward mailing somebody who
+    // did not ask. Every account that existed before this field did means no by
+    // it, which is the answer consent law and PRIVACY.md §2 both require, since
+    // they consented to a sentence offering alerts "if you enable it" and none
+    // of them has yet.
+    //
+    // The address itself is collected for the sign-in code regardless; this
+    // governs the second use of it and nothing else. There is deliberately no
+    // third flag here: any use beyond these two needs a policy amendment and
+    // fresh consent, not another boolean (CONVENTIONS.md, decided questions).
+    emailAlerts: v.optional(v.boolean()),
   })
     .index("by_email", ["email"])
     // Point lookups only, from two paths: claiming (is this key free?) and

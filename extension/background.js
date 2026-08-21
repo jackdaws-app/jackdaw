@@ -212,9 +212,16 @@ async function authState() {
         [SESSION_KEY]: { ...session, email: me.email, handle },
       });
     }
-    return { signedIn: true, email: me.email, handle };
+    return { signedIn: true, email: me.email, handle, emailAlerts: me.emailAlerts === true };
   } catch {
-    return { signedIn: true, email: session.email, handle: session.handle ?? null, stale: true };
+    // Offline: the cached address and handle are the last true things we know.
+    // emailAlerts is deliberately NOT cached and reports false here — a switch
+    // drawn from a stale cache could show "on" for an account that turned it
+    // off on another browser, and of the two ways to be wrong about consent,
+    // showing it off is the one that cannot mislead anybody into thinking they
+    // are unsubscribed when they are not. The popup marks this state stale and
+    // the switch reads from the backend the moment the network returns.
+    return { signedIn: true, email: session.email, handle: session.handle ?? null, emailAlerts: false, stale: true };
   }
 }
 
@@ -267,6 +274,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
         // The token stays here. The caller learns what it needs to say.
         return { email: res.email, adoptedWatches: res.adoptedWatches };
+      }
+      // The one consent surface for the address's second use. Token stays in
+      // the service worker, like every other account call.
+      case "auth:emailAlerts": {
+        const session = await getSession();
+        if (session === null) return { ok: false, error: "SIGNED_OUT" };
+        return convexMutation("auth:setEmailAlerts", {
+          sessionToken: session.token,
+          on: msg.on === true,
+        });
       }
       case "auth:signOut": {
         const session = await getSession();

@@ -604,6 +604,7 @@ export const me = query({
       createdAt: v.number(),
       handle: v.union(v.string(), v.null()),
       isAdmin: v.boolean(),
+      emailAlerts: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -625,7 +626,39 @@ export const me = query({
       // render, and every admin function re-checks the account itself through
       // requireAdmin. Nothing here becomes true because a client said so.
       isAdmin: resolved.account.isAdmin === true,
+      // Flattened for the same reason isAdmin is, and it matters more here:
+      // absent means NO, and a client that received a missing key and wrote a
+      // truthiness check would render a switch reading "off" for an account we
+      // were in fact mailing. The switch is drawn from this; whether we mail is
+      // decided by the account row itself in watches:dueForEmail.
+      emailAlerts: resolved.account.emailAlerts === true,
     };
+  },
+});
+
+/**
+ * Turn email alerts on or off.
+ *
+ * The whole consent surface, and it is one boolean because there is one use to
+ * consent to. PRIVACY.md §2 offers the address for a sign-in code and for
+ * alerts "if you enable it" — this is that enabling, and CONVENTIONS.md's
+ * decided question is why a second flag does not belong beside it.
+ *
+ * Explicit `false` is written rather than the field being cleared: absent means
+ * "never asked" and false means "asked and declined", and the unsubscribe path
+ * depends on being able to record the second.
+ */
+export const setEmailAlerts = mutation({
+  args: { sessionToken: v.string(), on: v.boolean() },
+  returns: v.object({ ok: v.boolean(), emailAlerts: v.boolean() }),
+  handler: async (ctx, args) => {
+    const resolved = await resolveSession(ctx, args.sessionToken);
+    // Signed out answers in band, like every other query-shaped account read:
+    // a popup whose session expired mid-session renders signed-out, not an
+    // error dialog over a switch.
+    if (resolved === null) return { ok: false, emailAlerts: false };
+    await ctx.db.patch(resolved.account._id, { emailAlerts: args.on });
+    return { ok: true, emailAlerts: args.on };
   },
 });
 
