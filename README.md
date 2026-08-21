@@ -18,7 +18,7 @@ Community price tracking for Micro Center. Chrome extension + Convex backend, fr
 - `DATA-POLICY.md`: where every reading comes from, the zero-additional-requests rule, and what is deliberately never sent.
 - `CONVENTIONS.md`: the house style. [CONTRIBUTING.md](CONTRIBUTING.md) covers scope and process.
 - `PRIVACY.md` / `TERMS.md`: drafts of the extension's policy documents. `CLA.md`: contributions require signing it.
-- `LICENSE`: AGPL-3.0. [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) records what that grant does not cover: the third-party files in `site/vendor/`.
+- `LICENSE`: AGPL-3.0. [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) records what that grant does not cover: the third-party files in `site/vendor/`, and the Jackdaw name and mark.
 
 ## Run it
 
@@ -45,4 +45,4 @@ Found a vulnerability? Please report it privately, through the *Security* tab ab
 
 Jackdaw's own source is licensed under AGPL-3.0; see [LICENSE](LICENSE). Anyone who distributes Jackdaw, or runs a modified version as a network service, has to share their changes under the same terms.
 
-That grant covers Jackdaw's code and stops at `site/vendor/`, which holds third-party files redistributed unmodified under their own licences: GSAP (a proprietary GreenSock licence), Lenis (MIT), and two SIL OFL fonts. [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) states the scope, lists the files, and carries the AGPL section 7 permission; [`site/vendor/NOTICE.md`](site/vendor/NOTICE.md) explains why each one is vendored rather than loaded from a CDN. **If you fork this and intend to charge for the result, read the GSAP terms first.** They are the one licence here that restricts that, and the AGPL cannot override them.
+That grant covers Jackdaw's code and stops at `site/vendor/`, which holds third-party files redistributed unmodified under their own licences: GSAP (a proprietary GreenSock licence), Lenis (MIT), and two SIL OFL fonts. [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) states the scope, lists the files, and carries the AGPL section 7 permission; [`site/vendor/NOTICE.md`](site/vendor/NOTICE.md) explains why each one is vendored rather than loaded from a CDN. It also reserves the Jackdaw name and the bird mark, which the code licence never conveyed: fork it freely, and ship the result under a name of your own. **If you fork this and intend to charge for the result, read the GSAP terms first.** They are the one licence here that restricts that, and the AGPL cannot override them.

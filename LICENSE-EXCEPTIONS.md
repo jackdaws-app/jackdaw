@@ -1,9 +1,9 @@
 # Licence exceptions
 
 Jackdaw is licensed under the GNU Affero General Public License, version 3; the full
-text is in [LICENSE](LICENSE). This file records the one place that grant does not
-reach, so that anyone forking this repository knows exactly what they did and did not
-receive under the AGPL.
+text is in [LICENSE](LICENSE). This file records what that grant does not reach, so
+that anyone forking this repository knows exactly what they did and did not receive
+under the AGPL.
 
 "The Project Owner" has the meaning given in [CLA.md](CLA.md).
 
@@ -65,3 +65,20 @@ that loads them. The Chrome extension in `extension/` has no third-party depende
 and is covered by the AGPL-3.0 in full; nothing in `site/vendor/` ships inside it. That
 is deliberate: the extension is the code that runs inside a page you did not write, so
 it is where the "read the source yourself" claim has to hold.
+
+## 5. The name and the mark
+
+The AGPL-3.0 grant covers the code. It does not convey any right to the Jackdaw name, to
+the jackdaws.app domain, or to the flying-bird mark and the wordmark it sits in, and the
+Project Owner declines to grant rights in them under section 7(e) of that licence.
+
+This is not a restriction the AGPL brought with it. A copyright licence conveys copyright,
+and a name is trademark, so the two were never travelling together. Nothing here takes
+away something a fork would otherwise have had. The reservation is written down so that it
+is read before a fork ships rather than argued about afterwards.
+
+So: fork freely, and rename first. Give the result its own name, its own icon and its own
+store listing, and say plainly on any page or listing that it is not this project. The
+attribution the AGPL itself requires is a separate obligation and is untouched by this
+section. Describing your work as based on Jackdaw, or linking back here, is accurate,
+permitted and welcome; shipping it *as* Jackdaw is what this section is about.
