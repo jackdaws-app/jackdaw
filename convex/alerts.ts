@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { env, internalAction, internalMutation } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { hashSecret, secretsMatch } from "./lib";
+import { bump, hashSecret, secretsMatch, utcDay } from "./lib";
 
 // ---------------------------------------------------------------------------
 // Email alerts — the delivery half
@@ -136,8 +136,44 @@ export const unsubscribeByToken = internalMutation({
     // Patch unconditionally rather than only when true — a row that predates
     // the field has it absent, and writing the explicit false is what records
     // that this person has now been asked and answered.
+    const wasOn = account.emailAlerts === true;
     await ctx.db.patch(accountId, { emailAlerts: false });
+    // Only a real on -> off transition counts. This endpoint is deliberately
+    // idempotent and answers "ok" twice, and a mail client may fire the
+    // one-click POST alongside a human clicking the same link — so counting
+    // every call would inflate the one number that is supposed to say how many
+    // people asked to stop.
+    if (wasOn) {
+      const now = Date.now();
+      await bump(ctx, "alerts:email:unsub");
+      await bump(ctx, `alerts:email:unsub:day:${utcDay(now)}`);
+    }
     return { ok: true, email: account.email };
+  },
+});
+
+/**
+ * Record sends the provider refused.
+ *
+ * The sweep is an ACTION and holds no transaction, so it cannot bump anything
+ * itself. Successes are counted inside `watches.markEmailed`, which each one
+ * already calls; a failure calls no mutation at all, which is exactly why the
+ * failed half needs its own. Called once per sweep and only when non-zero, so
+ * the ordinary run costs no extra round trip.
+ *
+ * Separate from the success counter on purpose: `sent` climbing while `failed`
+ * stays flat is a healthy mailer, and `failed` climbing alone is the shape a
+ * revoked API key, a suspended domain or a provider outage makes. Neither is
+ * legible from the other.
+ */
+export const recordSendFailures = internalMutation({
+  args: { failed: v.number(), at: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.failed) || args.failed <= 0) return null;
+    await bump(ctx, "alerts:email:failed", args.failed);
+    await bump(ctx, `alerts:email:failed:day:${utcDay(args.at)}`, args.failed);
+    return null;
   },
 });
 
@@ -183,9 +219,14 @@ export const sweep = internalAction({
   handler: async (ctx): Promise<SweepResult> => {
     const apiKey = env.RESEND_API_KEY ?? "";
     if (apiKey.length === 0) {
-      // The supported development state — dev deliberately has no key so that
-      // auth:devPeekCode keeps working. Say so once per sweep and do nothing
-      // else: marking rows here would silence alerts that were never sent.
+      // A deployment with no key configured. This was dev's steady state until
+      // 2026-08-20, when the key was set there so real mail could be tested;
+      // dev now takes the normal path and `auth:devPeekCode` returns no code
+      // while it is set. Say so once per sweep and do nothing else: marking
+      // rows here would silence alerts that were never sent. Nothing is counted
+      // either — a sweep that never had a key did not fail to send, it declined
+      // to try, and folding the two together would make an unconfigured
+      // deployment look like a broken one.
       console.warn(
         "alerts: RESEND_API_KEY is unset — sweep skipped, no rows marked.",
       );
@@ -228,6 +269,16 @@ export const sweep = internalAction({
       // Only now. See the ordering note above.
       await ctx.runMutation(internal.watches.markEmailed, {
         watchId: fire.watchId as Id<"watches">,
+        at: Date.now(),
+      });
+    }
+
+    // Counted after the loop rather than inside it: a refusal writes nothing
+    // else, so there is no transaction to join, and one mutation for the run
+    // beats one per failure when a provider outage fails every message.
+    if (failed > 0) {
+      await ctx.runMutation(internal.alerts.recordSendFailures, {
+        failed,
         at: Date.now(),
       });
     }

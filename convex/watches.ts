@@ -7,7 +7,7 @@ import {
 } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { bump, isPhysicalStore, requireLength, resolveSession } from "./lib";
+import { bump, isPhysicalStore, requireLength, resolveSession, utcDay } from "./lib";
 
 // Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
@@ -1121,6 +1121,22 @@ export const markEmailed = internalMutation({
     const watch = await ctx.db.get(args.watchId);
     if (watch === null) return null;
     await ctx.db.patch(watch._id, { emailedAt: args.at });
+
+    // Counted HERE rather than in the sweep, deliberately. This mutation is the
+    // durable record that a message went out — the marker is what stops the next
+    // sweep re-sending — so bumping in the same transaction makes the counter
+    // and the markers incapable of disagreeing. A tally accumulated in the
+    // action and written at the end would be lost by a crash that had already
+    // marked rows, and would then under-report forever, counters having no
+    // decrement path.
+    //
+    // WHAT THIS NUMBER CAN SUPPORT: sends the provider ACCEPTED, not messages
+    // delivered. Resend answering 2xx means queued; a bounce or a spam
+    // placement happens later and Jackdaw has no webhook to hear about it. It
+    // is a floor on mail handed over, and must be labelled that way anywhere it
+    // is shown.
+    await bump(ctx, "alerts:email:sent");
+    await bump(ctx, `alerts:email:sent:day:${utcDay(args.at)}`);
 
     // The siblings, so a second browser's row for the same product does not
     // produce a second email on the next sweep. Same scope rule the write paths
