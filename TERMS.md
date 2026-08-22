@@ -1,6 +1,6 @@
 # Terms of Service
 
-*Last updated: August 20, 2026.*
+*Last updated: August 21, 2026.*
 
 These Terms of Service ("Terms") govern your use of the Jackdaw browser extension and related services ("the Service"). By using the Service you agree to these Terms.
 
@@ -22,7 +22,7 @@ The Service is provided "as is" and "as available," without warranty of any kind
 
 ## 5. Copyright Complaints
 
-If you believe content on the Service infringes your copyright, submit a notice containing the information required by 17 U.S.C. § 512(c)(3) via an issue in the project's GitHub repository. We will respond promptly.
+If you believe content on the Service infringes your copyright, send a notice containing the information required by 17 U.S.C. § 512(c)(3) to support@jackdaws.app. We will respond promptly.
 
 ## 6. Changes
 

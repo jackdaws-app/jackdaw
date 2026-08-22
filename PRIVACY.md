@@ -1,6 +1,6 @@
 # Privacy Policy
 
-*Last updated: August 20, 2026.*
+*Last updated: August 21, 2026.*
 
 This Privacy Policy describes how the Jackdaw browser extension ("Jackdaw," "we," "our") collects, uses, and shares information. **Viewing and contributing to Jackdaw do not require an account.** Price history is displayed, and price observations are contributed, anonymously. Posting comments, voting, reporting, setting price alerts, and seeing the readings recorded at one particular store require an account, described in Section 2.
 
@@ -48,7 +48,7 @@ Some information is held only in your browser and is never transmitted to us: yo
 
 ## 6. Data Retention and Deletion
 
-Uninstalling the extension deletes the device identifier from your browser. If you created an account, deleting it removes your email address and sessions immediately. Previously contributed price observations remain in the community database and carry no identifier of any kind. Comments, votes, and reports remain as well. Comments are unlinked from the deleted account and continue to display the handle as written at the time of posting, without the verified marker. Votes and reports retain an internal account reference used only for moderation and vote counting; once the account is deleted, it no longer corresponds to any email address or identity. Comments also retain the anonymous device identifier of the browser that posted them, kept for the same purpose. It is not linked to an email address or identity. Votes and reports submitted before accounts were required for participation may retain that identifier in place of an account reference, used the same way. Retired handles are retained indefinitely, as described in Section 2, so that a handle cannot be reassigned to another user. To request removal of specific content you posted, open an issue in the project's GitHub repository.
+Uninstalling the extension deletes the device identifier from your browser. If you created an account, deleting it removes your email address and sessions immediately. Previously contributed price observations remain in the community database and carry no identifier of any kind. Comments, votes, and reports remain as well. Comments are unlinked from the deleted account and continue to display the handle as written at the time of posting, without the verified marker. Votes and reports retain an internal account reference used only for moderation and vote counting; once the account is deleted, it no longer corresponds to any email address or identity. Comments also retain the anonymous device identifier of the browser that posted them, kept for the same purpose. It is not linked to an email address or identity. Votes and reports submitted before accounts were required for participation may retain that identifier in place of an account reference, used the same way. Retired handles are retained indefinitely, as described in Section 2, so that a handle cannot be reassigned to another user. To request removal of specific content you posted, write to support@jackdaws.app.
 
 ## 7. Children
 
@@ -60,4 +60,4 @@ We may update this policy. Material changes will be reflected by the "Last updat
 
 ## 9. Contact
 
-Jackdaw is operated by David, an individual based in the United States ("we", "us", "our"). Questions or requests: open an issue in the Jackdaw GitHub repository.
+Jackdaw is operated by David, an individual based in the United States ("we", "us", "our"). Questions or requests concerning this policy or your data: support@jackdaws.app. Suspected security vulnerabilities: security@jackdaws.app.
