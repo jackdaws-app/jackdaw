@@ -1,13 +1,20 @@
 import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
-  internalQuery,
   mutation,
   query,
 } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { bump, isPhysicalStore, requireLength, resolveSession, utcDay } from "./lib";
+import { internal } from "./_generated/api";
+import {
+  bump,
+  isPhysicalStore,
+  requireLength,
+  resolveSession,
+  STORE_SIGNAL_MAX_AGE_MS,
+  utcDay,
+} from "./lib";
 
 // Epsilon guarding float noise: fire when current <= target + 0.009.
 const DROP_EPSILON = 0.009;
@@ -31,19 +38,11 @@ const MAX_ROWS_PER_PRODUCT = 10;
 // ---------------------------------------------------------------------------
 // Store-scoped triggers
 //
-// A per-store fact is only as fresh as the last Jackdaw user who loaded that
-// store's page, and nothing can tell us a unit sold except somebody visiting.
-// An open-box unit is a SINGLE physical item, so a stale "open box at your
-// store" is not a slightly-wrong number — it is a person driving to a shop for
-// something that left hours ago.
-//
-// So a per-store trigger refuses to fire on an observation older than this, and
-// the notification states the age either way. Missing a real deal is the
-// cheaper failure: the shopper loses nothing they knew about, where a wasted
-// trip costs them an afternoon and costs Jackdaw the trust the whole product
-// runs on. 48h is deliberately generous — a low-traffic store would otherwise
-// never produce an alert at all — and it is a ceiling, not a promise.
-const STORE_SIGNAL_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+// STORE_SIGNAL_MAX_AGE_MS — the 48 hours a per-store observation is allowed to
+// be — now lives in `lib.ts`, because `observations` needs the same number to
+// decide whether re-seeing a stale row is worth an email. The rationale is
+// stated there in full; the short version is that an open-box unit is a single
+// physical item, so a stale "open box at your store" sends somebody driving.
 
 // Recent observations to read per store when looking for a stock transition.
 // Small because it is per-watch inside a 50-watch loop, and because a restock
@@ -310,6 +309,29 @@ async function armedWatches(
   return [...byProduct.values()];
 }
 
+/**
+ * Ask for an email pass over one product now, instead of on the hour.
+ *
+ * Arming is the one moment an email can be owed with no new sighting behind
+ * it: a shopper arms a watch on a product that is ALREADY under their target,
+ * or already has an open-box unit sitting at their store. The observation that
+ * would have carried it happened days ago, so the sighting-driven fan-out in
+ * `observations` has nothing to fire on and the hourly sweep is the only thing
+ * that would ever notice.
+ *
+ * Best-effort, exactly like the sighting path: the sweep sends this within the
+ * hour whether or not the schedule below survives. See the email section at the
+ * bottom of this file for what that guarantee is and is not.
+ */
+async function scheduleEmailFanOut(
+  ctx: MutationCtx,
+  productDocId: Id<"products">,
+): Promise<void> {
+  await ctx.scheduler.runAfter(0, internal.alerts.fanOut, {
+    productDocIds: [productDocId],
+  });
+}
+
 export const toggle = mutation({
   args: {
     // Still carried by the write paths that can CLAIM: it names this
@@ -322,7 +344,10 @@ export const toggle = mutation({
     sessionToken: v.optional(v.string()),
   },
   returns: v.object({ watching: v.boolean() }),
-  handler: async (ctx, args) => {
+  // Annotated because the handler reaches `internal` (through
+  // scheduleEmailFanOut) and inference would otherwise have to resolve the
+  // generated api type, which is built from this handler.
+  handler: async (ctx, args): Promise<{ watching: boolean }> => {
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const accountId = await requireWatchAccount(ctx, args.sessionToken);
 
@@ -377,6 +402,10 @@ export const toggle = mutation({
     // claimed row that was already armed anonymously: the account gained a
     // handle on an existing alert, which is not a new one.
     if (keep === null || !keep.active) await bump(ctx, "alerts:armed");
+
+    // Newly armed, so it may already be firing. Never on the disarm branch
+    // above, which returned before reaching this.
+    await scheduleEmailFanOut(ctx, product._id);
     return { watching: true };
   },
 });
@@ -389,7 +418,7 @@ export const setTarget = mutation({
     sessionToken: v.optional(v.string()),
   },
   returns: v.object({ watching: v.literal(true), target: v.number() }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ watching: true; target: number }> => {
     if (
       !Number.isFinite(args.targetPrice) ||
       args.targetPrice <= 0 ||
@@ -435,6 +464,11 @@ export const setTarget = mutation({
 
     if (armed) await bump(ctx, "alerts:armed");
 
+    // Scheduled whether or not `armed` — re-pricing an existing watch is not a
+    // new alert to count, but a target moved above today's price is a fire that
+    // did not exist a moment ago, which is the whole reason the field is there.
+    await scheduleEmailFanOut(ctx, product._id);
+
     return { watching: true as const, target: args.targetPrice };
   },
 });
@@ -451,6 +485,11 @@ export const setTarget = mutation({
  * Every row in the scope is patched, not just the canonical one, so a browser
  * whose row wins canonical() later still reads the preferences the person set.
  */
+type SetTriggersResult = {
+  ok: boolean;
+  reason?: "SIGN_IN_REQUIRED" | "NOT_WATCHING" | "NOT_A_STORE" | "NO_TRIGGERS";
+};
+
 export const setTriggers = mutation({
   args: {
     // No deviceId: this function only edits rows the account already holds —
@@ -475,7 +514,7 @@ export const setTriggers = mutation({
       ),
     ),
   }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<SetTriggersResult> => {
     const storeNum = requireLength("storeNum", args.storeNum, 1, 10);
 
     // This mutation answers its refusals in band, so the sign-in gate does
@@ -517,14 +556,33 @@ export const setTriggers = mutation({
       return { ok: false, reason: "NOT_WATCHING" as const };
     }
 
+    // Arming a trigger that was OFF gives this watch its email back, exactly
+    // as `armOne` does — the alternative is a switch that reads armed and can
+    // never send, because a price email spent the one allowance weeks ago and
+    // nothing in the panel says so. Deliberately NARROW: only off -> on, so
+    // turning a trigger off, or moving a target, restores nothing and a
+    // shopper cannot re-send the same alert by flipping a switch back and
+    // forth. Read off `watch` rather than per row because the whole sibling
+    // set is one email — the same window `markEmailed` stamps.
+    const newlyArmed =
+      (args.price && watch.alertPrice === false) ||
+      (args.openBox && watch.alertOpenBox !== true) ||
+      (args.restock && watch.alertRestock !== true);
+
     for (const row of set.rows) {
       await ctx.db.patch(row._id, {
         storeNum,
         alertPrice: args.price,
         alertOpenBox: args.openBox,
         alertRestock: args.restock,
+        ...(newlyArmed ? { emailedAt: undefined } : {}),
       });
     }
+
+    // Only here, never on the `ok: false` returns above: those wrote nothing,
+    // so there is nothing new that could fire. Turning a trigger ON can create
+    // a fire out of an observation already on file.
+    await scheduleEmailFanOut(ctx, product._id);
     return { ok: true };
   },
 });
@@ -983,7 +1041,7 @@ export const ack = mutation({
 });
 
 // ---------------------------------------------------------------------------
-// Email alerts: the scheduled half
+// Email alerts: the push half
 //
 // The browser half above is a PULL — chrome.alarms wakes hourly, calls check(),
 // and raises a toast. It works only while a browser is open, which is exactly
@@ -993,15 +1051,30 @@ export const ack = mutation({
 // stateless and re-reports a live fire every hour on purpose (a toast may have
 // been missed). Mail cannot work that way — see watches.emailedAt in schema.ts.
 // One email per arming, and the marker is what enforces it.
+//
+// TWO CALLERS REACH IT, and only one of them is a guarantee.
+//
+//   - `crons.hourly` -> `alerts.sweep`, which scans every armed-and-unsent row.
+//     This is the correctness path. It is what makes "you will be told" true,
+//     and its interval is the worst case anyone waits.
+//   - `observations.report` / `reportBatch` -> `alerts.fanOut`, scheduled off a
+//     sighting that actually changed something, carrying only the products that
+//     changed. This is an ACCELERATOR WITH NO CORRECTNESS OBLIGATIONS. Every
+//     way it can fail — a dropped schedule, a stranded claim, a page nobody
+//     visits — resolves into "the sweep sends it within the hour instead of
+//     within seconds", which is the behaviour that shipped before it existed.
+//
+// Both go through claimDueForEmail below, so the two paths cannot both send.
 // ---------------------------------------------------------------------------
 
-// Rows the sweep will look at in one pass, and sends it will prepare from them.
+// Rows a pass will look at, and sends it will prepare from them.
 //
 // The scan bound is the read budget: each eligible row costs its account (once,
-// memoized), its product, and fireFor's own reads — one price point always,
-// plus a shelf row and up to STORE_HISTORY_WINDOW points when a store trigger
-// is armed. Call it a dozen documents at the top end, so 400 rows sits an order
-// of magnitude under the ~16k ceiling even if every one of them is eligible.
+// memoized), its product, fireFor's own reads — one price point always, plus a
+// shelf row and up to STORE_HISTORY_WINDOW points when a store trigger is armed
+// — and now the sibling window the claim writes over, up to
+// MAX_ROWS_PER_PRODUCT more. Call it two dozen documents at the top end, so 400
+// rows sits comfortably under the ~16k ceiling even if every one is eligible.
 //
 // The send bound is the action's: each send is a network round trip, and an
 // action that tries 500 of them serially will hit its own time limit and lose
@@ -1010,6 +1083,38 @@ export const ack = mutation({
 // actually been sent.
 const EMAIL_SCAN_LIMIT = 400;
 const EMAIL_SEND_LIMIT = 100;
+
+// The reactive path's own bounds, both far tighter than the sweep's, because it
+// runs off a shopper's page view rather than off a schedule.
+//
+// PRODUCT: how many changed products one sighting may carry into a fan-out. A
+// grid page reads up to 96 cards; a fan-out asked to look at all of them would
+// spend its scan budget on a page's worth of products nobody watches. Anything
+// past the cap is not lost, it is simply the sweep's again.
+//
+// SEND: a fan-out is not the backstop and must never behave like one. If a
+// single page view genuinely owes more than this many emails, the mail is going
+// out anyway on the hour; taking the whole send budget off one shopper's page
+// load is how a background accelerator turns into a foreground stall.
+export const EMAIL_FANOUT_PRODUCT_LIMIT = 32;
+const EMAIL_FANOUT_SEND_LIMIT = 25;
+
+// How long a claim stamped by claimDueForEmail keeps other senders off a row.
+//
+// DERIVED, not chosen. A claim is held for at most as long as the action that
+// took it can run, which is min(the deployment's action time limit, the longest
+// the send loop itself can take):
+//
+//   Convex-runtime action time limit ... 1800s   (there is no "use node" in
+//                                                 convex/, so this is the
+//                                                 relevant one, not 600s)
+//   EMAIL_SEND_LIMIT x MAIL_TIMEOUT_MS ... 1000s (100 sends x 10s worst case)
+//
+// so 1000s, and 30 minutes leaves ~800s of margin over it. THE COUPLING IS THE
+// POINT: raise EMAIL_SEND_LIMIT or MAIL_TIMEOUT_MS and this has to rise with
+// them, or a slow sweep begins duplicating its own tail — the claim expiring
+// under a sender that is still working is exactly the case it exists to stop.
+const EMAIL_CLAIM_TTL_MS = 30 * 60 * 1000;
 
 const emailFireValidator = v.object({
   watchId: v.id("watches"),
@@ -1030,9 +1135,29 @@ const emailFireValidator = v.object({
   openBoxPrice: v.optional(v.number()),
 });
 
+type EmailFire = typeof emailFireValidator.type;
+type EmailClaim = { fires: EmailFire[]; scanned: number; truncated: boolean };
+
 /**
  * Armed watches that are firing, have not been emailed for this arming, and
- * belong to an account that switched email alerts on. The sweep's only read.
+ * belong to an account that switched email alerts on — claimed for the caller
+ * in the same transaction that finds them.
+ *
+ * A MUTATION, WHERE THIS USED TO BE A QUERY, and that is the whole change. With
+ * one sender on a schedule, reading was enough: nothing else was looking. With
+ * a second sender that fires off page views, two passes can hold the same row
+ * at the same moment, and the only thing standing between that and two emails
+ * was the marker written after the send — which is deliberately written late,
+ * so it cannot arbitrate a race it happens after. Claiming stamps the row
+ * inside the read, so the loser of the race reads the claim and skips.
+ *
+ * The read-only twin is GONE rather than kept beside this, deliberately: a
+ * function that answers the same question without claiming is exactly what a
+ * future sweep calls by accident.
+ *
+ * Two modes, one body:
+ *   - `productDocIds` absent  -> the sweep. Every armed-and-unsent row.
+ *   - `productDocIds` present -> a fan-out. Only rows on those products.
  *
  * Three filters and the ORDER of them is the cost model: the cheap field tests
  * come first so a deployment full of watches belonging to people who never
@@ -1040,32 +1165,72 @@ const emailFireValidator = v.object({
  * the only step that reads other tables.
  *
  * `truncated` is returned rather than logged-and-forgotten because a silent cap
- * reads as "everyone who was owed mail got it". If it is ever true in a real
- * deployment the sweep interval is too long for the volume, and that is a fact
- * about the schedule, not about any one watch.
+ * reads as "everyone who was owed mail got it". If it is ever true on the SWEEP
+ * the interval is too long for the volume, and that is a fact about the
+ * schedule, not about any one watch. On a fan-out it means the opposite and is
+ * unremarkable: the tighter send cap did its job and the sweep has the rest.
  */
-export const dueForEmail = internalQuery({
-  args: {},
+export const claimDueForEmail = internalMutation({
+  args: {
+    /** Stamped onto every claimed row, and the handle releaseEmailClaim needs. */
+    at: v.number(),
+    productDocIds: v.optional(v.array(v.id("products"))),
+  },
   returns: v.object({
     fires: v.array(emailFireValidator),
     scanned: v.number(),
     truncated: v.boolean(),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, args): Promise<EmailClaim> => {
+    const reactive = args.productDocIds !== undefined;
+    const sendLimit = reactive ? EMAIL_FANOUT_SEND_LIMIT : EMAIL_SEND_LIMIT;
+
     // Only rows that still owe an email. `take` truncates before any filter
     // runs, so selecting on `active` alone let already-emailed watches hold
     // the first EMAIL_SCAN_LIMIT slots on every run — a watch past the cap was
     // never reached again, which is starvation rather than the delay the
     // truncation warning describes. `emailedAt: undefined` is exactly the
     // "armed and unsent" set, so the cap now bounds a draining backlog.
-    const rows = await ctx.db
-      .query("watches")
-      .withIndex("by_active_emailed", (q) => q.eq("active", true).eq("emailedAt", undefined))
-      .take(EMAIL_SCAN_LIMIT);
+    let rows: Doc<"watches">[];
+    if (args.productDocIds === undefined) {
+      rows = await ctx.db
+        .query("watches")
+        .withIndex("by_active_emailed", (q) => q.eq("active", true).eq("emailedAt", undefined))
+        .take(EMAIL_SCAN_LIMIT);
+    } else {
+      // Deduped and capped HERE rather than trusting the caller. The caps are
+      // this function's own invariants, and a rule enforced only at the call
+      // site is one caller away from being violated.
+      const ids = [...new Set(args.productDocIds)].slice(
+        0,
+        EMAIL_FANOUT_PRODUCT_LIMIT,
+      );
+      // Evenly, so one heavily-watched product cannot eat the batch's whole
+      // scan budget and leave the other 31 products of the page unread. The
+      // sweep covers whatever this misses either way.
+      const perProduct = Math.max(
+        8,
+        Math.floor(EMAIL_SCAN_LIMIT / Math.max(1, ids.length)),
+      );
+      rows = [];
+      for (const productDocId of ids) {
+        if (rows.length >= EMAIL_SCAN_LIMIT) break;
+        const some = await ctx.db
+          .query("watches")
+          .withIndex("by_product_active_emailed", (q) =>
+            q
+              .eq("productDocId", productDocId)
+              .eq("active", true)
+              .eq("emailedAt", undefined),
+          )
+          .take(Math.min(perProduct, EMAIL_SCAN_LIMIT - rows.length));
+        rows.push(...some);
+      }
+    }
 
-    const now = Date.now();
+    const now = args.at;
     const accounts = new Map<Id<"accounts">, Doc<"accounts"> | null>();
-    const fires: Array<typeof emailFireValidator.type> = [];
+    const fires: EmailFire[] = [];
     // One send per (account, product): two browsers that each armed the same
     // product before signing in arrive as two rows, and the person is owed one
     // email, not one per browser. markEmailed marks the siblings too.
@@ -1073,7 +1238,7 @@ export const dueForEmail = internalQuery({
     let truncated = false;
 
     for (const row of rows) {
-      if (fires.length >= EMAIL_SEND_LIMIT) {
+      if (fires.length >= sendLimit) {
         truncated = true;
         break;
       }
@@ -1084,6 +1249,16 @@ export const dueForEmail = internalQuery({
 
       const key = `${row.accountId}:${row.productDocId}`;
       if (seen.has(key)) continue;
+
+      // Somebody else is already sending this one. A claim older than the TTL
+      // is treated as absent: the sender that took it cannot still be running,
+      // so the row is owed an email nobody is going to send.
+      if (
+        row.emailClaimedAt !== undefined &&
+        now - row.emailClaimedAt < EMAIL_CLAIM_TTL_MS
+      ) {
+        continue;
+      }
 
       const accountId = row.accountId;
       if (!accounts.has(accountId)) {
@@ -1101,6 +1276,26 @@ export const dueForEmail = internalQuery({
       if (product === null) continue;
 
       seen.add(key);
+
+      // THE CLAIM COVERS THE SIBLING SET, because the send it protects does.
+      // markEmailed marks every unsent row an account holds for this product,
+      // so a claim that covered only the row we happened to read first would
+      // leave the others visible to a concurrent pass, which would fire on one
+      // of them and send the second email this whole mechanism exists to stop.
+      // Same window, same bound, same condition as markEmailed's loop.
+      await ctx.db.patch(row._id, { emailClaimedAt: args.at });
+      const siblings = await ctx.db
+        .query("watches")
+        .withIndex("by_account_product", (q) =>
+          q.eq("accountId", accountId).eq("productDocId", row.productDocId),
+        )
+        .take(MAX_ROWS_PER_PRODUCT);
+      for (const sibling of siblings) {
+        if (sibling._id === row._id) continue;
+        if (sibling.emailedAt !== undefined) continue;
+        await ctx.db.patch(sibling._id, { emailClaimedAt: args.at });
+      }
+
       fires.push({
         watchId: row._id,
         accountId,
@@ -1124,12 +1319,55 @@ export const dueForEmail = internalQuery({
 });
 
 /**
+ * Hand a claimed watch back unsent.
+ *
+ * Called when the send failed, so the next pass can try again instead of
+ * waiting out EMAIL_CLAIM_TTL_MS. Purely an accelerator: doing nothing here
+ * would cost the shopper the TTL, never the email.
+ *
+ * The `at` equality guard is what makes it safe to call late. If the claim on
+ * the row is no longer ours — expired, and taken by a pass that is at this
+ * moment sending — clearing it would invite a third sender in behind them. So
+ * a claim we do not recognise is left exactly where it is.
+ */
+export const releaseEmailClaim = internalMutation({
+  args: { watchId: v.id("watches"), at: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const watch = await ctx.db.get(args.watchId);
+    if (watch === null) return null;
+    if (watch.emailClaimedAt === args.at) {
+      await ctx.db.patch(watch._id, { emailClaimedAt: undefined });
+    }
+
+    // The siblings the claim covered, on the same terms.
+    if (watch.accountId === undefined) return null;
+    const siblings = await ctx.db
+      .query("watches")
+      .withIndex("by_account_product", (q) =>
+        q.eq("accountId", watch.accountId).eq("productDocId", watch.productDocId),
+      )
+      .take(MAX_ROWS_PER_PRODUCT);
+    for (const row of siblings) {
+      if (row._id === watch._id) continue;
+      if (row.emailClaimedAt === args.at) {
+        await ctx.db.patch(row._id, { emailClaimedAt: undefined });
+      }
+    }
+    return null;
+  },
+});
+
+/**
  * Stamp a watch as emailed, and its siblings with it.
  *
  * Called only AFTER the send returns, never before: a marker written first
- * would silence a watch whose mail then failed, and the failure mode of this
- * ordering is the survivable one — a duplicate email if the marker write loses
- * a race, rather than a price drop nobody is ever told about.
+ * would silence a watch whose mail then failed. The claim above is what stops
+ * a concurrent sender in the meantime — this marker is the durable record that
+ * the message went out, and the two are deliberately different facts.
+ *
+ * Clears the claim in the same patch, because a marked row needs no protecting:
+ * `emailedAt` already takes it out of every candidate index.
  *
  * Idempotent, and deliberately silent about a row it cannot find: the person
  * may have acked or deleted the watch during the seconds the send took, and a
@@ -1138,10 +1376,13 @@ export const dueForEmail = internalQuery({
 export const markEmailed = internalMutation({
   args: { watchId: v.id("watches"), at: v.number() },
   returns: v.null(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<null> => {
     const watch = await ctx.db.get(args.watchId);
     if (watch === null) return null;
-    await ctx.db.patch(watch._id, { emailedAt: args.at });
+    await ctx.db.patch(watch._id, {
+      emailedAt: args.at,
+      emailClaimedAt: undefined,
+    });
 
     // Counted HERE rather than in the sweep, deliberately. This mutation is the
     // durable record that a message went out — the marker is what stops the next
@@ -1152,7 +1393,7 @@ export const markEmailed = internalMutation({
     // decrement path.
     //
     // WHAT THIS NUMBER CAN SUPPORT: sends the provider ACCEPTED, not messages
-    // delivered. Resend answering 2xx means queued; a bounce or a spam
+    // delivered. A 2xx from the mail provider means queued; a bounce or a spam
     // placement happens later and Jackdaw has no webhook to hear about it. It
     // is a floor on mail handed over, and must be labelled that way anywhere it
     // is shown.
@@ -1172,7 +1413,10 @@ export const markEmailed = internalMutation({
     for (const row of siblings) {
       if (row._id === watch._id) continue;
       if (row.emailedAt !== undefined) continue;
-      await ctx.db.patch(row._id, { emailedAt: args.at });
+      await ctx.db.patch(row._id, {
+        emailedAt: args.at,
+        emailClaimedAt: undefined,
+      });
     }
     return null;
   },

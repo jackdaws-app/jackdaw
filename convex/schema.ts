@@ -295,6 +295,32 @@ export default defineSchema({
     // an already-notified watch may fire for is not a second alert. A brand-new
     // row has it absent and is eligible immediately.
     emailedAt: v.optional(v.number()),
+
+    // Somebody is trying to send this one RIGHT NOW.
+    //
+    // Not the same fact as emailedAt and deliberately not folded into it. The
+    // sweep used to be the only sender — one pass an hour, one serial loop —
+    // so a duplicate needed a crash between the send returning and the marker
+    // committing, and alerts.ts chose that ordering on purpose. A sighting can
+    // now schedule a send of its own, so two senders can exist at once and a
+    // duplicate stops needing a crash: two shoppers on one product page inside
+    // one send window is an ordinary Tuesday. The claim is what makes the two
+    // serialize — they are mutations patching the same document, so the loser
+    // re-runs and sees the claim.
+    //
+    // It cannot be emailedAt, because a pre-send stamp of emailedAt would make
+    // a stranded attempt indistinguishable from a delivered email and silence
+    // the watch forever. Cleared in the same transaction as emailedAt on
+    // success, and cleared on a refused send so the next pass can re-take the
+    // row. A claim older than EMAIL_CLAIM_TTL_MS is treated as absent: a
+    // scheduled action is at-most-once, so a sender that died holding one is
+    // never coming back to release it.
+    //
+    // DELIBERATELY IN NO INDEX. The candidate set is "active and unsent", and a
+    // claimed row still owes an email — indexing the claim would move claimed
+    // rows out of that set, which is exactly what would make a stranded claim
+    // unrecoverable. It is read after the take and skipped in JS instead.
+    emailClaimedAt: v.optional(v.number()),
   })
     // Watches are soft-deactivated (toggle/ack set active:false rather than
     // deleting), so a device's row count grows without bound. Scoping the
@@ -321,7 +347,26 @@ export default defineSchema({
     // exists one owner up: a signed-in write has to find the alert the person
     // already set on another browser, rather than minting a second row for a
     // product they are already watching.
-    .index("by_account_product", ["accountId", "productDocId"]),
+    .index("by_account_product", ["accountId", "productDocId"])
+    // The same candidate set as by_active_emailed, scoped to one product.
+    //
+    // A sighting that changed something schedules a send for the product it
+    // just wrote, and this is what lets that ask "does anybody actually want
+    // mail about this one" without scanning the deployment's watches. It is
+    // also the probe observations.ts runs inline before scheduling anything at
+    // all, which is why the prefix has to be exact: a 96-card grid page of
+    // products nobody watches must cost 96 index seeks that read nothing, not
+    // 96 scheduled jobs that each discover the same emptiness a round trip
+    // later.
+    //
+    // FIELD ORDER. productDocId first because it is the only scoping term;
+    // active and emailedAt after it in the same order by_active_emailed uses
+    // them, so the two read as one candidate set under two prefixes. `active`
+    // is in the key because rows are soft-deactivated and never deleted, so a
+    // bare [productDocId] prefix sorts every dead watch ahead of the live ones
+    // (false < true). `emailedAt` is in it for by_active_emailed's reason: a
+    // take truncates before any filter runs.
+    .index("by_product_active_emailed", ["productDocId", "active", "emailedAt"]),
 
   devices: defineTable({
     deviceId: v.string(),

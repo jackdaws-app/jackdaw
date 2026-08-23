@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { env, internalAction, internalMutation } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { bump, hashSecret, secretsMatch, utcDay } from "./lib";
@@ -178,23 +179,46 @@ export const recordSendFailures = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
-// The sweep
+// The two passes
+//
+// One body, two entry points, and the difference between them is entirely in
+// what they are ALLOWED TO FAIL AT.
+//
+//   sweep   — hourly, every armed-and-unsent row. The guarantee. If it stops
+//             running, people stop being told, and that is an outage.
+//   fanOut  — scheduled off a sighting that changed a price, a stock flag or an
+//             open-box figure, carrying only the products that changed. An
+//             accelerator. If it never runs, never fires, or dies halfway, the
+//             sweep sends the same mail within the hour and nobody can tell the
+//             difference except by the timestamp.
+//
+// Keeping them one function is deliberate: two send loops would drift, and the
+// one that drifted would be the one nobody watches.
 // ---------------------------------------------------------------------------
 
 /**
- * One pass: read what is owed, send it, mark what actually went out.
+ * One pass: claim what is owed, send it, mark what actually went out.
  *
  * An ACTION rather than a mutation because it makes network calls, which is
  * also what forces the read/send/write split — an action holds no transaction,
  * so the marker cannot ride along with the send and the ordering has to be
- * chosen deliberately. It is: send first, mark second, per watch. A crash
- * between the two costs a duplicate email on the next sweep; the other order
- * costs a price drop nobody is ever told about. Duplicates are survivable and
- * silence is not.
+ * chosen deliberately. It is:
+ *
+ *   claim (mutation) -> send (network) -> mark, or release on failure.
+ *
+ * THE CLAIM IS NEW AND THE ORDERING NOTE THAT USED TO LIVE HERE WAS REVERSED BY
+ * IT. With one sender on a schedule, "send first, mark second" was right: the
+ * only race was against a crash, duplicates were survivable and silence was
+ * not. With a second sender firing off page views the race stops being
+ * crash-shaped and becomes traffic-shaped — two passes over the same row at the
+ * same second, which on a popular product is not an edge case but the normal
+ * one. So the row is claimed inside the read, and the marker still lands only
+ * after the send. Silence stays bounded: a stranded claim clears itself after
+ * EMAIL_CLAIM_TTL_MS and the next sweep sends it.
  *
  * Nothing here throws. A scheduled function that throws logs a stack nobody
- * reads and takes the rest of the batch with it, so one address that Resend
- * refuses must not cost the other ninety-nine their mail.
+ * reads and takes the rest of the batch with it, so one address the mail
+ * provider refuses must not cost the other ninety-nine their mail.
  */
 type SweepResult = {
   sent: number;
@@ -203,87 +227,142 @@ type SweepResult = {
   truncated: boolean;
 };
 
+const passResultValidator = v.object({
+  sent: v.number(),
+  failed: v.number(),
+  scanned: v.number(),
+  truncated: v.boolean(),
+});
+
+async function runPass(
+  ctx: ActionCtx,
+  productDocIds: Id<"products">[] | undefined,
+): Promise<SweepResult> {
+  const label = productDocIds === undefined ? "sweep" : "fan-out";
+  const apiKey = env.RESEND_API_KEY ?? "";
+  if (apiKey.length === 0) {
+    // A deployment with no key configured. This was dev's steady state until
+    // 2026-08-20, when the key was set there so real mail could be tested;
+    // dev now takes the normal path and `auth:devPeekCode` returns no code
+    // while it is set. Say so once per pass and do nothing else — and in
+    // particular DO NOT CLAIM: claiming here would stamp rows nobody is going
+    // to send, and every one of them would then sit unreachable until the TTL
+    // expired. Nothing is counted either — a pass that never had a key did not
+    // fail to send, it declined to try, and folding the two together would make
+    // an unconfigured deployment look like a broken one.
+    console.warn(
+      `alerts: RESEND_API_KEY is unset — ${label} skipped, no rows claimed or marked.`,
+    );
+    return { sent: 0, failed: 0, scanned: 0, truncated: false };
+  }
+
+  // The claim handle. One value for the whole pass, so releaseEmailClaim can
+  // tell our claim from a later one and refuse to clear somebody else's.
+  const claimedAt = Date.now();
+  const due = await ctx.runMutation(internal.watches.claimDueForEmail, {
+    at: claimedAt,
+    ...(productDocIds === undefined ? {} : { productDocIds }),
+  });
+  // Only the sweep's truncation is a warning. A fan-out hitting its much
+  // tighter send cap is the cap working: it is not the backstop, and the sweep
+  // has whatever it left behind.
+  if (due.truncated && productDocIds === undefined) {
+    console.warn(
+      `alerts: sweep hit its send cap with ${due.scanned} rows scanned — the remainder waits for the next run. If this repeats, the interval is too long for the volume.`,
+    );
+  }
+  if (due.fires.length === 0) {
+    return { sent: 0, failed: 0, scanned: due.scanned, truncated: due.truncated };
+  }
+
+  const from = env.JACKDAW_FROM_EMAIL ?? DEFAULT_FROM;
+  // CONVEX_SITE_URL is a Convex system variable, not one of ours, so it
+  // comes off process.env rather than the typed `env` that convex.config.ts
+  // declares. It is the .convex.site origin that http.ts is served from —
+  // the deployment knows its own address, so no config has to hold it and
+  // a dev deployment mints dev links without anyone remembering to.
+  const site = process.env.CONVEX_SITE_URL ?? "";
+  let sent = 0;
+  let failed = 0;
+
+  for (const fire of due.fires) {
+    const unsubUrl =
+      site.length === 0
+        ? null
+        : `${site}/unsubscribe?token=${encodeURIComponent(
+            await unsubToken(fire.accountId),
+          )}`;
+    const ok = await deliver(apiKey, from, fire, unsubUrl);
+    if (!ok) {
+      failed++;
+      // Hand it back unsent, so the next pass can try it immediately instead
+      // of waiting out the claim. Best-effort by construction: if this write
+      // is the thing that failed, the TTL still frees the row.
+      await ctx.runMutation(internal.watches.releaseEmailClaim, {
+        watchId: fire.watchId as Id<"watches">,
+        at: claimedAt,
+      });
+      continue;
+    }
+    sent++;
+    // Only now. See the ordering note above.
+    await ctx.runMutation(internal.watches.markEmailed, {
+      watchId: fire.watchId as Id<"watches">,
+      at: Date.now(),
+    });
+  }
+
+  // Counted after the loop rather than inside it: a refusal writes nothing
+  // else, so there is no transaction to join, and one mutation for the run
+  // beats one per failure when a provider outage fails every message.
+  if (failed > 0) {
+    await ctx.runMutation(internal.alerts.recordSendFailures, {
+      failed,
+      at: Date.now(),
+    });
+  }
+
+  return { sent, failed, scanned: due.scanned, truncated: due.truncated };
+}
+
+/** The hourly pass over every armed-and-unsent row. The guarantee. */
 export const sweep = internalAction({
   args: {},
-  returns: v.object({
-    sent: v.number(),
-    failed: v.number(),
-    scanned: v.number(),
-    truncated: v.boolean(),
-  }),
+  returns: passResultValidator,
   // Annotated rather than inferred. An action that calls a function through
   // `internal` is part of the graph `internal` is derived from, so letting
   // TypeScript infer this makes the type reference itself and collapses to
-  // `any` — with a TS7022 that names `due` rather than the cycle. Same
+  // `any` — with a TS7022 that names a local rather than the cycle. Same
   // annotation, for the same reason, as auth:verifyCode's.
-  handler: async (ctx): Promise<SweepResult> => {
-    const apiKey = env.RESEND_API_KEY ?? "";
-    if (apiKey.length === 0) {
-      // A deployment with no key configured. This was dev's steady state until
-      // 2026-08-20, when the key was set there so real mail could be tested;
-      // dev now takes the normal path and `auth:devPeekCode` returns no code
-      // while it is set. Say so once per sweep and do nothing else: marking
-      // rows here would silence alerts that were never sent. Nothing is counted
-      // either — a sweep that never had a key did not fail to send, it declined
-      // to try, and folding the two together would make an unconfigured
-      // deployment look like a broken one.
-      console.warn(
-        "alerts: RESEND_API_KEY is unset — sweep skipped, no rows marked.",
-      );
+  handler: async (ctx): Promise<SweepResult> => runPass(ctx, undefined),
+});
+
+/**
+ * The reactive pass, scheduled off a sighting that changed something.
+ *
+ * SCHEDULED FROM A MUTATION, WHICH IS WHY THE CLAIM IS NOT TAKEN HERE. Convex
+ * schedules a mutation exactly once and retries it; it schedules an ACTION at
+ * most once and never retries it. A claim written by the scheduling mutation
+ * would therefore be stranded whenever the action it was written for failed to
+ * start — rows marked as being sent by a sender that does not exist, held for
+ * the whole TTL. Taking the claim as this action's first step means a job that
+ * never runs leaves nothing behind at all.
+ *
+ * The caller passes only products whose reading actually MOVED — a re-sighting
+ * that patched a row cannot change a verdict, so scheduling on one would be a
+ * job that reads a few hundred rows and finds nothing every time.
+ *
+ * Returns the same shape the sweep does, and nothing consumes it: it exists for
+ * the function log, which is the only place a fan-out is visible at all.
+ */
+export const fanOut = internalAction({
+  args: { productDocIds: v.array(v.id("products")) },
+  returns: passResultValidator,
+  handler: async (ctx, args): Promise<SweepResult> => {
+    if (args.productDocIds.length === 0) {
       return { sent: 0, failed: 0, scanned: 0, truncated: false };
     }
-
-    const due = await ctx.runQuery(internal.watches.dueForEmail, {});
-    if (due.truncated) {
-      console.warn(
-        `alerts: sweep hit its send cap with ${due.scanned} rows scanned — the remainder waits for the next run. If this repeats, the interval is too long for the volume.`,
-      );
-    }
-    if (due.fires.length === 0) {
-      return { sent: 0, failed: 0, scanned: due.scanned, truncated: due.truncated };
-    }
-
-    const from = env.JACKDAW_FROM_EMAIL ?? DEFAULT_FROM;
-    // CONVEX_SITE_URL is a Convex system variable, not one of ours, so it
-    // comes off process.env rather than the typed `env` that convex.config.ts
-    // declares. It is the .convex.site origin that http.ts is served from —
-    // the deployment knows its own address, so no config has to hold it and
-    // a dev deployment mints dev links without anyone remembering to.
-    const site = process.env.CONVEX_SITE_URL ?? "";
-    let sent = 0;
-    let failed = 0;
-
-    for (const fire of due.fires) {
-      const unsubUrl =
-        site.length === 0
-          ? null
-          : `${site}/unsubscribe?token=${encodeURIComponent(
-              await unsubToken(fire.accountId),
-            )}`;
-      const ok = await deliver(apiKey, from, fire, unsubUrl);
-      if (!ok) {
-        failed++;
-        continue;
-      }
-      sent++;
-      // Only now. See the ordering note above.
-      await ctx.runMutation(internal.watches.markEmailed, {
-        watchId: fire.watchId as Id<"watches">,
-        at: Date.now(),
-      });
-    }
-
-    // Counted after the loop rather than inside it: a refusal writes nothing
-    // else, so there is no transaction to join, and one mutation for the run
-    // beats one per failure when a provider outage fails every message.
-    if (failed > 0) {
-      await ctx.runMutation(internal.alerts.recordSendFailures, {
-        failed,
-        at: Date.now(),
-      });
-    }
-
-    return { sent, failed, scanned: due.scanned, truncated: due.truncated };
+    return runPass(ctx, args.productDocIds);
   },
 });
 

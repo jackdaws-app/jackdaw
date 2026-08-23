@@ -1,6 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
+import { EMAIL_FANOUT_PRODUCT_LIMIT } from "./watches";
 import {
   bump,
   categoryKey,
@@ -13,12 +16,68 @@ import {
   selectorHealthValidator,
   requireLength,
   sanitize,
+  STORE_SIGNAL_MAX_AGE_MS,
   tryRateLimit,
   utcDay,
   widenSummary,
 } from "./lib";
 
 const THROTTLE_MS = 60_000;
+
+// ---------------------------------------------------------------------------
+// Email fan-out: turning a sighting into a send
+//
+// A watch is only ever worth an email because somebody LOOKED at the product,
+// and the person who looked is a shopper on a Micro Center page, not a cron.
+// So the moment a reading changes something, this file asks the alerts action
+// to take a pass over that product — a price drop can reach an inbox in
+// seconds instead of on the hour.
+//
+// THREE PROPERTIES MAKE THIS SAFE TO PUT IN A SHOPPER'S WRITE PATH.
+//
+// 1. It is an ACCELERATOR WITH NO CORRECTNESS OBLIGATIONS. `crons.hourly`
+//    still sweeps every armed-and-unsent row, so every way this can fail —
+//    the schedule dropped, the action never started, the product capped out of
+//    a batch — resolves into "the mail goes out on the hour instead", which is
+//    exactly the behaviour that shipped before any of this existed. Nothing
+//    here may ever become the only path to a send.
+//
+// 2. It costs the shopper NOTHING MEASURABLE. `ctx.scheduler.runAfter(0, ...)`
+//    writes one row in the transaction that is already committing and returns;
+//    the action runs afterwards, on Convex's own time, with no page waiting on
+//    it. The reads it does are reads of Jackdaw's own tables — no request is
+//    issued to the retailer, on this path or any other, which is the whole
+//    §1 posture and is untouched by this.
+//
+// 3. IT ONLY FIRES WHEN THE READING ACTUALLY MOVED. `report` and `reportBatch`
+//    PATCH an existing price point when the price, the stock flag and the
+//    open-box figure all match, and INSERT when any of them differ. A patch
+//    changes nothing a verdict is computed from, so scheduling on one would be
+//    a job that scans a few hundred watches and finds nothing, on every repeat
+//    sighting of every product, forever.
+//
+// A throw anywhere after the schedule takes the schedule with it — Convex
+// rolls a mutation's scheduled functions back with its writes — so a refused
+// or implausible sighting cannot email anybody. That is the transaction doing
+// the work, not a check.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask for an email pass over these products, best-effort.
+ *
+ * Deduped and capped, because the caller can be a 96-card grid page. Anything
+ * past the cap is not lost, it is the sweep's — see the note above.
+ */
+async function scheduleEmailFanOut(
+  ctx: MutationCtx,
+  productDocIds: Id<"products">[],
+): Promise<void> {
+  const ids = [...new Set(productDocIds)].slice(0, EMAIL_FANOUT_PRODUCT_LIMIT);
+  if (ids.length === 0) return;
+  await ctx.scheduler.runAfter(0, internal.alerts.fanOut, {
+    productDocIds: ids,
+  });
+}
 
 export const report = mutation({
   args: {
@@ -258,6 +317,26 @@ export const report = mutation({
         : openBoxPrice !== undefined &&
           Math.abs(latest.openBoxPrice - openBoxPrice) <= 0.01);
 
+    // Whether this reading is worth an email pass. Read BEFORE the write below,
+    // because the patch branch stamps `lastSeenAt = now` and the question
+    // becomes unanswerable the moment it does.
+    //
+    // The insert branch is the obvious yes: price, stock or open box moved.
+    //
+    // THE PATCH BRANCH HAS ONE CASE TOO, and it is the only reason this is not
+    // a one-line boolean. `watches.fireFor` refuses to speak for a store row
+    // older than STORE_SIGNAL_MAX_AGE_MS — an open-box unit that has not been
+    // seen in 48 hours is a drive to a shop for something that left. A patch
+    // stamps that row fresh, so a re-sighting can make a row that was too old
+    // to fire new enough to fire, for both store-scoped reasons, with no new
+    // price point anywhere. Physical stores only: 029 and 000 have no shelves,
+    // so no store-scoped trigger can be armed against them in the first place.
+    const wasStale =
+      latest !== null &&
+      isPhysicalStore(storeNum) &&
+      now - latest.lastSeenAt >= STORE_SIGNAL_MAX_AGE_MS;
+
+    let moved: boolean;
     if (
       latest !== null &&
       latest.price === args.price &&
@@ -269,6 +348,7 @@ export const report = mutation({
         reportCount: latest.reportCount + 1,
         ...(availability !== undefined ? { availability } : {}),
       });
+      moved = wasStale;
     } else {
       await ctx.db.insert("pricePoints", {
         productDocId,
@@ -291,6 +371,7 @@ export const report = mutation({
         reportCount: 1,
       });
       await bump(ctx, "pricepoints:total");
+      moved = true;
     }
 
     // Widen the product's rolling summary so a grid badge can quote this
@@ -317,6 +398,11 @@ export const report = mutation({
     // Cap of 1: a product page is one page, so every tally on this path is a
     // single observation and anything larger is a client inventing numbers.
     const selectorsOk = await recordSelectorHealth(ctx, args.selectors, 1, now);
+
+    // Last, so every write above is already in this transaction: a throw
+    // between here and the commit takes the scheduled job with it, and a
+    // sighting that did not land can never email anybody.
+    if (moved) await scheduleEmailFanOut(ctx, [productDocId]);
 
     return { ok: true, throttled: false, rateLimited: false, implausible: false, selectorsRejected: !selectorsOk };
   },
@@ -652,6 +738,11 @@ export const reportBatch = mutation({
     let skipped = 0;
     const acceptedProductIds: string[] = [];
     const skippedItems: { productId: string; reason: CatalogSkipReason }[] = [];
+    // Products whose reading actually MOVED, which is a strict subset of the
+    // accepted ones and usually a small one: a grid page re-read an hour later
+    // is ninety-six confirmations of prices nobody changed. See the fan-out
+    // section at the top of this file for why only these are worth a pass.
+    const movedDocIds: Id<"products">[] = [];
     let newProducts = 0;
     let newPricePoints = 0;
     const perCategory = new Map<string, number>();
@@ -860,6 +951,17 @@ export const reportBatch = mutation({
           ? listPrice === undefined
           : listPrice !== undefined && Math.abs(latest.listPrice - listPrice) <= 0.01);
 
+      // Read before the patch below, which stamps `lastSeenAt = now` and takes
+      // the answer with it. A store row older than STORE_SIGNAL_MAX_AGE_MS is
+      // one `watches.fireFor` refuses to speak for, so re-sighting it can make
+      // a watch fireable on the open-box and restock triggers with no new price
+      // point anywhere. `hasShelves` is the same physical-store test the shelf
+      // block below uses: 029 and 000 can hold no store-scoped trigger.
+      const wasStale =
+        latest !== null &&
+        hasShelves &&
+        now - latest.lastSeenAt >= STORE_SIGNAL_MAX_AGE_MS;
+
       // A re-sighting carries the row's reportCount past one, which is exactly
       // the read path's corroboration test — so the price this row has been
       // holding is now allowed to name a record, even though both sightings
@@ -877,6 +979,7 @@ export const reportBatch = mutation({
           reportCount: latest.reportCount + 1,
         });
         corroborated = true;
+        if (wasStale) movedDocIds.push(productDocId);
       } else {
         // `availability` is still carried unconditionally — no grid card shows
         // it, so the batch has no key for it and the old rule stands untouched.
@@ -895,6 +998,7 @@ export const reportBatch = mutation({
         });
         newPricePoints++;
         corroborated = false;
+        movedDocIds.push(productDocId);
       }
 
       // Same widening as the product-page path, with the corroboration verdict
@@ -980,6 +1084,12 @@ export const reportBatch = mutation({
       CATALOG_MAX_ITEMS,
       now,
     );
+
+    // One job for the whole page, never one per card: ninety-six schedules
+    // would be ninety-six actions each re-reading the same watch rows. The
+    // helper dedupes and caps, so a page carrying more moved products than one
+    // pass can cover keeps the first of them and leaves the rest to the cron.
+    await scheduleEmailFanOut(ctx, movedDocIds);
 
     return {
       ok: true,

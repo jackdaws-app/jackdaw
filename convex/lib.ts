@@ -643,6 +643,32 @@ export function isPhysicalStore(storeNum: string | undefined): storeNum is strin
 }
 
 // ---------------------------------------------------------------------------
+// Store-signal staleness
+//
+// A per-store fact is only as fresh as the last Jackdaw user who loaded that
+// store's page, and nothing can tell us a unit sold except somebody visiting.
+// An open-box unit is a SINGLE physical item, so a stale "open box at your
+// store" is not a slightly-wrong number — it is a person driving to a shop for
+// something that left hours ago.
+//
+// So a per-store trigger refuses to fire on an observation older than this, and
+// the notification states the age either way. Missing a real deal is the
+// cheaper failure: the shopper loses nothing they knew about, where a wasted
+// trip costs them an afternoon and costs Jackdaw the trust the whole product
+// runs on. 48h is deliberately generous — a low-traffic store would otherwise
+// never produce an alert at all — and it is a ceiling, not a promise.
+//
+// HERE RATHER THAN BESIDE ITS FIRST CALLER, for isPhysicalStore's reason one
+// paragraph up. Three functions now need the same 48 hours: `watches.fireFor`
+// refuses to speak for a row older than this, and `observations.report` and
+// `observations.reportBatch` use it to decide whether a re-sighting of a stale
+// row is worth an email — a patch stamps lastSeenAt = now, so a row too old to
+// fire becomes fresh enough to fire with no new price point anywhere. A
+// divergent copy would make the trigger and the fire disagree about the same
+// window, which presents as SOME alerts arriving late and no error anywhere.
+export const STORE_SIGNAL_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
 // Selector health
 // ---------------------------------------------------------------------------
 
