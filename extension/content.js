@@ -295,24 +295,55 @@
   }
 
   async function refreshAll() {
-    const [h, c, a] = await Promise.all([
-      // shelfStore scopes only the shelf snapshot, never the price series:
-      // prices are national, the shelf is the one thing that isn't.
-      send({ type: "history", productId: product.productId, shelfStore: product.storeNum }),
-      send({ type: "comments:list", productId: product.productId }),
-      send({ type: "auth:state" }),
-    ]);
-    // A failed auth check falls back to the signed-out card. The backend
-    // stays the authority either way: a stale "signed in" here only draws a
-    // form whose post the server will refuse with SIGN_IN_REQUIRED.
-    account = a && !a.error && a.result ? a.result : { signedIn: false };
+    // All three go out together — the point of separating them is what we WAIT
+    // for, not when they leave. The tab's sparkline is drawn from `history`
+    // alone (not from `historyLoaded`, which is why the split below can be
+    // uneven), so awaiting all three held it behind whichever of the three
+    // happened to land last; they are the same round trip to the same host, so
+    // that was a coin flip costing a median of 0ms and a tail past 60ms, and
+    // more for a signed-in shopper, whose auth check is a third network call
+    // rather than a local read. Detaching them is safe because `send` resolves
+    // on every path including orphaned and never rejects: an unawaited one
+    // cannot surface as an unhandled rejection.
+    //
+    // shelfStore scopes only the shelf snapshot, never the price series:
+    // prices are national, the shelf is the one thing that isn't.
+    const pHistory = send({ type: "history", productId: product.productId, shelfStore: product.storeNum });
+    const pComments = send({ type: "comments:list", productId: product.productId });
+    const pAuth = send({ type: "auth:state" });
+
+    const h = await pHistory;
     // A failed request and a product with no history are different things and
     // must not look the same: one offers a retry, the other invites a first visit.
     historyFailed = !!(h && h.error);
     history = h && !h.error ? h.result : null;
-    comments = c && !c.error && Array.isArray(c.result) ? c.result : [];
-    historyLoaded = true;
     updateTabSparkline();
+
+    const [c, a] = await Promise.all([pComments, pAuth]);
+    // A failed auth check falls back to the signed-out card. The backend
+    // stays the authority either way: a stale "signed in" here only draws a
+    // form whose post the server will refuse with SIGN_IN_REQUIRED.
+    account = a && !a.error && a.result ? a.result : { signedIn: false };
+    comments = c && !c.error && Array.isArray(c.result) ? c.result : [];
+    // `historyLoaded` is committed HERE and not above beside `history` itself,
+    // and the distance between those two lines is the only subtle thing in this
+    // function. It gates renderLeft's skeleton branch, whose early return sits
+    // ABOVE `pendingReveal = false` — so while it is false, a drawer opened
+    // mid-load draws the skeleton and PRESERVES the one-shot first-open reveal
+    // for the render that actually has data. Commit it early and that drawer
+    // instead runs the whole choreography — the 650ms draw-in, the stat
+    // count-ups, the all-time-low sparkle's 350ms timer — against a pane the
+    // render below then clears, rebuilding it with the flag already spent: the
+    // sweep jumps to finished mid-frame and the sparkle appends its particles
+    // to a detached node. `everOpened` is one-shot, so that is the celebration
+    // lost for the page rather than deferred.
+    //
+    // Rendered ONCE, after everything has landed, deliberately: an open drawer
+    // rebuilds its chart on render, and a second pass would restart the 650ms
+    // draw-in under a shopper already reading it. The sparkline above is the
+    // only thing that gets the early update, because it needs `history` and not
+    // this flag, and redrawing it is free.
+    historyLoaded = true;
     if (drawerEl && drawerEl.classList.contains("jd-open")) renderActive();
   }
 
@@ -728,7 +759,7 @@
       paneEl.append(
         signInCard(
           "Alerts follow your account",
-          "Price drops, open-box finds and restocks, checked hourly against what other shoppers have seen. One alert reaches you on every browser you sign in to. No password — a 6-digit code by email.",
+          "Price drops, open-box finds and restocks, checked as other shoppers report what they see. One alert reaches you on every browser you sign in to. No password — a 6-digit code by email.",
         ),
       );
       return;
@@ -821,7 +852,7 @@
     renderStoreTriggers();
 
     paneEl.append(el("div", "mk-note",
-      "One alert per product, checked hourly against what other shoppers have seen. Alerts fire once — re-arm any time."));
+      "One alert per product, checked as other shoppers report what they see, and hourly besides. Alerts fire once — re-arm any time."));
   }
 
   // ---------- Store triggers ----------

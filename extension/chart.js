@@ -503,20 +503,58 @@
 
       for (const [k, b] of btns) b.classList.toggle("jd-range-active", k === range.key);
 
-      if (drawProgress < 1) requestAnimationFrame(draw);
+      if (drawProgress < 1) update();
     }
 
-    const update = () => requestAnimationFrame(draw);
+    // One layout read and one draw per frame, whatever the pointer does.
+    // Every caller of update() is an event handler — two toggles, a range
+    // pill, the resizer's pointermove drag, and the hover below — and an
+    // unguarded rAF per event pays for a full canvas redraw once per EVENT
+    // rather than once per frame. Chrome coalesces mousemove to roughly frame
+    // cadence already, so the hover is usually 1:1 anyway; that is a property
+    // of the browser's input handling, not of this code, and the drag is not
+    // covered by it at all.
+    //
+    // The draw-in's own loop routes through here too, deliberately: left as a
+    // bare rAF it would schedule a second draw for a frame a pointer event had
+    // already claimed, so the coalescing would do nothing for the 650ms when
+    // the most is going on.
+    let pending = false;
+    // Page x of the last pointer position, or null for "pointer has left".
+    // Held rather than resolved on the spot so the getBoundingClientRect —
+    // a forced layout — happens once per frame instead of once per event,
+    // and so mouseleave cannot be overwritten by a move still queued behind
+    // it: it clears this, and the frame reads whatever landed last.
+    let cursorX = null;
+    let hoverDirty = false;
+    const update = () => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        // Cleared before draw() so a throw in there cannot wedge the flag on
+        // and leave the chart permanently unable to schedule another frame.
+        pending = false;
+        if (hoverDirty && (geom || cursorX === null)) {
+          hoverDirty = false;
+          if (cursorX === null) hover = null;
+          else {
+            const rect = canvas.getBoundingClientRect();
+            const frac = (cursorX - rect.left - geom.padL) / (geom.W - geom.padL - geom.padR);
+            hover = geom.t0 + Math.min(Math.max(frac, 0), 1) * (geom.t1 - geom.t0);
+          }
+        }
+        draw();
+      });
+    };
 
     stage.addEventListener("mousemove", (e) => {
-      if (!geom) return;
-      const rect = canvas.getBoundingClientRect();
-      const frac = (e.clientX - rect.left - geom.padL) / (geom.W - geom.padL - geom.padR);
-      hover = geom.t0 + Math.min(Math.max(frac, 0), 1) * (geom.t1 - geom.t0);
+      cursorX = e.clientX;
+      hoverDirty = true;
       update();
     });
     stage.addEventListener("mouseleave", () => {
-      hover = null;
+      cursorX = null;
+      hoverDirty = true;
       update();
     });
 
