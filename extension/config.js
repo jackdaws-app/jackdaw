@@ -1,5 +1,5 @@
 // Convex deployment URL.
-// DEV (current): carries seeded demo data so every feature is visible.
-// For release, switch to the production deployment (kept clean of mock data):
-//   export const CONVEX_URL = "https://insightful-wren-655.convex.cloud";
-export const CONVEX_URL = "https://calculating-shepherd-148.convex.cloud";
+// Production. For local development against the dev deployment (seeded demo
+// data), point this at that deployment instead; the two are swapped together
+// with site/config.js.
+export const CONVEX_URL = "https://insightful-wren-655.convex.cloud";
