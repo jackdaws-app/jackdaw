@@ -10,6 +10,7 @@ import {
 } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { esc, layout, para, textFooter } from "./mail";
 import { internal } from "./_generated/api";
 import {
   SESSION_TTL_MS,
@@ -256,30 +257,35 @@ export const sendCode = internalAction({
   },
 });
 
-/** Plain-text body. No links — the whole point of a code is that there aren't any. */
-function codeEmailText(code: string): string {
+/**
+ * Both bodies. The code mail carries no links at all, and that is the point of
+ * a code: nothing in it to click, so nothing in it to spoof. The footer names
+ * the site as plain text.
+ */
+export function codeEmailText(code: string): string {
   return [
-    code,
+    `Your Jackdaw sign-in code: ${code}`,
     "",
-    "That's your Jackdaw sign-in code. It works once, and expires in 10 minutes.",
+    "It works once and expires in 10 minutes.",
     "",
-    "If you didn't ask for it, ignore this — nothing has changed, and no account was created.",
-    "",
-    "Jackdaw — community price history for Micro Center.",
+    "If you didn't ask for it, ignore this. Nothing has changed, and no account was created.",
+    ...textFooter(),
   ].join("\n");
 }
 
-/** Same words, set in a single self-contained table. No images, no tracking. */
-function codeEmailHtml(code: string): string {
-  return `<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f6f6f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1c1c1a">
-<table role="presentation" cellpadding="0" cellspacing="0" style="max-width:420px;margin:0 auto;background:#ffffff;border:1px solid #dcdcd6;border-radius:10px">
-<tr><td style="padding:28px 28px 22px">
-<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#6b6b63">Jackdaw sign-in</div>
-<div style="margin:18px 0;font-size:34px;letter-spacing:.22em;font-weight:600;font-variant-numeric:tabular-nums">${code}</div>
-<p style="margin:0 0 14px;font-size:14px;line-height:1.55">It works once, and expires in 10 minutes.</p>
-<p style="margin:0;font-size:13px;line-height:1.55;color:#6b6b63">If you didn't ask for it, ignore this — nothing has changed, and no account was created.</p>
-</td></tr></table>
-</body></html>`;
+export function codeEmailHtml(code: string): string {
+  return layout({
+    eyebrow: "Sign-in code",
+    preheader: `${code} is your Jackdaw sign-in code.`,
+    body: [
+      `<div class="jd-ink" style="margin:16px 0 4px;font-size:36px;line-height:1;letter-spacing:.22em;font-weight:600;font-variant-numeric:tabular-nums;color:#16233a">${esc(code)}</div>`,
+      para("It works once and expires in 10 minutes."),
+      para(
+        "If you didn't ask for it, ignore this. Nothing has changed, and no account was created.",
+        { muted: true },
+      ),
+    ].join(""),
+  });
 }
 
 /**
