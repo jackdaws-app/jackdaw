@@ -16,6 +16,7 @@ import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
 import type * as http from "../http.js";
 import type * as lib from "../lib.js";
+import type * as mail from "../mail.js";
 import type * as metrics from "../metrics.js";
 import type * as moderation from "../moderation.js";
 import type * as observations from "../observations.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   dashboard: typeof dashboard;
   http: typeof http;
   lib: typeof lib;
+  mail: typeof mail;
   metrics: typeof metrics;
   moderation: typeof moderation;
   observations: typeof observations;
