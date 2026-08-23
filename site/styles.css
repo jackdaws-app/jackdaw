@@ -619,9 +619,14 @@ a:focus-visible, button:focus-visible {
 .section { padding-block: var(--gap-section); }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────────
-   The arrow is a separate span so it can move on its own — the gap opens and
-   the arrow travels, which reads as the button leaning toward where it goes
-   rather than merely highlighting. */
+   The arrow is a separate span so it can move on its own: it travels and the
+   label stays, which reads as the button leaning toward where it goes rather
+   than merely highlighting. The box itself never changes size on hover. A
+   hover that widened it (the gap used to open 9 → 13px) re-ran layout every
+   frame, and inside a full flex row with `flex-wrap` the extra width pushed
+   the button onto its own line, out from under the pointer, where it
+   un-hovered, shrank, and snapped back: a visible flicker on the admin gate
+   (2026-08-23). Transform only, as everywhere else. */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -633,8 +638,7 @@ a:focus-visible, button:focus-visible {
   text-decoration: none;
   white-space: nowrap;
   transition: transform 0.16s var(--ease-out), background-color 0.18s ease,
-    box-shadow 0.22s var(--ease-out), gap 0.2s var(--ease-out),
-    border-color 0.18s ease, color 0.18s ease;
+    box-shadow 0.22s var(--ease-out), border-color 0.18s ease, color 0.18s ease;
 }
 /* THE PRIMARY BUTTON IS ALWAYS THE HIGHEST-CONTRAST OBJECT ON THE PAGE, and on
    a page with two grounds that means it inverts rather than holds a colour. Ink
@@ -658,11 +662,10 @@ a:focus-visible, button:focus-visible {
        lightening on paper and would have been a second dark-on-dark on night.
        12% is the smallest step that reads as a state change at this size. */
     background: color-mix(in oklab, var(--ink) 88%, var(--ground));
-    gap: 13px;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   }
-  .btn-ghost:hover { border-color: color-mix(in oklab, var(--ink) 22%, transparent); background: var(--surface); gap: 13px; }
-  .btn:hover .btn-arrow { transform: translateX(3px); }
+  .btn-ghost:hover { border-color: color-mix(in oklab, var(--ink) 22%, transparent); background: var(--surface); }
+  .btn:hover .btn-arrow { transform: translateX(5px); }
 }
 .btn:active { transform: scale(0.975); }
 
