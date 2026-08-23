@@ -33,6 +33,21 @@ cp extension/content.js /tmp/x.js && node --check /tmp/x.js       # classic scri
 cp extension/background.js /tmp/x.mjs && node --check /tmp/x.mjs  # the two ES modules
 ```
 
+**Editing is no-build; shipping is not.** Both halves get minified on the way out —
+`extension/` into the store zip, and `site/` into `dist/site/` via `npm run build:site`,
+which is the publish directory the host builds for itself because `dist/` is gitignored.
+Edit the sources; never edit `dist/`. **Whitespace, comments and local identifiers only —
+never property or global renaming.** The Chrome Web Store's code-readability policy permits
+the first and bans obfuscation, and the site's cross-file globals (`JD`, `JackdawBrand`,
+`JackdawAdmin`, `JackdawPolicy`, `JACKDAW_CONVEX_URL`) are referenced by name across files
+that are minified separately. `site/vendor/` is left alone — already minified, and it
+carries licence headers that have to survive. The `.html` is left alone too, because
+`privacy.html` and `terms.html` have to stay word-comparable with the `.md` files.
+
+**A build is a different program from the one you edit,** so "it works from `site/`" is not
+evidence that it works from `dist/`. Serve a build and drive it:
+`python3 site/devserver.py 8791 dist/site`.
+
 **Site libraries are vendored into `site/vendor/`, never loaded from a third-party
 origin.** A CDN `<script>` — or a `fonts.googleapis.com` stylesheet link — makes every
 visitor's browser announce its IP to a third party before the page draws, which breaks the
@@ -111,6 +126,35 @@ purpose.** An action can spend a single-use secret — a sign-in code — and a 
 lost response spends it again, then tells the user their correct code was wrong. Keep
 resilience work on the query/mutation side, and give any new call that consumes a
 one-shot secret the no-retry path.
+
+**A fast path added beside a scheduled one is an accelerator, and it never inherits the
+guarantee.** Email alerts go out on two paths: a sighting that moved a price schedules a
+pass over the products it moved for, and an hourly cron sweeps everything. The fast path
+is capped per run, skipped for a sighting that changed nothing, and blind to the cases
+where a watch becomes sendable with no sighting behind it at all. Both call one function
+body so they cannot drift, and the cron's cadence is set by what the fast path *misses*,
+not by how often it succeeds. If you add a path like this, say in its own comment which
+of the two it is; the danger is not that the fast one fails, it is that its arrival makes
+someone widen the slow one.
+
+**A job that sends something to the outside world claims its rows in a mutation before it
+sends, and a scheduling mutation must not claim on the sender's behalf.** Two senders can
+now overlap — the hourly pass and a shopper's page visit — so the race stops being
+crash-shaped and becomes traffic-shaped, and a marker written after the send is a marker
+two senders both arrive at empty. The claim also has to be taken by the sender itself: a
+scheduled mutation is exactly-once and retried, a scheduled action is at-most-once and
+never retried, so a claim stamped by the mutation that schedules the action can be
+stranded with no sender coming for it. Give every claim a TTL derived from the platform's
+own limits rather than picked, write the derivation down beside the constant, and release
+the claim when the send fails.
+
+**Read the fact the write is about to destroy before you write.** Recording a sighting
+that changed nothing still patches `lastSeenAt`, and a store row too old for an alert to
+speak for becomes fresh enough the instant it does — so whether the row *was* stale is a
+question with an answer for exactly as long as it takes to run one `patch`. This is the
+same shape as the plausibility anchor and the corroboration verdict: the interesting
+value is the one the write consumes, and moving the read two lines down turns the check
+into one that always says no, silently, with nothing to test against.
 
 **Escape a value at the boundary where it changes syntax.** A string that is correct at
 rest can still be wrong the instant it is concatenated into something with its own
@@ -381,6 +425,19 @@ measurement first, and go read the code it claims to describe.**
   — a screenshot will do — delivers the queued records at once. Same family as the rAF
   rule above, one layer down: it is not only animation that stops.
 
+**A rule-count drop between a source stylesheet and its minified build is not, by itself,
+the stray-brace defect.** A minifier merges *adjacent* rules with identical declaration
+bodies into one selector list, which is safe — only adjacent rules qualify, and a selector
+list matches each complex selector at its own specificity. It also normalizes values
+(`scale(1,1)` to `scale(1)`, `0.62deg` to `.62deg`). Before raising it: grep the source for
+empty rule bodies, which a minifier legitimately drops, then confirm each merged pair is
+genuinely adjacent *in the source* — a merge across an intervening rule would change the
+cascade, and a `grep` for a selector can easily land on a different rule with the same
+prefix. To diff two stylesheets the browser has to parse both, and `fetch` is CORS-blocked
+across ports: serve a common ancestor directory so both files are same-origin, parse each
+with `new CSSStyleSheet()` and `replaceSync()` without attaching it to the document, and
+compute the diff in the page.
+
 ## Data collection is not negotiable
 
 These rules are the project's whole posture, not preferences.
@@ -513,6 +570,10 @@ never leak into legal text.
 - If it added a preference: its key is in `CONTENT_READABLE` (and `CONTENT_WRITABLE` if a
   content script writes it), and no content script touches `chrome.storage` directly. CI
   cannot see either mistake.
+- If it scheduled work from a mutation: say whether it is the accelerator or the
+  guarantee, and check that the slow path still covers everything the fast one skips.
+- If it touched the site: run `npm run build:site` and drive the built pages, not just the
+  sources. Minification is where a change stops being the program you tested.
 - Say in the PR what you actually verified and how. "Tested" is not information; "drove it
   on a category page at 96 results per page, both themes, contrast 4.9 light / 5.3 dark"
   is.

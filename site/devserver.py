@@ -13,7 +13,12 @@ That cost real debugging time three separate times before this file existed.
 Not used in production, where the real site is served as static files by the
 host; this is only for `.claude/launch.json` and local work.
 
-    python3 site/devserver.py [port]
+    python3 site/devserver.py [port] [root]
+
+`root` defaults to this file's own directory, i.e. the raw sources. Pass
+`dist/site` to serve a build instead — the minified output is a different
+program from the one you edit (comments gone, locals renamed, directives
+resolved), so "it works from site/" is not evidence that it works from dist.
 """
 
 import functools
@@ -38,10 +43,14 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
 
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8788
-    root = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else os.path.dirname(os.path.abspath(__file__))
+    if not os.path.isdir(root):
+        sys.stderr.write(f"no such directory: {root}\n")
+        return 1
     handler = functools.partial(NoCacheHandler, directory=root)
     with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
         print(f"jackdaws.app dev server → http://localhost:{port}  (no-store)")
+        print(f"  serving {root}")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

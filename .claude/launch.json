@@ -4,14 +4,33 @@
     {
       "name": "site",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["site/devserver.py", "8788"],
+      "runtimeArgs": [
+        "site/devserver.py",
+        "8788"
+      ],
       "port": 8788
     },
     {
       "name": "extension",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8789", "--directory", "extension"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8789",
+        "--directory",
+        "extension"
+      ],
       "port": 8789
+    },
+    {
+      "name": "site-dist",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "site/devserver.py",
+        "8791",
+        "dist/site"
+      ],
+      "port": 8791
     }
   ]
 }

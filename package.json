@@ -4,7 +4,8 @@
   "description": "Community price tracking for Micro Center — Chrome extension + Convex backend",
   "main": "index.js",
   "scripts": {
-    "test": "bash scripts/check.sh"
+    "test": "bash scripts/check.sh",
+    "build:site": "bash scripts/build-site.sh"
   },
   "keywords": [],
   "author": "",
