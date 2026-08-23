@@ -27,6 +27,8 @@ import { bump, hashSecret, secretsMatch, utcDay } from "./lib";
 // not a dependency here: pulling Node's entire global surface into a runtime
 // that is not Node, to type one string, is the worse trade. One narrow
 // declaration instead.
+import { POLICY_LINKS, button, esc, layout, money, para, textFooter } from "./mail";
+
 declare const process: { env: Record<string, string | undefined> };
 
 const DEFAULT_FROM = "Jackdaw <noreply@jackdaws.app>";
@@ -53,22 +55,7 @@ function productUrl(urlPath: string): string {
   return RETAILER + urlPath.replace(/#/g, "%23");
 }
 
-/** `$1,299.99` — the same formatting every other Jackdaw surface uses. */
-function money(value: number): string {
-  return `$${value.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
 
-/** Minimal escape for values interpolated into the HTML body. */
-function esc(raw: string): string {
-  return raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 // ---------------------------------------------------------------------------
 // Unsubscribe tokens
@@ -445,10 +432,16 @@ async function deliver(
 
 function subjectFor(fire: Fire): string {
   if (fire.reason === "openBox" && fire.openBoxPrice !== undefined) {
-    return `Open box seen at ${money(fire.openBoxPrice)} — ${fire.name}`;
+    return `Open box at ${money(fire.openBoxPrice)}: ${fire.name}`;
   }
-  if (fire.reason === "restock") return `Back in stock — ${fire.name}`;
-  return `${money(fire.currentPrice)} — ${fire.name}`;
+  if (fire.reason === "restock") return `Back in stock: ${fire.name}`;
+  return `Seen at ${money(fire.currentPrice)}: ${fire.name}`;
+}
+
+function eyebrowFor(fire: Fire): string {
+  if (fire.reason === "openBox") return "Open box alert";
+  if (fire.reason === "restock") return "Back in stock";
+  return "Price alert";
 }
 
 /** "3 minutes ago", "2 hours ago", "yesterday". Coarse on purpose. */
@@ -481,8 +474,14 @@ function headline(fire: Fire): string {
 const CAVEAT =
   "This is a sighting recorded by another shopper, not live inventory. Check with Micro Center before driving over.";
 
-function bodyText(fire: Fire, unsubUrl: string | null): string {
-  const lines = [
+function footerLinks(unsubUrl: string | null) {
+  return unsubUrl === null
+    ? POLICY_LINKS
+    : [...POLICY_LINKS, { label: "Turn these emails off", href: unsubUrl }];
+}
+
+export function bodyText(fire: Fire, unsubUrl: string | null): string {
+  return [
     fire.name,
     "",
     headline(fire),
@@ -490,32 +489,20 @@ function bodyText(fire: Fire, unsubUrl: string | null): string {
     productUrl(fire.urlPath),
     "",
     CAVEAT,
-    "",
-    "— Jackdaw",
-  ];
-  if (unsubUrl !== null) {
-    lines.push("", `Turn these emails off: ${unsubUrl}`);
-  }
-  return lines.join("\n");
+    ...textFooter(footerLinks(unsubUrl)),
+  ].join("\n");
 }
 
-function bodyHtml(fire: Fire, unsubUrl: string | null): string {
-  const unsub =
-    unsubUrl === null
-      ? ""
-      : `<p style="margin:22px 0 0;font-size:12px;line-height:1.5;color:#8a8a80"><a href="${esc(
-          unsubUrl,
-        )}" style="color:#8a8a80">Turn these emails off</a></p>`;
-  return [
-    `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:460px;margin:0 auto;padding:28px 24px;color:#1c1e21">`,
-    `<p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#8a8a80">Jackdaw</p>`,
-    `<p style="margin:0 0 18px;font-size:16px;font-weight:600;line-height:1.35">${esc(fire.name)}</p>`,
-    `<p style="margin:0 0 22px;font-size:14px;line-height:1.55">${esc(headline(fire))}</p>`,
-    `<p style="margin:0 0 22px"><a href="${esc(
-      productUrl(fire.urlPath),
-    )}" style="display:inline-block;background:#16233a;color:#fff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px">See it on Micro Center</a></p>`,
-    `<p style="margin:0;font-size:12px;line-height:1.55;color:#6b6b63">${CAVEAT}</p>`,
-    unsub,
-    `</div>`,
-  ].join("");
+export function bodyHtml(fire: Fire, unsubUrl: string | null): string {
+  return layout({
+    eyebrow: eyebrowFor(fire),
+    preheader: headline(fire),
+    links: footerLinks(unsubUrl),
+    body: [
+      `<div class="jd-ink" style="margin:14px 0 0;font-size:17px;font-weight:600;line-height:1.35;color:#16233a">${esc(fire.name)}</div>`,
+      para(esc(headline(fire))),
+      button("See it on Micro Center", productUrl(fire.urlPath)),
+      para(esc(CAVEAT), { muted: true, top: 20 }),
+    ].join(""),
+  });
 }
