@@ -1646,13 +1646,15 @@ a:focus-visible, button:focus-visible {
 .tag-delta {
   display: flex;
   align-items: center;
-  gap: 5px;
+  flex-wrap: wrap;
+  gap: 2px 5px;
   margin-top: 6px;
   font-size: 11.5px;
   font-weight: 600;
   color: #146c34;
 }
 .tag-delta svg { width: 9px; height: 9px; flex: 0 0 auto; fill: currentColor; }
+.tag-since { white-space: nowrap; }
 .tag-meta {
   display: block;
   margin-top: 6px;
