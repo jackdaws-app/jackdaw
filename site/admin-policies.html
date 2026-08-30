@@ -54,7 +54,7 @@
         <div class="gate-lamp" aria-hidden="true"><i></i></div>
         <p class="eyebrow">Restricted</p>
         <h1 class="h-section">Admin access</h1>
-        <p class="gate-sub" id="gateSub">Sign in with your email. A six-digit code will be sent to it.</p>
+        <p class="gate-sub" id="gateSub">Sign in with your email. We'll send it a six-digit code.</p>
         <form class="gate-form" id="gateForm">
           <input
             class="gate-input"
@@ -222,9 +222,9 @@
         Publishing puts new text in front of readers immediately. It does not put it in git: the repository,
         the printed page, a reader with JavaScript off and the Chrome Web Store listing all keep showing the
         committed text until someone runs <code class="policy-cmd">node site/policy-sync.js --write</code> and
-        commits the result. That gap is the safety property — a policy whose visible text depends on a network
-        call is a policy that can be blank — but it is only safe while it is short, so the strip above reports
-        it and this page will keep saying so until it closes.
+        commits the result. That gap is the safety property. A policy whose visible text depends on a network
+        call is a policy that can be blank. It is only safe while it is short, so the strip above reports it,
+        and this page will keep saying so until it closes.
       </p>
       <p class="admin-fine">
         Versions are append-only and per-deployment. Restoring an earlier version republishes its text under a
