@@ -182,7 +182,7 @@
   // denominator is printed on every row rather than once in a footnote: the
   // median rests on `measured` products, out of `sampled` that we looked at,
   // out of a category whose real size we cannot know — we see what our users
-  // happen to browse, never Micro Center's catalogue.
+  // happen to browse, never Micro Center's catalog.
   let indexDays = 90;
 
   // U+2212, not a hyphen: it is the same width as a digit, so a column of
@@ -246,7 +246,7 @@
       // Assembled as whole sentences and joined, not concatenated fragments —
       // the fragment version ran the exclusion list straight into the direction
       // split with no stop between them ("1 with no readings 3 fell").
-      const why_ = why.length ? ` — ${why.join(", ")}` : "";
+      const why_ = why.length ? `; excluded: ${why.join(", ")}` : "";
       const said = [
         `${c.measured} of ${c.sampled} sampled ${c.sampled === 1 ? "product" : "products"} ` +
           `had a price at both ends of the window${why_}.`,
@@ -274,7 +274,7 @@
         "admin-note",
         `Median per-product change over ${idx.windowDays} days, from up to ${idx.sampleCap} ` +
           `long-tracked products per category; withheld below ${idx.minMeasured} measurable ones. ` +
-          `The denominator is products Jackdaw has seen, not Micro Center's catalogue.`,
+          `The denominator is products Jackdaw has seen, not Micro Center's catalog.`,
       ),
     );
   }
@@ -344,7 +344,7 @@
       row.append(
         el("div", "health-label", label),
         el("div", "health-value " + tone, `${fmt(e.last7)} · 7d`),
-        el("div", "health-sub", `${fmt(e.total)} all time — ${meaning}`),
+        el("div", "health-sub", `${fmt(e.total)} all time · ${meaning}`),
       );
       wrap.append(row);
     }
@@ -378,7 +378,7 @@
       "Card price",
       ".price_wrapper .price",
       1,
-      "anchors the list-price read — if it stops matching, discounts go uncollected",
+      "anchors the list-price read; if it stops matching, discounts go uncollected",
     ],
     clearance: [
       "Open box (grid)",
@@ -390,7 +390,7 @@
       "Advertised list",
       "div.standardDiscount",
       null,
-      "absent when nothing is discounted, so a low rate is normal — only zero is a signal",
+      "absent when nothing is discounted, so a low rate is normal; only zero is a signal",
     ],
     openBox: [
       "Open box (product)",
@@ -497,7 +497,7 @@
       row.append(
         el("div", "health-label", label),
         el("div", "health-value " + tone, `${pct(recentRate)} · ${recentDays}d`),
-        el("div", "health-sub", `${life}${bad} — ${selector}, ${meaning}`),
+        el("div", "health-sub", `${life}${bad} · ${selector}, ${meaning}`),
       );
       wrap.append(row);
     }
@@ -507,12 +507,12 @@
     foot.textContent =
       "Found = the element was on the page; unreadable = it was there and could not be parsed, " +
       "which the readers treat as unknown and keep the last value for. These counts come from the " +
-      "extension describing its own behaviour, so they are advisory, not evidence — they raise a " +
+      "extension describing its own behavior, so they are advisory, not evidence. They raise a " +
       "question, and the answer always comes from driving a real page. A grid page that rendered " +
       "no readable card is reported with zero items so it is visible here; genuine no-result " +
       "searches land in that same number and cannot be separated from a broken selector." +
       (rejected > 0
-        ? ` ${fmt(rejected)} tallies were refused as internally inconsistent — a client is sending numbers it cannot have measured, so read the whole table with that in mind.`
+        ? ` ${fmt(rejected)} tallies were refused as internally inconsistent. A client is sending numbers it cannot have measured, so read the whole table with that in mind.`
         : "");
   }
 
@@ -891,7 +891,7 @@
                 ? `git has v${r.floor.version}. `
                 : `git carries no published version. `) +
               `The repository, the printed page and readers without JavaScript still ` +
-              `show the older text — run `,
+              `show the older text; run `,
           ),
           el("code", "policy-cmd", "node site/policy-sync.js --write"),
           document.createTextNode(", then commit."),

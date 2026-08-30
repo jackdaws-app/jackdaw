@@ -65,14 +65,14 @@
     if (!heads.length) return "must contain at least one '## N. Heading'";
     for (const h of heads) {
       if (!/^## \d+\. \S/.test(h)) {
-        return "section heading must be numbered, e.g. '## 1. Title' — found " +
+        return "section heading must be numbered, e.g. '## 1. Title'; found " +
           JSON.stringify(h.slice(0, 40));
       }
     }
     const nums = heads.map((h) => Number(h.slice(3, h.indexOf("."))));
     for (let i = 0; i < nums.length; i++) {
       if (nums[i] !== i + 1) {
-        return `sections must be numbered 1..${nums.length} in order — found ${nums.join(", ")}`;
+        return `sections must be numbered 1..${nums.length} in order; found ${nums.join(", ")}`;
       }
     }
     if (lines.some((l) => l.startsWith("###"))) {
@@ -299,7 +299,7 @@
       return;
     }
     wrap.append(el("div", "pol-dgap", "Against " + against + "." +
-      (rows.coarse ? " Long document — shown as one combined change rather than line by line." : "")));
+      (rows.coarse ? " Long document, shown as one combined change rather than line by line." : "")));
     // Context collapses to three lines either side: a legal document is mostly
     // unchanged, and the change is what this view exists to show.
     const keep = new Array(rows.length).fill(false);
@@ -375,7 +375,7 @@
         setStat("stFloor", "?", "warn", `Couldn't read ${d.page} from this server.`);
       } else if (f.foreign) {
         setStat("stFloor", "—", "warn",
-          `${d.page} is stamped v${f.stamped} from ${f.foreign}, a different deployment — that number says nothing here.`);
+          `${d.page} is stamped v${f.stamped} from ${f.foreign}, a different deployment; that number says nothing here.`);
       } else if (behind) {
         setStat("stFloor", f.version ? "v" + f.version : "none", "warn",
           "Behind the live text. Run policy-sync, then commit.");
@@ -546,7 +546,7 @@
   function armRestore(version) {
     arm(
       `Restore <strong>v${version}</strong> of <strong>${DOCS[slug].label}</strong>. ` +
-        `Its text is republished under a new number rather than replacing anything — nothing in ` +
+        `Its text is republished under a new number rather than replacing anything; nothing in ` +
         `the history is deleted, so what was live between any two dates stays answerable.`,
       "Restore it",
       () => doRestore(version),
@@ -572,7 +572,7 @@
         ...(note ? { note } : {}),
       });
       if (res.unchanged) {
-        toast(`No change — that is already v${res.version}.`);
+        toast(`No change; that is already v${res.version}.`);
       } else {
         toast(`Published v${res.version}. Run policy-sync to bring git up with it.`);
         $("noteInput").value = "";
@@ -670,7 +670,7 @@
       // own body, so switching back finds the edit intact. The only thing that
       // needs saying is that it was not published.
       if (normalize(c.body) !== normalize(c.baseline)) {
-        toast(`${DOCS[slug].short} has unpublished edits — they are kept here.`);
+        toast(`${DOCS[slug].short} has unpublished edits; they are kept here.`);
       }
       slug = next;
       for (const o of $("docPick").querySelectorAll(".seg-btn")) {
@@ -715,7 +715,7 @@
     if (!f || !f.markdown) {
       toast(f && f.unknown
         ? `Couldn't read ${DOCS[slug].page} from this server.`
-        : `${DOCS[slug].page} could not be read back as markdown — paste it from ${DOCS[slug].md} instead.`);
+        : `${DOCS[slug].page} could not be read back as markdown; paste it from ${DOCS[slug].md} instead.`);
       return;
     }
     setBody(f.markdown, f.markdown);

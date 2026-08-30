@@ -192,7 +192,7 @@
     gate.dataset.mode = next;
     gateSub.textContent =
       next === "email"
-        ? "Sign in with your email. A six-digit code will be sent to it."
+        ? "Sign in with your email. We'll send it a six-digit code."
         : next === "code"
           ? "Enter the six-digit code sent to " + pendingEmail + "."
           : "Enter the admin key. It is kept for this browser session only.";
