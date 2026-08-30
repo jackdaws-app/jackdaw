@@ -8,11 +8,8 @@
 # substantial performance win available on this site — everything else is
 # already at the bottom of the body or already minified upstream.
 #
-# WHY THIS FILE IS TRACKED AND build.sh IS NOT. The extension build is a local
-# one-shot: it produces a zip a human uploads. This one runs on the host, which
-# deploys from the git repository and therefore cannot see an untracked script.
-# It is also the better half of the argument AGPL-3.0 §1 makes about "scripts
-# to control compilation" being Corresponding Source.
+# WHY THIS FILE IS TRACKED. It runs on the host, which deploys from the git
+# repository and cannot see anything untracked.
 #
 # WHAT IS DELIBERATELY NOT MINIFIED, and why each one:
 #

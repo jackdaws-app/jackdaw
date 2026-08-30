@@ -4,14 +4,4 @@ node_modules/
 .DS_Store
 .remember/
 .claude/settings.local.json
-LEGAL-NOTES.md
-BUSINESS-NOTES.md
 dist/
-
-# Internal working docs and operator tooling — kept on disk, never tracked.
-# Their public counterparts are CONVENTIONS.md (from CLAUDE.md) and
-# DATA-POLICY.md (from LEGAL-NOTES.md). See jackdaw-private/ for the originals.
-CLAUDE.md
-VERIFICATION-LOG.md
-site/DEPLOY.md
-build.sh

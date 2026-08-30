@@ -1,28 +1,7 @@
 # Jackdaw takes donations for one reason: to cover hosting, the domain, and the
-# Chrome Web Store fee. Read this file alongside the rule it exists under —
-# every feature is free to everyone, there are no supporter perks, no donor-only
-# builds, and no tier that unlocks anything. A perk is a charge wearing a
-# friendlier word. Donations are ordinary taxable income and are not
-# tax-deductible for the donor; say so wherever the button appears.
-#
-# GitHub Sponsors is the only channel active today. It nets the most per dollar
-# (GitHub charges no platform fee and absorbs processing for individual
-# developers), but it asks the donor for a GitHub account, which most Micro
-# Center shoppers will not have. When a second, account-free channel is wanted,
-# uncomment ONE of the lines below — not both. Two tip jars beside each other
-# reads as a fundraising drive rather than a hosting bill.
-#
-#   ko_fi           0% platform fee on one-off tips, your own Stripe underneath.
-#   buy_me_a_coffee ~5% platform fee. Identical to Ko-fi in what the donor sees;
-#                   the difference you are buying is brand recognition.
-#   custom          a Stripe Payment Link, if you would rather own the flow. Same
-#                   economics as Ko-fi (2.9% + $0.30 processing, no platform cut),
-#                   no page built for you.
-#
-# Rates change. Re-check the current terms before enabling one, not after.
+# Chrome Web Store fee. Every feature is free to everyone; there are no
+# supporter perks, no donor-only builds, and no tier that unlocks anything.
+# Donations are ordinary taxable income and are not tax-deductible for the
+# donor; say so wherever the button appears.
 
 github: DavidSensara
-
-# ko_fi: jackdaw
-# buy_me_a_coffee: jackdaw
-# custom: ["https://jackdaws.app/support"]

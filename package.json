@@ -1,13 +1,11 @@
 {
   "name": "jackdaw",
-  "version": "1.0.0",
-  "description": "Community price tracking for Micro Center — Chrome extension + Convex backend",
-  "main": "index.js",
+  "version": "0.2.0",
+  "description": "Community price history for Micro Center: Chrome extension and Convex backend",
   "scripts": {
     "test": "bash scripts/check.sh",
     "build:site": "bash scripts/build-site.sh"
   },
-  "keywords": [],
   "author": "",
   "license": "AGPL-3.0-only",
   "type": "commonjs",
