@@ -43,6 +43,12 @@ const crons = cronJobs();
 // holds none: it is capped, and it does not run for a watch that became
 // emailable without a sighting. It also bounds how long a claim left behind by
 // a crashed send can sit — see EMAIL_CLAIM_TTL_MS in `watches.ts`.
+//
+// THE SEND CAP IS PER PASS, NOT PER HOUR. One tick starts a pass; a pass that
+// fills EMAIL_SEND_LIMIT and sent something schedules the next pass itself
+// (`alerts.sweep`'s `hop`), up to MAX_HOPS deep, so the hourly throughput is
+// the chain's, not one action's. What this schedule decides is how long a
+// row can wait to be NOTICED, never how many can be sent once it is.
 crons.hourly(
   "email price alerts",
   { minuteUTC: 20 },

@@ -558,7 +558,8 @@ export default defineSchema({
   // would blow the ~16k document read limit as history accumulates.
   //
   // Keys are namespaced and ordered so a prefix range read is possible:
-  //   obs:total · obs:store:<storeNum> · obs:day:<YYYY-MM-DD>
+  //   obs:total · obs:store:<storeNum> · obs:day:<YYYY-MM-DD> · obs:cat:<key>
+  //   obs:catalog · obs:batches · obs:gridday:<YYYY-MM-DD> · obs:gridday:from
   //   pricepoints:total · products:total · devices:total
   //   comments:total · comments:day:<YYYY-MM-DD> · comments:hidden
   //   reports:total · alerts:armed · alerts:fired · handles:claimed
@@ -571,9 +572,23 @@ export default defineSchema({
   // is a moment, not a row), so admin:backfillCounters leaves it alone.
   //
   // These are plain documents, so a single key is a contention point under
-  // heavy concurrent writes. At Jackdaw's volume (one report per device per
-  // product per minute) that's far from an issue; if "obs:total" ever starts
-  // throwing OCC conflicts, move the hot keys to @convex-dev/sharded-counter.
+  // concurrent writes — every sighting on the deployment touches obs:total.
+  // The HOT keys are therefore SHARDED in place (lib.ts, `isHotKey`): a bump
+  // lands on one of HOT_COUNTER_SHARDS rows keyed `<key>\u0001<n>` beside the
+  // base row, and a read is base + sum of shards. The hot set is
+  //   obs:total · obs:catalog · obs:batches · pricepoints:total ·
+  //   products:total · devices:total · alerts:clicked ·
+  //   every obs:day:* · obs:gridday:* (not obs:gridday:from, a timestamp) ·
+  //   obs:store:* · obs:cat:* · evt:* · alerts:clicked:day:* · abuse:* · sel:*
+  // Everything else stays one row per key with its old semantics, which is
+  // what lets moderation decrement comments:* exactly. The separator is a
+  // control character because free-text keys (categories) can contain any
+  // printable one and `sanitize` strips every control one; it sorts below
+  // all of them, so shard rows fall inside every prefix range their base row
+  // does and namespace readers fold them with `foldCounterRows`. The backfill's
+  // setCounter collapses a key back to its base row. Kept in our own table
+  // rather than @convex-dev/sharded-counter because those prefix ranges over
+  // `by_key` are what the admin panel's store and category cards read.
   counters: defineTable({
     key: v.string(),
     value: v.number(),

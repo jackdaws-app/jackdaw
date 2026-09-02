@@ -31,7 +31,12 @@
     host.id = "jackdaw-root";
     host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483000;";
     document.documentElement.appendChild(host);
-    uiRoot = host.attachShadow({ mode: "open" });
+    // Closed, and attached from the isolated world: the page never gets a
+    // handle on the panel, so a script on the host cannot read what it shows
+    // or drive its buttons as the signed-in shopper. The reference below is
+    // the only way in. (An open root was reachable as host.shadowRoot from
+    // page JS, which was fine for previewing styles and wrong for shipping.)
+    uiRoot = host.attachShadow({ mode: "closed" });
     const css = await fetch(chrome.runtime.getURL("panel.css")).then((r) => r.text());
     const style = document.createElement("style");
     style.textContent = css;
@@ -1047,6 +1052,7 @@
     head.append(el("span", "mk-signin-title", title));
     const btn = el("button", "mk-post mk-signin-btn", "Sign in");
     btn.addEventListener("click", async () => {
+      authCheckWanted = true;
       const res = await send({ type: "auth:openPopup" });
       if (!res || res.error) toast("Click the Jackdaw icon in your Chrome toolbar to sign in");
     });
@@ -1054,11 +1060,24 @@
     return card;
   }
 
+  let authCheckWanted = false;
+
   // Signing in happens in the toolbar popup, which takes the page's focus.
   // When focus comes back, re-read who we are — the panel may be showing a
   // sign-in card the person has just made obsolete.
+  //
+  // Every alt-tab back to a product page used to cost a query and a touch
+  // mutation, drawer open or not. Now a focus re-reads at most once a minute,
+  // except the first focus after the panel itself sent someone to the popup,
+  // which is the case the listener exists for and must never wait.
+  const AUTH_RECHECK_MS = 60_000;
+  let lastAuthCheck = 0;
   window.addEventListener("focus", async () => {
     if (!alive()) return;
+    const now = Date.now();
+    if (!authCheckWanted && now - lastAuthCheck < AUTH_RECHECK_MS) return;
+    authCheckWanted = false;
+    lastAuthCheck = now;
     const a = await send({ type: "auth:state" });
     if (!a || a.error || !a.result) return;
     const signedInChanged = a.result.signedIn !== account.signedIn;

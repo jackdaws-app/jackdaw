@@ -60,8 +60,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Alert click-throughs carry no identifier at all (by design — see
   // metrics.ts), so there is nothing to key a per-device bucket on. A single
   // global bucket is the only option, which also makes it a ceiling on the
-  // metric itself: at most 1,440 clicks/day can ever be recorded.
-  alertClick: { kind: "token bucket", rate: 60, period: HOUR },
+  // metric itself: at most 3,600 clicks/hour (~86k/day) can ever be recorded.
+  // Sized so the ceiling sits above anything 100k installs can produce (one
+  // alert click per install per day is ~4,200/hour) — the metric must read
+  // low from fabrication bounds, never from real clicks being dropped.
+  //
+  // `shards` splits the bucket's own state across rows so the global key stops
+  // being a single contended document; a caller's token comes off one shard
+  // at random, so at the margin a shard can refuse while a sibling still has
+  // tokens. That only makes the cap fuzzier, never larger.
+  alertClick: { kind: "token bucket", rate: 3600, period: HOUR, shards: 8 },
   // Client error telemetry (metrics:events) has the same shape and the same
   // trade-off: no identifier in the payload, so no per-device key exists and
   // the bucket has to be global.
@@ -71,8 +79,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // and this is the supported user count before the ceiling binds. Too low is
   // the dangerous direction — overflow is dropped, not queued, and the moment
   // every panel breaks at once is the moment every client has something to
-  // flush. Raise this before the user base reaches it, not after.
-  clientEvents: { kind: "token bucket", rate: 3000, period: HOUR },
+  // flush. 100k/hour is the 100k-install mark; raise it before the user base
+  // reaches it, not after. What a caller can do with the headroom is advance
+  // six known counters (metrics.ts clamps a batch), so a high ceiling costs
+  // nothing but counter rows. Sixteen shards for the same reason as
+  // alertClick's eight: the global key must not be one document.
+  clientEvents: { kind: "token bucket", rate: 100_000, period: HOUR, shards: 16 },
   // Sign-in codes, keyed on the normalized email. Five an hour is generous for
   // a human who mistyped or lost the first mail, and low enough that this
   // endpoint can't be used to mailbomb a stranger — requestCode sends to any
@@ -81,9 +93,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   authCodeRequest: { kind: "token bucket", rate: 5, period: HOUR },
   // Deployment-wide ceiling on the same endpoint, consumed only after the
   // per-email bucket allows the request, so one hammered address can never
-  // drain everyone else's budget. This is the bill-shock stop: 200 sends/hour
-  // is the most Jackdaw can ever be made to pay Resend for.
-  authCodeGlobal: { kind: "token bucket", rate: 200, period: HOUR },
+  // drain everyone else's budget. This is the bill-shock stop: 5,000
+  // sends/hour is the most Jackdaw can ever be made to pay Resend for, and
+  // it is what stops a launch-day sign-in wave (or a 100k-install steady
+  // state) from locking everyone out at the old 200. The per-email five an
+  // hour above is still the mailbomb guard; this one only bounds the bill.
+  authCodeGlobal: { kind: "token bucket", rate: 5000, period: HOUR, shards: 8 },
   // Verify attempts per email. The per-code `attempts` field (5, then the code
   // is dead) is the real defence; this is the outer bound that stops an
   // attacker cycling fresh codes to buy fresh attempt budgets.
@@ -911,71 +926,191 @@ export function readSummary(cur: PriceSummary): {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Counters
+//
+// Plain rows in our own `counters` table, one per key, with the hot keys split
+// across HOT_COUNTER_SHARDS rows so that concurrent writers stop colliding on
+// one document. A single `obs:total` row is an OCC contention point the moment
+// two sightings commit in the same instant, and at 10k+ installs that is every
+// instant; @convex-dev/sharded-counter was considered and declined because the
+// admin panel reads whole key namespaces by prefix range on `by_key`, which a
+// separate component table cannot serve.
+//
+// SHARD ROW SHAPE: `<key>\u0001<n>`, n in [0, HOT_COUNTER_SHARDS). The
+// separator is a control character rather than a space or punctuation because
+// category keys are free text — `obs:cat:solid state drives` is a real key and
+// a category can end in " 4" — and `sanitize` strips every control character
+// from every free-text key, so U+0001 is the one byte no base key can contain.
+// It sorts below every printable character, so a shard row sits directly
+// after its base row in the index and inside every prefix range the base row
+// is in; readers that scan a namespace fold shards onto their base key with
+// `baseKeyOf`.
+//
+// READ = base row + sum of shard rows. The base row is what a backfill or a
+// pre-sharding deployment wrote and is still authoritative for the cold keys;
+// bump() never writes a hot key's base row again, so the split is (history)
+// + (live increments) and a `setCounter` — the backfill's write — collapses
+// it back to one row by deleting the shards.
+// ---------------------------------------------------------------------------
+
+export const HOT_COUNTER_SHARDS = 8;
+const SHARD_SEP = "\u0001";
+const SHARD_SEP_END = "\u0002";
+
+const HOT_EXACT = new Set([
+  "obs:total",
+  "obs:catalog",
+  "obs:batches",
+  "pricepoints:total",
+  "products:total",
+  "devices:total",
+  "alerts:clicked",
+]);
+const HOT_PREFIXES = [
+  "obs:day:",
+  "obs:gridday:",
+  "obs:store:",
+  "obs:cat:",
+  "evt:",
+  "alerts:clicked:day:",
+  "abuse:",
+  "sel:",
+];
+
+/**
+ * Which keys are written by every sighting, every client flush or every
+ * attacker — the ones worth eight rows. Everything else (comments, reports,
+ * alerts:armed, the email tallies, handles) is written by a human action at
+ * human rates, stays single-row, and keeps the exact semantics it always had,
+ * including moderation's negative bumps.
+ *
+ * `obs:gridday:from` is a timestamp parked in the table, not a tally; it is
+ * written once by initCounter and must never be summed.
+ */
+export function isHotKey(key: string): boolean {
+  if (key === "obs:gridday:from") return false;
+  if (HOT_EXACT.has(key)) return true;
+  return HOT_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+/** The key a row counts toward: a shard row's base key, any other row's own. */
+export function baseKeyOf(key: string): string {
+  const cut = key.indexOf(SHARD_SEP);
+  return cut < 0 ? key : key.slice(0, cut);
+}
+
+/**
+ * Fold a prefix-range read into one value per base key. Every namespace scan
+ * in dashboard.ts goes through this so a shard row can never surface as its
+ * own store, category or day.
+ */
+export function foldCounterRows(
+  rows: { key: string; value: number }[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const row of rows) {
+    const base = baseKeyOf(row.key);
+    out.set(base, (out.get(base) ?? 0) + row.value);
+  }
+  return out;
+}
+
+async function baseRow(ctx: QueryCtx, key: string) {
+  return await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+}
+
+/** Every shard row of `key`, bounded: at most HOT_COUNTER_SHARDS can exist. */
+async function shardRows(ctx: QueryCtx, key: string) {
+  return await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) =>
+      q.gte("key", key + SHARD_SEP).lt("key", key + SHARD_SEP_END),
+    )
+    .take(HOT_COUNTER_SHARDS + 1);
+}
+
 /**
  * Add `delta` to the named counter, creating the row on first sighting.
  * Negative deltas are allowed (moderation removes rows the state counters
  * track) and the result is floored at 0 — a count below zero is never a true
  * reading, only a sign the counter started behind the data.
+ *
+ * A hot key lands on one of HOT_COUNTER_SHARDS rows chosen at random, so two
+ * concurrent writers collide with probability 1/N instead of always. The
+ * floor applies per row; nothing in the hot set is ever decremented, so the
+ * per-row floor and the whole-key floor agree.
  */
 export async function bump(
   ctx: MutationCtx,
   key: string,
   delta = 1,
 ): Promise<void> {
-  const row = await ctx.db
-    .query("counters")
-    .withIndex("by_key", (q) => q.eq("key", key))
-    .unique();
+  const rowKey = isHotKey(key)
+    ? `${key}${SHARD_SEP}${Math.floor(Math.random() * HOT_COUNTER_SHARDS)}`
+    : key;
+  const row = await baseRow(ctx, rowKey);
   if (row === null) {
-    await ctx.db.insert("counters", { key, value: Math.max(0, delta) });
+    await ctx.db.insert("counters", { key: rowKey, value: Math.max(0, delta) });
   } else {
     await ctx.db.patch(row._id, { value: Math.max(0, row.value + delta) });
   }
 }
 
-/** Overwrite the named counter (used by the idempotent backfill). */
+/**
+ * Overwrite the named counter (used by the idempotent backfill). Writes the
+ * base row and deletes every shard row, so the value written is the value
+ * read back — a backfill is authoritative, not one term of a sum.
+ */
 export async function setCounter(
   ctx: MutationCtx,
   key: string,
   value: number,
 ): Promise<void> {
-  const row = await ctx.db
-    .query("counters")
-    .withIndex("by_key", (q) => q.eq("key", key))
-    .unique();
+  const row = await baseRow(ctx, key);
   if (row === null) {
     await ctx.db.insert("counters", { key, value });
   } else if (row.value !== value) {
     await ctx.db.patch(row._id, { value });
+  }
+  if (isHotKey(key)) {
+    for (const shard of await shardRows(ctx, key)) await ctx.db.delete(shard._id);
   }
 }
 
 /**
  * Create the counter at `value` if it doesn't exist yet; leave an existing row
  * untouched. For event tallies the current data can't reconstruct, so a repeat
- * backfill can't wipe what live traffic has since accumulated.
+ * backfill can't wipe what live traffic has since accumulated. "Exists" means
+ * a base row OR any shard row: a hot key that live traffic has already opened
+ * is not missing, and seeding a base row beside its shards would add to it.
  */
 export async function initCounter(
   ctx: MutationCtx,
   key: string,
   value: number,
 ): Promise<void> {
-  const row = await ctx.db
-    .query("counters")
-    .withIndex("by_key", (q) => q.eq("key", key))
-    .unique();
-  if (row === null) {
-    await ctx.db.insert("counters", { key, value });
-  }
+  const row = await baseRow(ctx, key);
+  if (row !== null) return;
+  if (isHotKey(key) && (await shardRows(ctx, key)).length > 0) return;
+  await ctx.db.insert("counters", { key, value });
 }
 
-/** Read a counter, treating a missing row as 0. */
+/**
+ * Read a counter, treating a missing row as 0: the base row plus every shard.
+ * Costs one document for a cold key and up to 1 + HOT_COUNTER_SHARDS for a
+ * hot one — dashboard.ts's read budget is worked out against that figure.
+ */
 export async function readCounter(ctx: QueryCtx, key: string): Promise<number> {
-  const row = await ctx.db
-    .query("counters")
-    .withIndex("by_key", (q) => q.eq("key", key))
-    .unique();
-  return row === null ? 0 : row.value;
+  const row = await baseRow(ctx, key);
+  let total = row === null ? 0 : row.value;
+  if (isHotKey(key)) {
+    for (const shard of await shardRows(ctx, key)) total += shard.value;
+  }
+  return total;
 }
 
 // ---------------------------------------------------------------------------

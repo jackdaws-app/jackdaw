@@ -18,9 +18,10 @@ import type { EventName } from "./lib";
  *    the endpoint is public, unauthenticated and open source, anyone can call
  *    it. The rate limit bounds fabrication, it does not prevent it. Treat this
  *    as "clicks recorded", not "clicks proven".
- * 2. That same global bucket caps the metric at 60/hour (~1,440/day) across
+ * 2. That same global bucket caps the metric at 3,600/hour (~86k/day) across
  *    all users. Real clicks beyond that are dropped, not queued, so the figure
- *    reads low once click volume gets real.
+ *    reads low if click volume ever passes it — sized so that takes more than
+ *    100k installs, not a good afternoon.
  */
 export const alertClicked = mutation({
   args: {},
@@ -96,7 +97,7 @@ function clampCount(raw: number): number {
  *    there is no identifier to key a per-device bucket on, so the limit is one
  *    global bucket and anyone can call this. Treat a spike as "worth looking
  *    at", never as a proven count.
- * 2. That bucket caps the whole deployment at 3,000 batches/hour. A client
+ * 2. That bucket caps the whole deployment at 100,000 batches/hour. A client
  *    flushes once per hourly alarm, so that is roughly the supported user
  *    count — and past it reports are dropped rather than queued, so a
  *    breakage large enough to saturate the bucket reads LOW at exactly the

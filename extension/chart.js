@@ -102,7 +102,12 @@
     const key = (label, color, toggleable) => {
       const b = document.createElement(toggleable ? "button" : "span");
       b.className = "jd-key" + (toggleable ? " jd-key-toggle" : "");
-      b.innerHTML = `<i class="jd-swatch" style="background:${color}"></i>${label}`;
+      // The label can carry a store name read off the retailer's own page, so
+      // it lands as text, never as markup.
+      const sw = document.createElement("i");
+      sw.className = "jd-swatch";
+      sw.style.background = color;
+      b.append(sw, document.createTextNode(label));
       legend.append(b);
       return b;
     };

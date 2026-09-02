@@ -181,7 +181,27 @@ export const recordSendFailures = internalMutation({
 //
 // Keeping them one function is deliberate: two send loops would drift, and the
 // one that drifted would be the one nobody watches.
+//
+// THE SEND CAP IS PER PASS, NOT PER HOUR. EMAIL_SEND_LIMIT (watches.ts) bounds
+// what one action tries serially, which is an action-time-limit fact, not a
+// throughput decision. A pass that fills its cap and actually sent something
+// schedules itself again immediately (`hop` below), up to MAX_HOPS passes
+// deep, so an hour's throughput is MAX_HOPS x the cap rather than the cap —
+// at 100k installs the backlog behind one price drop on a popular product is
+// not a hundred rows, and a cap that only the clock could reset would have
+// spread one alert over days. A pass that sent NOTHING never chains: an
+// all-failed pass (provider down, key revoked) releases its claims, and a
+// chain off that would loop at full speed against a dead provider until the
+// hop limit and log nothing useful on the way.
 // ---------------------------------------------------------------------------
+
+// How many times one trigger (a cron tick or a sighting) may re-schedule
+// itself. Twelve passes at EMAIL_SEND_LIMIT is 1,200 sends from one hourly
+// tick and 300 from one fan-out, each in its own action with its own time
+// budget and its own claim window; anything still owed past that is the next
+// tick's, exactly as before. Bounded because a chain that could run forever is
+// a chain that CAN, and the cron is the guarantee either way.
+const MAX_HOPS = 12;
 
 /**
  * One pass: claim what is owed, send it, mark what actually went out.
@@ -212,6 +232,10 @@ type SweepResult = {
   failed: number;
   scanned: number;
   truncated: boolean;
+  // Which pass of a chain this was (0 for the one the trigger started) and
+  // whether it scheduled another. For the function log only.
+  hop: number;
+  chained: boolean;
 };
 
 const passResultValidator = v.object({
@@ -219,7 +243,17 @@ const passResultValidator = v.object({
   failed: v.number(),
   scanned: v.number(),
   truncated: v.boolean(),
+  hop: v.number(),
+  chained: v.boolean(),
 });
+
+/** Whether a finished pass has earned another one. See MAX_HOPS. */
+function shouldChain(
+  result: Pick<SweepResult, "sent" | "truncated">,
+  hop: number,
+): boolean {
+  return result.truncated && result.sent > 0 && hop < MAX_HOPS;
+}
 
 async function runPass(
   ctx: ActionCtx,
@@ -240,7 +274,7 @@ async function runPass(
     console.warn(
       `alerts: RESEND_API_KEY is unset — ${label} skipped, no rows claimed or marked.`,
     );
-    return { sent: 0, failed: 0, scanned: 0, truncated: false };
+    return { sent: 0, failed: 0, scanned: 0, truncated: false, hop: 0, chained: false };
   }
 
   // The claim handle. One value for the whole pass, so releaseEmailClaim can
@@ -255,11 +289,11 @@ async function runPass(
   // has whatever it left behind.
   if (due.truncated && productDocIds === undefined) {
     console.warn(
-      `alerts: sweep hit its send cap with ${due.scanned} rows scanned — the remainder waits for the next run. If this repeats, the interval is too long for the volume.`,
+      `alerts: sweep hit its send cap with ${due.scanned} rows scanned — it will chain another pass if this one sends; if a chain runs out at MAX_HOPS, the interval is too long for the volume.`,
     );
   }
   if (due.fires.length === 0) {
-    return { sent: 0, failed: 0, scanned: due.scanned, truncated: due.truncated };
+    return { sent: 0, failed: 0, scanned: due.scanned, truncated: due.truncated, hop: 0, chained: false };
   }
 
   const from = env.JACKDAW_FROM_EMAIL ?? DEFAULT_FROM;
@@ -309,19 +343,36 @@ async function runPass(
     });
   }
 
-  return { sent, failed, scanned: due.scanned, truncated: due.truncated };
+  return { sent, failed, scanned: due.scanned, truncated: due.truncated, hop: 0, chained: false };
 }
 
-/** The hourly pass over every armed-and-unsent row. The guarantee. */
+/**
+ * The hourly pass over every armed-and-unsent row. The guarantee.
+ *
+ * `hop` is the chain depth and is only ever set by this function scheduling
+ * itself; the cron passes nothing and starts at 0. A pass that filled its cap
+ * and sent at least one mail schedules the next pass with no delay — a fresh
+ * action, so a fresh time budget, and a fresh claim stamp so the released and
+ * still-unclaimed rows are simply what it finds. See the header note on why
+ * the cap is per pass.
+ */
 export const sweep = internalAction({
-  args: {},
+  args: { hop: v.optional(v.number()) },
   returns: passResultValidator,
   // Annotated rather than inferred. An action that calls a function through
   // `internal` is part of the graph `internal` is derived from, so letting
   // TypeScript infer this makes the type reference itself and collapses to
   // `any` — with a TS7022 that names a local rather than the cycle. Same
   // annotation, for the same reason, as auth:verifyCode's.
-  handler: async (ctx): Promise<SweepResult> => runPass(ctx, undefined),
+  handler: async (ctx, args): Promise<SweepResult> => {
+    const hop = args.hop ?? 0;
+    const result = await runPass(ctx, undefined);
+    const chained = shouldChain(result, hop);
+    if (chained) {
+      await ctx.scheduler.runAfter(0, internal.alerts.sweep, { hop: hop + 1 });
+    }
+    return { ...result, hop, chained };
+  },
 });
 
 /**
@@ -343,13 +394,28 @@ export const sweep = internalAction({
  * the function log, which is the only place a fan-out is visible at all.
  */
 export const fanOut = internalAction({
-  args: { productDocIds: v.array(v.id("products")) },
+  args: {
+    productDocIds: v.array(v.id("products")),
+    hop: v.optional(v.number()),
+  },
   returns: passResultValidator,
   handler: async (ctx, args): Promise<SweepResult> => {
+    const hop = args.hop ?? 0;
     if (args.productDocIds.length === 0) {
-      return { sent: 0, failed: 0, scanned: 0, truncated: false };
+      return { sent: 0, failed: 0, scanned: 0, truncated: false, hop, chained: false };
     }
-    return runPass(ctx, args.productDocIds);
+    const result = await runPass(ctx, args.productDocIds);
+    // Same products, next pass: the reactive index is "armed and unsent" per
+    // product, so what the first pass marked has left the set and the second
+    // reads what remains. Same chain rule as the sweep, same hop ceiling.
+    const chained = shouldChain(result, hop);
+    if (chained) {
+      await ctx.scheduler.runAfter(0, internal.alerts.fanOut, {
+        productDocIds: args.productDocIds,
+        hop: hop + 1,
+      });
+    }
+    return { ...result, hop, chained };
   },
 });
 
