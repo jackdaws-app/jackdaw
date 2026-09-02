@@ -1078,9 +1078,11 @@ export const ack = mutation({
 //
 // The send bound is the action's: each send is a network round trip, and an
 // action that tries 500 of them serially will hit its own time limit and lose
-// the tail without recording it. Anything over the cap simply waits for the
-// next sweep — nothing is dropped, because a row is only marked once it has
-// actually been sent.
+// the tail without recording it. It is a PER-PASS cap, not an hourly one:
+// a pass that fills it and sent something schedules another pass at once
+// (`alerts.ts`, MAX_HOPS), and anything still owed past the chain waits for
+// the next sweep — nothing is dropped, because a row is only marked once it
+// has actually been sent.
 const EMAIL_SCAN_LIMIT = 400;
 const EMAIL_SEND_LIMIT = 100;
 

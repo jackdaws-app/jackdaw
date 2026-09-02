@@ -94,6 +94,12 @@ export const clearAll = internalMutation({
  *    health counters are the same kind of thing and are not touched at all:
  *    nothing derives them, they aren't in the list below, and the only stale
  *    key sweep is scoped to comments:day:, so a re-run cannot zero them.
+ * 3. The hot counters are SHARDED (lib.ts): live traffic spreads `obs:total`
+ *    and friends over up to HOT_COUNTER_SHARDS rows beside the base row.
+ *    setCounter writes the base row and deletes every shard, so a derived
+ *    key comes out of here as exactly one authoritative row; initCounter
+ *    treats an existing shard as "exists", so a seed-once key that live
+ *    traffic has already opened is left alone rather than seeded beside it.
  *
  * Note that obs:day is an approximation (see below), so a re-run re-derives
  * the daily observation series rather than preserving what live traffic
@@ -213,6 +219,9 @@ export const backfillCounters = internalMutation({
     // (sightings that only incremented points first seen on an earlier day),
     // and zeroing it would destroy real data.
     const COMMENT_DAY_PREFIX = "comments:day:";
+    // comments:day is not a hot key, so this range holds base rows only —
+    // no fold needed. Were it ever moved into the hot set, this sweep would
+    // have to fold on baseKeyOf before comparing against the derived map.
     const staleDays = await ctx.db
       .query("counters")
       .withIndex("by_key", (q) =>
@@ -268,7 +277,10 @@ export const backfillCounters = internalMutation({
 // The evt: namespace holds only counter keys minted by metrics:events, whose
 // names come from a closed union of lowercase identifiers and whose day
 // suffixes are digits and hyphens. Every one of those characters sorts below
-// "~", so this is a bounded range over that namespace and nothing else.
+// "~", so this is a bounded range over that namespace and nothing else. The
+// evt:* keys are hot (lib.ts), so their shard rows — `<key>\u0001<n>` — sit
+// in the same range and are deleted by the same loop; nothing here needs to
+// know which rows are which.
 const EVENT_PREFIX = "evt:";
 const EVENT_PREFIX_END = "evt:~";
 
@@ -288,8 +300,9 @@ const EVENT_PREFIX_END = "evt:~";
  * back to honest zeroes.
  *
  * Bounded like every other scan here: a year of daily buckets across six names
- * is ~2,200 rows, more than SCAN_LIMIT, so `truncated` reports whether rows
- * remain. Run again while it is true.
+ * is ~2,200 keys, up to nine rows each once sharded — far more than
+ * SCAN_LIMIT, so `truncated` reports whether rows remain. Run again while it
+ * is true.
  */
 export const clearEventCounters = internalMutation({
   args: {},

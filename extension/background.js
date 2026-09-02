@@ -352,12 +352,28 @@ async function contributing() {
   return jdCatalog === true;
 }
 
+const EXTENSION_PAGE_ONLY = new Set([
+  "auth:request",
+  "auth:verify",
+  "auth:emailAlerts",
+  "auth:signOut",
+  "auth:delete",
+]);
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     // client-side signal, no backend round trip of its own
     if (msg.type === "event") {
       await recordEvent(msg.name);
       return { ok: true };
+    }
+    // Account messages come only from the extension's own pages (the popup's
+    // sign-in and account sheets). A content script runs inside a page the
+    // retailer controls and has no use for any of them; `sender.tab` is set
+    // exactly when a message came from a tab, so the refusal is structural
+    // rather than resting on nothing in a content script ever asking.
+    if (sender.tab !== undefined && EXTENSION_PAGE_ONLY.has(msg.type)) {
+      throw new Error("NOT_ALLOWED_FROM_CONTENT");
     }
     const deviceId = await getDeviceId();
     switch (msg.type) {
