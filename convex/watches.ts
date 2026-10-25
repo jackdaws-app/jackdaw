@@ -9,7 +9,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import {
   bump,
+  enforceRateLimit,
   isPhysicalStore,
+  rateLimiter,
   requireLength,
   resolveSession,
   STORE_SIGNAL_MAX_AGE_MS,
@@ -111,6 +113,28 @@ async function requireWatchAccount(
     });
   }
   return accountId;
+}
+
+/**
+ * One watchWrite token for this account, or RATE_LIMITED. Called by all four
+ * watch mutations right after the account resolves and before anything is
+ * written — see the bucket in lib.ts for the loop it exists to stop.
+ *
+ * Throwing is safe here for the reason claimHandle gives: a refused `limit()`
+ * consumed nothing, so there is nothing for the throw to roll back. Keyed on
+ * the account rather than the device, so two browsers signed into one account
+ * share one bucket — the same `acct:` key the comment buckets use.
+ *
+ * What it does not meter: a call that throws AFTER taking its token (an
+ * unknown product, a bad target) rolls the token back with everything else.
+ * Those calls write nothing and schedule nothing, so they cannot re-owe mail;
+ * they cost only the call itself.
+ */
+async function enforceWatchWriteLimit(
+  ctx: MutationCtx,
+  accountId: Id<"accounts">,
+): Promise<void> {
+  await enforceRateLimit(ctx, "watchWrite", `acct:${accountId}`);
 }
 
 type WatchSet = {
@@ -350,6 +374,7 @@ export const toggle = mutation({
   handler: async (ctx, args): Promise<{ watching: boolean }> => {
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const accountId = await requireWatchAccount(ctx, args.sessionToken);
+    await enforceWatchWriteLimit(ctx, accountId);
 
     const product = await ctx.db
       .query("products")
@@ -431,6 +456,9 @@ export const setTarget = mutation({
     }
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const accountId = await requireWatchAccount(ctx, args.sessionToken);
+    // The call this bucket exists for: setTarget re-arms, re-arming clears
+    // emailedAt, and every call schedules a fan-out. See lib.ts watchWrite.
+    await enforceWatchWriteLimit(ctx, accountId);
 
     const product = await ctx.db
       .query("products")
@@ -526,10 +554,20 @@ export const setTriggers = mutation({
       return { ok: false, reason: "SIGN_IN_REQUIRED" as const };
     }
 
+    // THROWN, the one refusal here that is not in band — deliberately, and on
+    // claimHandle's precedent: a refused `limit()` consumed nothing, so the
+    // throw rolls back nothing, and the returns union (which the panel
+    // branches on) stays exactly what it was. The panel already reverts the
+    // switch and toasts on any error, so a client needs no new reason to read.
+    // Before the in-band checks below, so those refusals pay for their token
+    // and a loop cannot probe them for free.
+    await enforceWatchWriteLimit(ctx, accountId);
+
     // Refused in band rather than thrown, for the reason the rest of this
     // codebase answers in band: a throw would roll back its own writes, and a
     // caller that has to distinguish "no alert here" from "backend down" gets
-    // nothing useful from an exception. Nothing is written before this point.
+    // nothing useful from an exception. Nothing is written before this point
+    // except the watchWrite token, which an in-band answer keeps spent.
     if ((args.openBox || args.restock) && !isPhysicalStore(storeNum)) {
       return { ok: false, reason: "NOT_A_STORE" as const };
     }
@@ -1013,6 +1051,7 @@ export const ack = mutation({
       });
     }
     const accountId = await requireWatchAccount(ctx, args.sessionToken);
+    await enforceWatchWriteLimit(ctx, accountId);
 
     const product = await ctx.db
       .query("products")
@@ -1165,7 +1204,9 @@ type EmailClaim = { fires: EmailFire[]; scanned: number; truncated: boolean };
  * Three filters and the ORDER of them is the cost model: the cheap field tests
  * come first so a deployment full of watches belonging to people who never
  * opted in costs one index scan and nothing else. fireFor is last because it is
- * the only step that reads other tables.
+ * the only step that reads other tables. The per-account mail cap comes after
+ * all three, because it is the one step that SPENDS something: a token is only
+ * taken for a row that would otherwise be claimed and sent.
  *
  * `truncated` is returned rather than logged-and-forgotten because a silent cap
  * reads as "everyone who was owed mail got it". If it is ever true on the SWEEP
@@ -1239,6 +1280,10 @@ export const claimDueForEmail = internalMutation({
     // email, not one per browser. markEmailed marks the siblings too.
     const seen = new Set<string>();
     let truncated = false;
+    // Accounts the alertEmail bucket refused during this pass, and how many
+    // emails that withheld. See the cap below.
+    const cappedAccounts = new Set<Id<"accounts">>();
+    let capped = 0;
 
     for (const row of rows) {
       if (fires.length >= sendLimit) {
@@ -1280,6 +1325,36 @@ export const claimDueForEmail = internalMutation({
 
       seen.add(key);
 
+      // The per-account mail cap (lib.ts alertEmail), and the last gate before
+      // the claim: everything above has said this row WOULD be sent, so only a
+      // send costs a token. A refused row is skipped exactly as an unclaimed
+      // one — left owing, no claim stamped — so the first pass after the bucket
+      // refills sends it once, if it is still firing then. Capped mail is
+      // delayed, not dropped: nothing marks the row as sent.
+      //
+      // `seen` is already set, so the account's sibling rows for this product
+      // are not re-asked and the refusal is counted once per email withheld.
+      // An account refused once in this pass is not asked again: time does not
+      // advance inside a transaction, so the bucket cannot have refilled.
+      //
+      // The token is spent at CLAIM time, not on delivery. A send the provider
+      // refuses is released and retried on a later pass, which costs a second
+      // token — so a long provider outage can run an account's allowance down
+      // and its mail resumes as the bucket refills. The cheaper failure: the
+      // other order would check after the send, once the mail had already gone.
+      if (cappedAccounts.has(accountId)) {
+        capped++;
+        continue;
+      }
+      const allowance = await rateLimiter.limit(ctx, "alertEmail", {
+        key: `acct:${accountId}`,
+      });
+      if (!allowance.ok) {
+        cappedAccounts.add(accountId);
+        capped++;
+        continue;
+      }
+
       // THE CLAIM COVERS THE SIBLING SET, because the send it protects does.
       // markEmailed marks every unsent row an account holds for this product,
       // so a claim that covered only the row we happened to read first would
@@ -1315,6 +1390,17 @@ export const claimDueForEmail = internalMutation({
           ? {}
           : { openBoxPrice: hit.openBoxPrice }),
       });
+    }
+
+    // Once per pass with the total, not once per withheld row: the same
+    // accumulate-then-write shape reportBatch uses for its counters. Same
+    // lifetime/day pair as alerts:email:sent, so the panel can set the two
+    // side by side. A nonzero day means some account wanted more mail than
+    // the cap allows — either a person with a very long watchlist on a very
+    // good day, or the loop this cap exists to stop.
+    if (capped > 0) {
+      await bump(ctx, "alerts:email:capped", capped);
+      await bump(ctx, `alerts:email:capped:day:${utcDay(args.at)}`, capped);
     }
 
     return { fires, scanned: rows.length, truncated };

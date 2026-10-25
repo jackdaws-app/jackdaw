@@ -190,6 +190,22 @@
       </section>
 
       <!--
+        Sign-in refusals and what admins changed. Counts only: no address, code
+        or device reaches these numbers, so they say how often the door was
+        tried and never by whom. The list below them is the panel's own trail,
+        written by the server in the same transaction as the change.
+      -->
+
+      <section class="admin-card" id="accessCard" data-plate hidden>
+        <div class="admin-card-head">
+          <h2>Access</h2>
+          <span class="admin-note" id="accessNote"></span>
+        </div>
+        <div id="access"></div>
+        <div id="adminTrail"></div>
+      </section>
+
+      <!--
         Sibling of Health signals, and a different question. That card reports
         things that went visibly wrong; this one reports a reader that went
         quietly right-looking while finding nothing. Four fields have failed

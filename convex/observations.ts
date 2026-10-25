@@ -8,8 +8,11 @@ import {
   bump,
   categoryKey,
   conditionFromName,
+  hasLinkOrEmail,
   initCounter,
   isPhysicalStore,
+  isProductPath,
+  isWellFormedProductId,
   normalizeSku,
   normalizeUrlPath,
   recordSelectorHealth,
@@ -135,11 +138,28 @@ export const report = mutation({
     // Validate / sanitize string inputs.
     const deviceId = requireLength("deviceId", args.deviceId, 1, 100);
     const productId = requireLength("productId", args.productId, 1, 40);
+    // The identity every other check below is anchored to, so it is checked
+    // first. See the note above isProductPath in lib.ts for why the shape is
+    // safe to demand: every real product id ever recorded is all digits.
+    if (!isWellFormedProductId(productId)) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "productId must be 1 to 10 digits",
+      });
+    }
     // The dataLayer's unpadded spelling becomes the printed one — see
     // normalizeSku. Without it this path and the catalog path fight over the
     // same field on every alternating visit.
     const sku = normalizeSku(requireLength("sku", args.sku, 1, 40));
     const name = requireLength("name", args.name, 1, 300);
+    // The name lands in alert-email subjects under our domain, so a link or an
+    // address in it is a lure, not a product — see hasLinkOrEmail.
+    if (hasLinkOrEmail(name)) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "name must not contain a link or an email address",
+      });
+    }
     // Normalized BEFORE the length check, so a value that is nothing but a
     // query string fails as INVALID_ARGUMENT rather than being stored empty.
     const urlPath = requireLength(
@@ -148,6 +168,16 @@ export const report = mutation({
       1,
       500,
     );
+    // The link every watcher's email carries. Anything but this product's own
+    // page is refused here rather than repaired, because a sighting that
+    // disagrees with itself about which product it is cannot be trusted for
+    // its price either.
+    if (!isProductPath(urlPath, productId)) {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: "urlPath must be this product's own /product/<productId> page",
+      });
+    }
     const storeNum = requireLength("storeNum", args.storeNum, 1, 10);
     const availability =
       args.availability !== undefined
@@ -750,34 +780,53 @@ export const reportBatch = mutation({
     const seen = new Set<string>();
 
     for (const raw of args.items) {
+      // Sanitized exactly as `report` sanitizes them (requireLength runs
+      // `sanitize` there), and before anything else reads them. This path used
+      // to store the name raw, so a CR/LF typed into a forged card reached
+      // alert-email subjects and the popup; one sanitizer on both paths means
+      // the two cannot disagree about what a stored string may contain.
+      const productId = sanitize(raw.productId);
+
       // A grid can repeat a card (sponsored slots, "also viewed" rails inside
       // the results container). First occurrence wins; the rest are not
       // sightings, so they are not counted as skips either.
-      if (seen.has(raw.productId)) continue;
-      seen.add(raw.productId);
+      if (seen.has(productId)) continue;
+      seen.add(productId);
 
+      // Already the printed six-digit form on this path; normalized anyway so
+      // both paths run the same function and neither can drift. Padding only
+      // ever lengthens a 1-5 digit string to six, so the length test below
+      // reads the same either side of it.
+      const sku = normalizeSku(sanitize(raw.sku));
+      const name = sanitize(raw.name);
       // Normalized before it is length-checked or written, for the reason in
       // lib.ts. The catalog reader already takes `u.pathname`, so this is the
       // backstop for clients predating that and for anything the shape of the
       // card's href changes into.
-      const itemUrlPath = normalizeUrlPath(raw.urlPath);
+      const itemUrlPath = sanitize(normalizeUrlPath(raw.urlPath));
 
+      // The identity checks ride on INVALID_ITEM with the rest of the shape
+      // tests: a card naming a non-numeric product, a link off the product's
+      // own page, or a name carrying a link or an address is not a sighting at
+      // all. See the note above isProductPath in lib.ts — this is the path
+      // that could rewrite 96 products' links in one call.
       if (
         !Number.isFinite(raw.price) ||
         raw.price <= 0 ||
         raw.price >= 100_000 ||
-        raw.productId.length === 0 ||
-        raw.productId.length > 40 ||
-        raw.sku.length === 0 ||
-        raw.sku.length > 40 ||
-        raw.name.length === 0 ||
-        raw.name.length > 300 ||
+        !isWellFormedProductId(productId) ||
+        sku.length === 0 ||
+        sku.length > 40 ||
+        name.length === 0 ||
+        name.length > 300 ||
+        hasLinkOrEmail(name) ||
         itemUrlPath.length === 0 ||
-        itemUrlPath.length > 500
+        itemUrlPath.length > 500 ||
+        !isProductPath(itemUrlPath, productId)
       ) {
         skipped++;
         skippedItems.push({
-          productId: raw.productId.slice(0, 40),
+          productId: productId.slice(0, 40),
           reason: "INVALID_ITEM",
         });
         continue;
@@ -787,7 +836,7 @@ export const reportBatch = mutation({
         (!Number.isInteger(raw.units) || raw.units < 0 || raw.units > 10_000)
       ) {
         skipped++;
-        skippedItems.push({ productId: raw.productId, reason: "INVALID_UNITS" });
+        skippedItems.push({ productId, reason: "INVALID_UNITS" });
         continue;
       }
       // An open-box price is a used unit's price, so it has to undercut the new
@@ -803,7 +852,7 @@ export const reportBatch = mutation({
           raw.openBoxPrice >= raw.price)
       ) {
         skipped++;
-        skippedItems.push({ productId: raw.productId, reason: "INVALID_OPEN_BOX" });
+        skippedItems.push({ productId, reason: "INVALID_OPEN_BOX" });
         continue;
       }
       // A count with no price beside it cannot have come from the one string
@@ -818,7 +867,7 @@ export const reportBatch = mutation({
       ) {
         skipped++;
         skippedItems.push({
-          productId: raw.productId,
+          productId,
           reason: "INVALID_OPEN_BOX_UNITS",
         });
         continue;
@@ -836,27 +885,58 @@ export const reportBatch = mutation({
           raw.listPrice > raw.price * CATALOG_MAX_LIST_RATIO)
       ) {
         skipped++;
-        skippedItems.push({ productId: raw.productId, reason: "INVALID_LIST_PRICE" });
+        skippedItems.push({ productId, reason: "INVALID_LIST_PRICE" });
         continue;
       }
 
-      const name = raw.name.slice(0, 300);
-      // Already the printed six-digit form on this path; normalized anyway so
-      // both paths run the same function and neither can drift.
-      const sku = normalizeSku(raw.sku);
       const brand = raw.brand !== undefined ? sanitize(raw.brand).slice(0, 100) : undefined;
       const category =
         raw.category !== undefined ? sanitize(raw.category).slice(0, 200) : undefined;
 
-      // --- product upsert -------------------------------------------------
       const existing = await ctx.db
         .query("products")
-        .withIndex("by_productId", (q) => q.eq("productId", raw.productId))
+        .withIndex("by_productId", (q) => q.eq("productId", productId))
         .unique();
+
+      // --- plausibility clamp, BEFORE anything is written --------------------
+      // This used to run after the product upsert below, so an item skipped
+      // here as PRICE_OUTLIER had already renamed the product and repointed
+      // its link — the refusal refused the price and kept the rest. Now the
+      // clamp decides first and a skipped item writes nothing at all.
+      //
+      // Behaviour is otherwise unchanged. The clamp reads `latest` for this
+      // (product, store) and the product's lifetime summary, and a product
+      // that does not exist yet has neither: `latest` is null and
+      // outsideLifetimeBounds(…, null) is false, so a first sighting can never
+      // be clamped — exactly as before, when its row was inserted moments
+      // earlier with no points and no summary.
+      const latest =
+        existing === null
+          ? null
+          : await ctx.db
+              .query("pricePoints")
+              .withIndex("by_product_store", (q) =>
+                q.eq("productDocId", existing._id).eq("storeNum", storeNum),
+              )
+              .order("desc")
+              .first();
+
+      if (
+        (latest !== null &&
+          (raw.price < latest.price * PRICE_MIN_RATIO ||
+            raw.price > latest.price * PRICE_MAX_RATIO)) ||
+        outsideLifetimeBounds(raw.price, existing)
+      ) {
+        skipped++;
+        skippedItems.push({ productId, reason: "PRICE_OUTLIER" });
+        continue;
+      }
+
+      // --- product upsert -------------------------------------------------
       let productDocId: Id<"products">;
       if (existing === null) {
         productDocId = await ctx.db.insert("products", {
-          productId: raw.productId,
+          productId,
           sku,
           name,
           brand,
@@ -890,24 +970,8 @@ export const reportBatch = mutation({
       }
 
       // --- price point ----------------------------------------------------
-      const latest = await ctx.db
-        .query("pricePoints")
-        .withIndex("by_product_store", (q) =>
-          q.eq("productDocId", productDocId).eq("storeNum", storeNum),
-        )
-        .order("desc")
-        .first();
-
-      if (
-        (latest !== null &&
-          (raw.price < latest.price * PRICE_MIN_RATIO ||
-            raw.price > latest.price * PRICE_MAX_RATIO)) ||
-        outsideLifetimeBounds(raw.price, existing)
-      ) {
-        skipped++;
-        skippedItems.push({ productId: raw.productId, reason: "PRICE_OUTLIER" });
-        continue;
-      }
+      // `latest` was read above, before the clamp; nothing since has written a
+      // price point for this (product, store), so it is still the newest.
 
       // What this card says about open box, if anything. The carry-forward is
       // now conditional: a card that could read `.clearance` speaks for this
@@ -1043,7 +1107,7 @@ export const reportBatch = mutation({
       }
 
       accepted++;
-      acceptedProductIds.push(raw.productId);
+      acceptedProductIds.push(productId);
       const catKey = categoryKey(category);
       if (catKey !== null) perCategory.set(catKey, (perCategory.get(catKey) ?? 0) + 1);
     }

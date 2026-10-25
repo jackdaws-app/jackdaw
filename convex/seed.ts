@@ -1,10 +1,15 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
+import { refuseOnProduction } from "./lib";
 
 // Dev-only demo seed. Wipes ALL tables, then inserts rich realistic data for
 // the ASUS XG-C100C product page plus two skeletal products.
 // Run with `npx convex run seed:demo` against the DEV deployment only.
+//
+// "DEV only" is enforced, not requested: the handler refuses production (and
+// any deployment that cannot name itself) before its first read. It wipes six
+// tables with no undo, and `--prod` is one word away.
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -23,6 +28,7 @@ export const demo = internalMutation({
   args: {},
   returns: v.object({ deleted: v.number(), inserted: v.number() }),
   handler: async (ctx) => {
+    refuseOnProduction("seed:demo");
     // --- Wipe everything (same pattern as admin:clearAll) ---
     const tables = [
       "votes",

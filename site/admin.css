@@ -525,6 +525,11 @@
    the judgement. 11.95 / 10.05 on the plate. */
 .policy-version.ok { color: var(--accent-deep); }
 .policy-version.warn { color: var(--adm-warn); }
+/* The admin trail borrows the policy row, but its middle column holds a
+   comment id or "terms v3 (restored v1)" rather than a short version, so the
+   target takes the free width and truncates instead of running under the time. */
+.trail-row { grid-template-columns: 118px minmax(0, 1fr) auto; }
+.trail-row .policy-version { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The command is quoted, not described, because it is meant to be run. Set into
    the plate rather than raised off it — an instruction, not a value. */
 .policy-cmd {

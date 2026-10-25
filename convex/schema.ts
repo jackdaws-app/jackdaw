@@ -500,7 +500,13 @@ export default defineSchema({
     lastUsedAt: v.number(),
   })
     .index("by_tokenHash", ["tokenHash"])
-    .index("by_account", ["accountId"]),
+    .index("by_account", ["accountId"])
+    // auth:purgeExpired's candidate set. Without it the purge read the first
+    // rows of the table whatever their expiry, so a prefix of long-lived
+    // sessions in daily use hid every expired one behind it, forever. Costs an
+    // index write when `touch` slides an expiry, which is once a day per
+    // session at most.
+    .index("by_expiresAt", ["expiresAt"]),
 
   // One live code per email (storeCode replaces rather than appends), hashed
   // the same way sessions are. `attempts` is what makes a 6-digit secret
@@ -520,7 +526,37 @@ export default defineSchema({
     // deployment with mail configured never populates this field, so the
     // plaintext of a live code is never at rest in production.
     devCode: v.optional(v.string()),
-  }).index("by_email", ["email"]),
+  })
+    .index("by_email", ["email"])
+    // Same reason as sessions.by_expiresAt. Every code is written with an
+    // expiry ten minutes out, so a CONSUMED code reaches this range at most ten
+    // minutes after it was spent and needs no index of its own.
+    .index("by_expiresAt", ["expiresAt"]),
+
+  // Who changed something a reader sees, from the admin panel, and when.
+  //
+  // Append-only, like policyDocs, and for the same reason: a trail that can be
+  // edited answers nothing. One row per publish, revert, unhide or delete that
+  // actually happened — written in the same transaction as the change, so a
+  // refused or failed action leaves no row (lib.ts recordAdminAction).
+  //
+  // `target` names the thing acted on and never its content: a deleted
+  // comment's words must not survive here. `via` records which door
+  // requireAdmin admitted the caller through; `accountId` is absent for the
+  // legacy shared key, which names no person — that absence is itself the
+  // reason to retire the key.
+  adminActions: defineTable({
+    at: v.number(),
+    op: v.union(
+      v.literal("policy:publish"),
+      v.literal("policy:revert"),
+      v.literal("comment:unhide"),
+      v.literal("comment:delete"),
+    ),
+    target: v.string(),
+    via: v.union(v.literal("session"), v.literal("key")),
+    accountId: v.optional(v.id("accounts")),
+  }).index("by_at", ["at"]),
 
   // The published text of PRIVACY.md and TERMS.md, so the two documents can be
   // amended from the admin panel instead of a deploy.
@@ -564,6 +600,8 @@ export default defineSchema({
   //   comments:total · comments:day:<YYYY-MM-DD> · comments:hidden
   //   reports:total · alerts:armed · alerts:fired · handles:claimed
   //   evt:<name> · evt:<name>:day:<YYYY-MM-DD>
+  //   auth:<signal> · auth:<signal>:day:<YYYY-MM-DD>   (lib.ts ACCESS_SIGNALS)
+  //   alerts:email:capped · alerts:email:capped:day:<YYYY-MM-DD>
   //
   // The evt: namespace is client health telemetry. <name> is one of the six
   // fixed names in lib.ts's EVENT_NAMES and can only ever be one of those —
@@ -579,7 +617,8 @@ export default defineSchema({
   //   obs:total · obs:catalog · obs:batches · pricepoints:total ·
   //   products:total · devices:total · alerts:clicked ·
   //   every obs:day:* · obs:gridday:* (not obs:gridday:from, a timestamp) ·
-  //   obs:store:* · obs:cat:* · evt:* · alerts:clicked:day:* · abuse:* · sel:*
+  //   obs:store:* · obs:cat:* · evt:* · alerts:clicked:day:* · abuse:* · sel:* ·
+  //   auth:*
   // Everything else stays one row per key with its old semantics, which is
   // what lets moderation decrement comments:* exactly. The separator is a
   // control character because free-text keys (categories) can contain any

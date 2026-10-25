@@ -3,7 +3,10 @@ import { internalMutation, query } from "./_generated/server";
 import {
   categoryKey,
   conditionFromName,
+  hasLinkOrEmail,
   isPhysicalStore,
+  isProductPath,
+  isWellFormedProductId,
   normalizeSku,
   readSummary,
   resolveSession,
@@ -215,6 +218,138 @@ export const recompute = internalMutation({
       scanned: page.page.length,
       changed,
       windowed,
+      isDone: page.isDone,
+      cursor: page.isDone ? null : page.continueCursor,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Link repair, for rows stored before the write boundary checked them
+// ---------------------------------------------------------------------------
+
+// Products read per pass. Only the product rows themselves are read — no
+// points — so a pass can be far larger than recompute's.
+const REPAIR_BATCH_DEFAULT = 500;
+const REPAIR_BATCH_MAX = 2000;
+// Offending ids returned per pass, so a dry run answers "was anything ever
+// poisoned, and which" without dumping a table into a terminal.
+const REPAIR_SAMPLE = 10;
+
+/**
+ * Find, and optionally reset, every product whose stored link is not its own
+ * product page. Internal and cursor-driven, like `recompute`:
+ *
+ *   npx convex run products:repairUrlPaths '{}'                  (dry run)
+ *   npx convex run products:repairUrlPaths '{"cursor":"..."}'    (next page)
+ *   npx convex run products:repairUrlPaths '{"dryRun":false}'    (repair)
+ *
+ * WHY IT EXISTS. Until the write boundary checked it (lib.ts isProductPath),
+ * any anonymous sighting could set any product's urlPath, and alerts.ts built
+ * the email's link by concatenation — so a stored `@evil.example/x` sent
+ * readers to evil.example. Fixing the write path stops new poison; this finds
+ * the old. It has to be run on PROD at the next release deploy, and the safe
+ * order is the default: a dry run first, to learn whether anything was ever
+ * repointed, then the repair.
+ *
+ * DRY RUN BY DEFAULT, because the one deployment it matters on is the one that
+ * must never be written by accident. `dryRun: false` has to be typed.
+ *
+ * What it does, per row:
+ *   - productId not 1-10 digits: COUNTED, left alone. There is no honest path
+ *     to reset it to, and a row the write paths would now refuse outright is a
+ *     question for a person, not a guess for a script.
+ *   - urlPath not this product's own page: reset to the bare
+ *     `/product/<productId>`, which Micro Center routes on the id alone. The
+ *     slug is lost, and the next real sighting puts it back.
+ *   - name carrying a link or an email address (lib.ts hasLinkOrEmail):
+ *     COUNTED, never edited. There is no correct name to restore from here;
+ *     the next real sighting of the product overwrites it.
+ *
+ * The samples are per pass, so a caller paging through a large table collects
+ * them as it goes.
+ */
+export const repairUrlPaths = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+    cursor: v.optional(v.string()),
+    batch: v.optional(v.number()),
+  },
+  returns: v.object({
+    dryRun: v.boolean(),
+    scanned: v.number(),
+    // urlPath failed the check (and was reset, unless dryRun).
+    badPaths: v.number(),
+    repaired: v.number(),
+    // productId failed the shape check; left alone, path not examined.
+    badProductIds: v.number(),
+    // name carries a link or an address; counted only.
+    badNames: v.number(),
+    // Up to REPAIR_SAMPLE productIds per category, never the stored text
+    // itself: a poisoned name is a phishing line, and a malformed productId is
+    // truncated to the 40 characters the write path allowed.
+    samplePaths: v.array(v.string()),
+    sampleProductIds: v.array(v.string()),
+    sampleNames: v.array(v.string()),
+    isDone: v.boolean(),
+    cursor: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    // `=== false`, never truthiness: absent means a dry run, and the only way
+    // to write is to say so.
+    const dryRun = args.dryRun !== false;
+    const requested = Math.floor(args.batch ?? REPAIR_BATCH_DEFAULT);
+    const numItems = Number.isFinite(requested)
+      ? Math.min(Math.max(requested, 1), REPAIR_BATCH_MAX)
+      : REPAIR_BATCH_DEFAULT;
+
+    const page = await ctx.db.query("products").paginate({
+      cursor: args.cursor ?? null,
+      numItems,
+    });
+
+    let badPaths = 0;
+    let repaired = 0;
+    let badProductIds = 0;
+    let badNames = 0;
+    const samplePaths: string[] = [];
+    const sampleProductIds: string[] = [];
+    const sampleNames: string[] = [];
+
+    for (const product of page.page) {
+      // The name check is independent of the id, so every row gets it.
+      if (hasLinkOrEmail(product.name)) {
+        badNames++;
+        if (sampleNames.length < REPAIR_SAMPLE) sampleNames.push(product.productId.slice(0, 40));
+      }
+
+      if (!isWellFormedProductId(product.productId)) {
+        badProductIds++;
+        if (sampleProductIds.length < REPAIR_SAMPLE) {
+          sampleProductIds.push(product.productId.slice(0, 40));
+        }
+        continue;
+      }
+
+      if (isProductPath(product.urlPath, product.productId)) continue;
+      badPaths++;
+      if (samplePaths.length < REPAIR_SAMPLE) samplePaths.push(product.productId);
+      if (!dryRun) {
+        await ctx.db.patch(product._id, { urlPath: `/product/${product.productId}` });
+        repaired++;
+      }
+    }
+
+    return {
+      dryRun,
+      scanned: page.page.length,
+      badPaths,
+      repaired,
+      badProductIds,
+      badNames,
+      samplePaths,
+      sampleProductIds,
+      sampleNames,
       isDone: page.isDone,
       cursor: page.isDone ? null : page.continueCursor,
     };

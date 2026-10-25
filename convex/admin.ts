@@ -5,6 +5,7 @@ import {
   categoryKey,
   initCounter,
   isHotKey,
+  refuseOnProduction,
   setCounter,
   utcDay,
 } from "./lib";
@@ -24,17 +25,6 @@ const STALE_DAY_LIMIT = 500;
 const BACKFILL_READ_BUDGET = 14_000;
 const BACKFILL_WRITE_BUDGET = 7_000;
 
-// CONVEX_CLOUD_URL is a system variable naming the deployment this code is
-// running on, so it is absent from the typed `env` convex.config.ts declares.
-// Same narrow declaration alerts.ts uses, and for the same reason: @types/node
-// is deliberately not a dependency.
-declare const process: { env: Record<string, string | undefined> };
-
-// The production deployment, named so that a destructive helper can refuse it
-// by name. Already public — `extension/config.js` and `site/config.js` both
-// carry it, because the extension calls it from the browser.
-const PROD_DEPLOYMENT = "insightful-wren-655";
-
 /**
  * Dev utility: wipe collected data. Run with `npx convex run admin:clearAll`.
  *
@@ -42,6 +32,10 @@ const PROD_DEPLOYMENT = "insightful-wren-655";
  * from the normal invocation, this function is destructive and has no undo,
  * and several counters have no decrement path — so the guard cannot live in a
  * comment or in a habit. A deploy has already reached prod by accident once.
+ *
+ * The guard is lib.ts refuseOnProduction, which also refuses a deployment
+ * that cannot say where it is. The check it replaced, `url.includes(prod)`,
+ * failed OPEN on an empty CONVEX_CLOUD_URL.
  *
  * Bounded per table and reports `more`, matching the other sweeps here; run it
  * again while that is true. It deliberately does NOT clear `policyDocs` or
@@ -52,12 +46,7 @@ export const clearAll = internalMutation({
   args: {},
   returns: v.object({ deleted: v.number(), more: v.boolean() }),
   handler: async (ctx) => {
-    const url = process.env.CONVEX_CLOUD_URL ?? "";
-    if (url.includes(PROD_DEPLOYMENT)) {
-      throw new ConvexError(
-        "admin:clearAll is refused on production. Production data is not test data and this has no undo.",
-      );
-    }
+    refuseOnProduction("admin:clearAll");
     // Every table holding collected or account data, not the five this listed
     // for its whole life. A partial wipe left accounts, sessions, watches and
     // shelf rows pointing at products that no longer existed, which is a worse
@@ -365,10 +354,12 @@ const EVENT_PREFIX_END = "evt:~";
  * Delete every evt:* counter row. Run with
  * `npx convex run admin:clearEventCounters`.
  *
- * DEV UTILITY — there is no reason to run this against production. Client
- * health events are the one metric with no ground truth anywhere else (an
- * event is a moment, not a row), so anything deleted here is gone, and
- * `backfillCounters` cannot rebuild it.
+ * DEV UTILITY, and refused on production at runtime (refuseOnProduction) —
+ * this said "there is no reason to run this against production" and left it
+ * at that, which is a habit rather than a guard. Client health events are the
+ * one metric with no ground truth anywhere else (an event is a moment, not a
+ * row), so anything deleted here is gone, and `backfillCounters` cannot
+ * rebuild it.
  *
  * What it is for: a deployment that has been used for testing carries
  * synthetic values, and a fabricated `panel_error` on the health card is worse
@@ -385,6 +376,7 @@ export const clearEventCounters = internalMutation({
   args: {},
   returns: v.object({ deleted: v.number(), truncated: v.boolean() }),
   handler: async (ctx) => {
+    refuseOnProduction("admin:clearEventCounters");
     const rows = await ctx.db
       .query("counters")
       .withIndex("by_key", (q) =>
