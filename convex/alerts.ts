@@ -184,15 +184,24 @@ export const recordSendFailures = internalMutation({
 //
 // THE SEND CAP IS PER PASS, NOT PER HOUR. EMAIL_SEND_LIMIT (watches.ts) bounds
 // what one action tries serially, which is an action-time-limit fact, not a
-// throughput decision. A pass that fills its cap and actually sent something
-// schedules itself again immediately (`hop` below), up to MAX_HOPS passes
-// deep, so an hour's throughput is MAX_HOPS x the cap rather than the cap —
-// at 100k installs the backlog behind one price drop on a popular product is
-// not a hundred rows, and a cap that only the clock could reset would have
-// spread one alert over days. A pass that sent NOTHING never chains: an
-// all-failed pass (provider down, key revoked) releases its claims, and a
-// chain off that would loop at full speed against a dead provider until the
-// hop limit and log nothing useful on the way.
+// throughput decision. A pass that fills its cap, sent something and had no
+// send refused schedules itself again immediately (`hop` below), up to
+// MAX_HOPS passes deep, so an hour's throughput is MAX_HOPS x the cap rather
+// than the cap — at 100k installs the backlog behind one price drop on a
+// popular product is not a hundred rows, and a cap that only the clock could
+// reset would have spread one alert over days.
+//
+// A pass with ANY refusal never chains, and "sent nothing" is only the extreme
+// case of it. Every refused watch is handed back by releaseEmailClaim and
+// never left the armed-and-unsent index, so it keeps the place it was read
+// from, ahead of every row this pass did not reach. A chain off a mixed pass
+// would therefore open on exactly the addresses the provider just turned
+// down, retry them at once, and do it again every hop up to MAX_HOPS —
+// spending provider quota on refusals while the rows behind them wait. An
+// all-failed pass (provider down, key revoked) is the same loop with nothing
+// sent on the way. So a failure ends the chain and the hourly sweep takes
+// what is left; a refused address is next tried by a pass some other trigger
+// started, never by one its own refusal scheduled.
 // ---------------------------------------------------------------------------
 
 // How many times one trigger (a cron tick or a sighting) may re-schedule
@@ -247,12 +256,18 @@ const passResultValidator = v.object({
   chained: v.boolean(),
 });
 
-/** Whether a finished pass has earned another one. See MAX_HOPS. */
+/**
+ * Whether a finished pass has earned another one: it filled its cap, sent at
+ * least one mail, and had none refused. See the header note above MAX_HOPS
+ * for why a single refusal is enough to stop.
+ */
 function shouldChain(
-  result: Pick<SweepResult, "sent" | "truncated">,
+  result: Pick<SweepResult, "sent" | "failed" | "truncated">,
   hop: number,
 ): boolean {
-  return result.truncated && result.sent > 0 && hop < MAX_HOPS;
+  return (
+    result.truncated && result.sent > 0 && result.failed === 0 && hop < MAX_HOPS
+  );
 }
 
 async function runPass(
@@ -289,7 +304,7 @@ async function runPass(
   // has whatever it left behind.
   if (due.truncated && productDocIds === undefined) {
     console.warn(
-      `alerts: sweep hit its send cap with ${due.scanned} rows scanned — it will chain another pass if this one sends; if a chain runs out at MAX_HOPS, the interval is too long for the volume.`,
+      `alerts: sweep hit its send cap with ${due.scanned} rows scanned — it will chain another pass if this one sends with no refusals; if a chain runs out at MAX_HOPS, the interval is too long for the volume.`,
     );
   }
   if (due.fires.length === 0) {
@@ -316,9 +331,11 @@ async function runPass(
     const ok = await deliver(apiKey, from, fire, unsubUrl);
     if (!ok) {
       failed++;
-      // Hand it back unsent, so the next pass can try it immediately instead
-      // of waiting out the claim. Best-effort by construction: if this write
-      // is the thing that failed, the TTL still frees the row.
+      // Hand it back unsent, so the next pass to run can try it instead of
+      // waiting out the claim. That next pass is never a chained one — a
+      // refusal ends the chain (see shouldChain) — so this cannot become an
+      // immediate retry loop. Best-effort by construction: if this write is
+      // the thing that failed, the TTL still frees the row.
       await ctx.runMutation(internal.watches.releaseEmailClaim, {
         watchId: fire.watchId as Id<"watches">,
         at: claimedAt,
@@ -350,11 +367,12 @@ async function runPass(
  * The hourly pass over every armed-and-unsent row. The guarantee.
  *
  * `hop` is the chain depth and is only ever set by this function scheduling
- * itself; the cron passes nothing and starts at 0. A pass that filled its cap
- * and sent at least one mail schedules the next pass with no delay — a fresh
- * action, so a fresh time budget, and a fresh claim stamp so the released and
- * still-unclaimed rows are simply what it finds. See the header note on why
- * the cap is per pass.
+ * itself; the cron passes nothing and starts at 0. A pass that filled its cap,
+ * sent at least one mail and had none refused schedules the next pass with no
+ * delay — a fresh action, so a fresh time budget, and a fresh claim stamp so
+ * the still-unclaimed rows are simply what it finds. A pass with a refusal
+ * stops there and leaves the rest to the next hourly tick. See the header note
+ * on why the cap is per pass and why a refusal ends the chain.
  */
 export const sweep = internalAction({
   args: { hop: v.optional(v.number()) },
@@ -407,7 +425,9 @@ export const fanOut = internalAction({
     const result = await runPass(ctx, args.productDocIds);
     // Same products, next pass: the reactive index is "armed and unsent" per
     // product, so what the first pass marked has left the set and the second
-    // reads what remains. Same chain rule as the sweep, same hop ceiling.
+    // reads what remains. Same chain rule as the sweep, same hop ceiling —
+    // including the stop on any refusal, since a released row is first in
+    // this per-product read too.
     const chained = shouldChain(result, hop);
     if (chained) {
       await ctx.scheduler.runAfter(0, internal.alerts.fanOut, {

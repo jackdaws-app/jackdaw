@@ -1072,10 +1072,25 @@
   // which is the case the listener exists for and must never wait.
   const AUTH_RECHECK_MS = 60_000;
   let lastAuthCheck = 0;
-  window.addEventListener("focus", async () => {
+  window.addEventListener("focus", () => recheckAuth(false));
+
+  // The service worker says so whenever the stored session changes, which is
+  // what makes a sign-out in the popup reach a page that re-read inside the
+  // last minute: focus alone would skip it on the throttle, and nothing else
+  // would ever ask again. Registered while the context is alive; an orphaned
+  // script simply stops hearing it, which is the right failure.
+  try {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.type === "auth:changed") recheckAuth(true);
+    });
+  } catch {
+    // Context already gone; the focus path is all that is left.
+  }
+
+  async function recheckAuth(force) {
     if (!alive()) return;
     const now = Date.now();
-    if (!authCheckWanted && now - lastAuthCheck < AUTH_RECHECK_MS) return;
+    if (!force && !authCheckWanted && now - lastAuthCheck < AUTH_RECHECK_MS) return;
     authCheckWanted = false;
     lastAuthCheck = now;
     const a = await send({ type: "auth:state" });
@@ -1099,7 +1114,7 @@
     // Handle alone moved — that only reaches the composer, so a redraw of the
     // data already in hand is the whole fix.
     if (drawerEl && drawerEl.classList.contains("jd-open")) renderActive();
-  });
+  }
 
   // ---------- Rendering ----------
 

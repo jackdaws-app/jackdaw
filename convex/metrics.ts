@@ -18,10 +18,11 @@ import type { EventName } from "./lib";
  *    the endpoint is public, unauthenticated and open source, anyone can call
  *    it. The rate limit bounds fabrication, it does not prevent it. Treat this
  *    as "clicks recorded", not "clicks proven".
- * 2. That same global bucket caps the metric at 3,600/hour (~86k/day) across
+ * 2. That same global bucket caps the metric at 10,000/hour (240k/day) across
  *    all users. Real clicks beyond that are dropped, not queued, so the figure
  *    reads low if click volume ever passes it — sized so that takes more than
- *    100k installs, not a good afternoon.
+ *    100k installs (~4,200/hour at one click per install per day), not a good
+ *    afternoon. The sizing note is on the `alertClick` bucket in lib.ts.
  */
 export const alertClicked = mutation({
   args: {},

@@ -60,16 +60,20 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Alert click-throughs carry no identifier at all (by design — see
   // metrics.ts), so there is nothing to key a per-device bucket on. A single
   // global bucket is the only option, which also makes it a ceiling on the
-  // metric itself: at most 3,600 clicks/hour (~86k/day) can ever be recorded.
+  // metric itself: at most 10,000 clicks/hour (240k/day) can ever be recorded.
   // Sized so the ceiling sits above anything 100k installs can produce (one
   // alert click per install per day is ~4,200/hour) — the metric must read
-  // low from fabrication bounds, never from real clicks being dropped.
+  // low from fabrication bounds, never from real clicks being dropped. The
+  // ~2.4x over that flat average is for the two ways real clicks bunch up: a
+  // peak hour runs well above the day's mean, and the shards below can refuse
+  // before the whole bucket is spent. It was 3,600 until 2026-10-25, which sat
+  // BELOW the figure this comment gave as its target.
   //
   // `shards` splits the bucket's own state across rows so the global key stops
   // being a single contended document; a caller's token comes off one shard
-  // at random, so at the margin a shard can refuse while a sibling still has
-  // tokens. That only makes the cap fuzzier, never larger.
-  alertClick: { kind: "token bucket", rate: 3600, period: HOUR, shards: 8 },
+  // at random (1,250/hour each), so at the margin a shard can refuse while a
+  // sibling still has tokens. That only makes the cap fuzzier, never larger.
+  alertClick: { kind: "token bucket", rate: 10_000, period: HOUR, shards: 8 },
   // Client error telemetry (metrics:events) has the same shape and the same
   // trade-off: no identifier in the payload, so no per-device key exists and
   // the bucket has to be global.

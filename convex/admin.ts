@@ -1,10 +1,28 @@
 import { internalMutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { categoryKey, initCounter, setCounter, utcDay } from "./lib";
+import {
+  HOT_COUNTER_SHARDS,
+  categoryKey,
+  initCounter,
+  isHotKey,
+  setCounter,
+  utcDay,
+} from "./lib";
 
 // Per-table scan cap for the backfill. Deliberately bounded: the point of the
 // counters is that nothing ever scans a growing table.
 const SCAN_LIMIT = 1000;
+
+// The backfill's stale comments:day sweep reads at most this many counter
+// rows. Named because the transaction estimate below has to count it too.
+const STALE_DAY_LIMIT = 500;
+
+// Convex's per-transaction document ceilings are 16,384 read and 8,192
+// written (dashboard.ts works its read budget against the same 16,384). The
+// backfill plans against ~85% of each: its estimate is already a worst case,
+// and the margin is for whatever the estimate does not count.
+const BACKFILL_READ_BUDGET = 14_000;
+const BACKFILL_WRITE_BUDGET = 7_000;
 
 // CONVEX_CLOUD_URL is a system variable naming the deployment this code is
 // running on, so it is absent from the typed `env` convex.config.ts declares.
@@ -80,12 +98,16 @@ export const clearAll = internalMutation({
  * Idempotent: derived counters are SET from the current data, not incremented,
  * so a second run recomputes the same values rather than doubling them.
  *
- * Two caveats worth knowing before re-running it later:
+ * Three caveats worth knowing before re-running it later:
  *
  * 1. It refuses to write anything if any source table exceeds SCAN_LIMIT rows
  *    (throws TRUNCATED). A partial scan would clobber an accurate live counter
  *    with an undercount, which is worse than not running — by then the
- *    counters are being maintained on write anyway and need no repair.
+ *    counters are being maintained on write anyway and need no repair. It
+ *    also refuses, with the same code, when the keys it derived could cost
+ *    more document reads or writes than one transaction holds — see the
+ *    estimate in the handler, and caveat 3 for why sharding makes that
+ *    reachable under SCAN_LIMIT.
  * 2. alerts:armed / alerts:fired / alerts:clicked are event tallies with no
  *    ground truth left in the data (arming is a transition; acking clears the
  *    flag; a click writes nothing but the counter). They are seeded only when
@@ -205,6 +227,61 @@ export const backfillCounters = internalMutation({
       ),
     ];
 
+    // The SCAN_LIMIT guard bounds what the backfill reads in, not what it
+    // writes out. Every hot key in `derived` — the totals, and one obs:day,
+    // obs:store or obs:cat key per distinct day, store and category — costs
+    // setCounter its base row plus up to HOT_COUNTER_SHARDS shard rows read,
+    // and a delete for every shard it finds. So a dataset under the per-table
+    // cap can still carry enough distinct days and categories to run one
+    // transaction past Convex's document limits. Convex would abort the whole
+    // mutation if it did, so nothing half-written could survive; what this
+    // buys is a refusal that names the cause before any write, instead of a
+    // system error from somewhere inside the loop.
+    //
+    // Worst case by construction: every hot key fully sharded, every base row
+    // written, and the tail after the loop at its cap — the comments:day sweep
+    // reading STALE_DAY_LIMIT rows and re-reading and zeroing every one of them
+    // (cold keys: one read and one write each), then the seed-once keys, each
+    // a base read plus a shard range when hot, and an insert. This list has to
+    // name every initCounter call further down; one left off undercounts by
+    // at most 1 + HOT_COUNTER_SHARDS reads, which the budget's margin absorbs.
+    const seedOnceKeys = [
+      "alerts:armed",
+      "alerts:fired",
+      "alerts:clicked",
+      "obs:catalog",
+      "obs:batches",
+    ];
+    let hotDerived = 0;
+    for (const [key] of derived) if (isHotKey(key)) hotDerived++;
+    const hotSeeds = seedOnceKeys.filter(isHotKey).length;
+    const estimatedReads =
+      products.length +
+      pricePoints.length +
+      devices.length +
+      comments.length +
+      reports.length +
+      watches.length +
+      derived.length +
+      hotDerived * HOT_COUNTER_SHARDS +
+      STALE_DAY_LIMIT * 2 +
+      seedOnceKeys.length +
+      hotSeeds * HOT_COUNTER_SHARDS;
+    const estimatedWrites =
+      derived.length +
+      hotDerived * HOT_COUNTER_SHARDS +
+      STALE_DAY_LIMIT +
+      seedOnceKeys.length;
+    if (
+      estimatedReads > BACKFILL_READ_BUDGET ||
+      estimatedWrites > BACKFILL_WRITE_BUDGET
+    ) {
+      throw new ConvexError({
+        code: "TRUNCATED",
+        message: `refusing to backfill: ${derived.length} counter keys (${hotDerived} sharded) could cost ${estimatedReads} document reads and ${estimatedWrites} writes, over the ${BACKFILL_READ_BUDGET} / ${BACKFILL_WRITE_BUDGET} budget for one transaction`,
+      });
+    }
+
     for (const [key, value] of derived) {
       await setCounter(ctx, key, value);
     }
@@ -227,7 +304,7 @@ export const backfillCounters = internalMutation({
       .withIndex("by_key", (q) =>
         q.gte("key", COMMENT_DAY_PREFIX).lt("key", `${COMMENT_DAY_PREFIX}~`),
       )
-      .take(500);
+      .take(STALE_DAY_LIMIT);
     let zeroed = 0;
     for (const row of staleDays) {
       const day = row.key.slice(COMMENT_DAY_PREFIX.length);
