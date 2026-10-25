@@ -1,9 +1,15 @@
 import { ConvexError, v } from "convex/values";
-import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
+import { DAY, HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
 import { env } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
+
+// CONVEX_CLOUD_URL is a system variable naming the deployment this code is
+// running on, so it is absent from the typed `env` convex.config.ts declares.
+// Same narrow declaration alerts.ts uses, and for the same reason: @types/node
+// is deliberately not a dependency. Read only by refuseOnProduction below.
+declare const process: { env: Record<string, string | undefined> };
 
 /** Strip C0/C1 control characters (incl. DEL) and trim. */
 export function sanitize(s: string): string {
@@ -90,23 +96,39 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // alertClick's eight: the global key must not be one document.
   clientEvents: { kind: "token bucket", rate: 100_000, period: HOUR, shards: 16 },
   // Sign-in codes, keyed on the normalized email. Five an hour is generous for
-  // a human who mistyped or lost the first mail, and low enough that this
-  // endpoint can't be used to mailbomb a stranger — requestCode sends to any
+  // a human who mistyped or lost the first mail. requestCode sends to any
   // syntactically valid address, so the address itself is the only thing worth
-  // keying on.
+  // keying on — Convex functions never see a client IP.
+  //
+  // THIS BUCKET ALONE IS NOT A MAILBOMB GUARD, and this comment said it was.
+  // Five an hour refills forever: 120 codes a day into one stranger's inbox,
+  // every day, from anyone who knows the address. The daily twin below is what
+  // actually bounds a targeted mailbomb; this one only shapes the burst.
   authCodeRequest: { kind: "token bucket", rate: 5, period: HOUR },
-  // Deployment-wide ceiling on the same endpoint, consumed only after the
-  // per-email bucket allows the request, so one hammered address can never
+  // The per-address DAILY ceiling, consumed after the hourly bucket allows the
+  // request and before the global one. Ten a day is still more than a person
+  // who lost two mails and mistyped a third will ever reach, and it caps what
+  // the endpoint can put in one inbox at about ten a day rather than 120.
+  authCodeRequestDaily: { kind: "token bucket", rate: 10, period: DAY },
+  // Deployment-wide ceiling on the same endpoint, consumed only after both
+  // per-address buckets allow the request, so one hammered address can never
   // drain everyone else's budget. This is the bill-shock stop: 5,000
   // sends/hour is the most Jackdaw can ever be made to pay Resend for, and
   // it is what stops a launch-day sign-in wave (or a 100k-install steady
-  // state) from locking everyone out at the old 200. The per-email five an
-  // hour above is still the mailbomb guard; this one only bounds the bill.
+  // state) from locking everyone out at the old 200. The per-address pair
+  // above is the mailbomb guard; this one only bounds the bill, and its size
+  // is the owner's decision, not something to tune from here.
   authCodeGlobal: { kind: "token bucket", rate: 5000, period: HOUR, shards: 8 },
   // Verify attempts per email. The per-code `attempts` field (5, then the code
   // is dead) is the real defence; this is the outer bound that stops an
   // attacker cycling fresh codes to buy fresh attempt budgets.
   authVerify: { kind: "token bucket", rate: 10, period: HOUR },
+  // …and the same bound over a day, because the hourly bucket is the binding
+  // limit against one targeted address and it refills forever: 87,600 guesses
+  // a year against a million-code space is about an 8% chance a year of taking
+  // a chosen account, the admin's included. Twenty a day takes that to under
+  // 1%. Consumed after the hourly bucket, answering the same in-band verdict.
+  authVerifyDaily: { kind: "token bucket", rate: 20, period: DAY },
   // Handle claims, keyed on deviceId. Sized for a person picking a name — the
   // first few tries are genuinely expected to come back TAKEN or INVALID — and
   // it is not really an anti-guessing control: an account may hold exactly one
@@ -117,6 +139,25 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // that threw its refusal would roll back the token it just consumed and the
   // limit would not exist. Same reasoning as the code-attempt counter above.
   handleClaim: { kind: "token bucket", rate: 20, period: HOUR },
+  // Watch writes (toggle, setTarget, setTriggers, ack), keyed on the account.
+  //
+  // These had no limit at all, and the absence mattered because of what an
+  // arming does: it clears `emailedAt` (a re-armed watch is owed a new email)
+  // and schedules an `alerts.fanOut` action. So one signed-in account with
+  // email on, looping setTarget at a target above today's price, received one
+  // email per iteration and scheduled one action per call, on as many products
+  // in parallel as it liked. Thirty a minute is far past what a person tapping
+  // a bell or editing a target can reach.
+  watchWrite: { kind: "token bucket", rate: 30, period: MINUTE },
+  // Alert emails per account per day, consumed in watches.claimDueForEmail for
+  // each row it is about to claim. The watchWrite bucket slows the loop that
+  // re-owes mail; this caps the mail itself, whatever path made it owed —
+  // so no single account can spend the mailer's quota and the sending
+  // domain's reputation, which every other account's sign-in codes ride on.
+  // A refused row is left unclaimed and unsent, and goes out on the first pass
+  // after the bucket refills if it is still firing: capped mail is delayed,
+  // not marked sent.
+  alertEmail: { kind: "token bucket", rate: 50, period: DAY },
 });
 
 export type RateLimitName =
@@ -124,7 +165,8 @@ export type RateLimitName =
   | "commentVote"
   | "commentReport"
   | "priceReport"
-  | "catalogBatch";
+  | "catalogBatch"
+  | "watchWrite";
 
 /**
  * Consume one token from the named per-device bucket and report whether the
@@ -241,7 +283,8 @@ export function secretsMatch(a: string, b: string): boolean {
  * hoisting; the accounts section owns it because auth.ts is its other caller.
  *
  * Returns who got in and by which door, for a caller that wants to attribute
- * an action. Nothing does yet.
+ * an action. The admin mutations that change something a reader sees — policy
+ * publish/revert and comment moderation — pass it to recordAdminAction.
  */
 export async function requireAdmin(
   ctx: QueryCtx,
@@ -340,6 +383,83 @@ export async function checkAdminRateLimit(ctx: QueryCtx): Promise<void> {
   }
 }
 
+/**
+ * Write one row of the admin trail: who changed something a reader sees, by
+ * which door, and when.
+ *
+ * Only the operations whose effect lands in front of other people — a policy
+ * publish or revert, a comment unhidden or deleted — and only from the panel's
+ * public door. The CLI twins (`moderation:resolve`) are internal and need a
+ * deployment key to reach at all, so the deployment's own function log is
+ * their trail.
+ *
+ * Called AFTER the operation succeeds, inside the same transaction, so the
+ * row and the change it describes commit or roll back together: a refused or
+ * failed action can never leave a record of having happened.
+ *
+ * `target` names the thing acted on (a policy version, a comment id) and never
+ * its content. A deleted comment's words are gone on purpose, and this table
+ * must not become the place they survive. No email either: `accountId` is
+ * enough to say which admin, and it outlives the account as a dangling id,
+ * the same way a vote's does.
+ */
+export async function recordAdminAction(
+  ctx: MutationCtx,
+  who: { accountId: Id<"accounts"> | null; via: "session" | "key" },
+  op: Doc<"adminActions">["op"],
+  target: string,
+): Promise<void> {
+  await ctx.db.insert("adminActions", {
+    at: Date.now(),
+    op,
+    target: target.slice(0, 200),
+    via: who.via,
+    ...(who.accountId === null ? {} : { accountId: who.accountId }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Production guard for destructive dev utilities
+// ---------------------------------------------------------------------------
+
+// The production deployment, named so that a destructive helper can refuse it
+// by name. Already public — `extension/config.js` and `site/config.js` both
+// carry it, because the extension calls it from the browser.
+export const PROD_DEPLOYMENT = "insightful-wren-655";
+
+/**
+ * May a destructive dev utility run on the deployment this URL names?
+ *
+ * FAILS CLOSED, and that is the whole change. The guard this replaces was
+ * `url.includes(PROD_DEPLOYMENT)`, which answers "not production" for an EMPTY
+ * url — so the one state in which this code cannot tell where it is running
+ * was the state in which it would wipe anything. An unknown deployment is
+ * refused exactly like production.
+ *
+ * Pure, on purpose: one string in, one answer out, so the rule can be read and
+ * reasoned about without a deployment to try it on.
+ */
+export function isSafeForDevUtility(cloudUrl: string): boolean {
+  return cloudUrl.length > 0 && !cloudUrl.includes(PROD_DEPLOYMENT);
+}
+
+/**
+ * Throw unless this is a deployment a wipe or a seed is allowed to touch. Call
+ * it FIRST, before any read: the refusal has nothing to roll back, and a
+ * function that has already started deleting is past the point a guard helps.
+ */
+export function refuseOnProduction(fnName: string): void {
+  const cloudUrl = process.env.CONVEX_CLOUD_URL ?? "";
+  if (isSafeForDevUtility(cloudUrl)) return;
+  throw new ConvexError({
+    code: "REFUSED_ON_PRODUCTION",
+    message:
+      cloudUrl.length === 0
+        ? `${fnName} refused: CONVEX_CLOUD_URL is empty, so this deployment cannot be told apart from production.`
+        : `${fnName} is refused on production. Production data is not test data and this has no undo.`,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Optional accounts: email normalization, secret hashing, session lookup
 // ---------------------------------------------------------------------------
@@ -373,11 +493,36 @@ export function normalizeEmail(raw: string): string {
 
 const encoder = new TextEncoder();
 
-// HMAC needs a key, and a zero-length one is rejected outright by some Web
-// Crypto implementations — so an unset pepper falls back to this constant
-// rather than "". It is in the public source and provides exactly no secrecy;
-// it exists so the unconfigured path is a weaker hash, not a crash.
-const UNPEPPERED = "jackdaw-no-pepper-configured";
+/**
+ * The HMAC key, or a refusal. FAILS CLOSED.
+ *
+ * This used to fall back to a constant from the public source when the pepper
+ * was unset, on the theory that a weaker hash beat a crash. It does not: the
+ * "weaker hash" was an HMAC keyed with a string anyone can read, i.e. a plain
+ * table of a million sign-in codes, and a deployment running on it looked
+ * exactly like a healthy one. A deployment that cannot hash a secret properly
+ * must not mint, store or compare one at all — so every call refuses, loudly,
+ * until the variable is set.
+ *
+ * The message names the variable and never its value. Deploys still succeed
+ * without it (convex.config.ts keeps it optional); calls do not.
+ *
+ * ABSENCE ONLY, not strength. A length floor would also refuse a placeholder,
+ * but the deployments' real values cannot be measured from the code that
+ * enforces the floor, and a floor the live pepper happens to miss turns a
+ * deploy into a sign-in outage. Use 256 bits of hex (`openssl rand -hex 32`).
+ */
+function pepper(): string {
+  const value = env.AUTH_PEPPER ?? "";
+  if (value.length === 0) {
+    throw new ConvexError({
+      code: "SERVER_MISCONFIGURED",
+      message:
+        "AUTH_PEPPER is unset; sign-in is disabled until it is set on this deployment.",
+    });
+  }
+  return value;
+}
 
 /**
  * Keyed digest of a secret, hex encoded. HMAC-SHA256 with AUTH_PEPPER as the
@@ -389,11 +534,15 @@ const UNPEPPERED = "jackdaw-no-pepper-configured";
  * to say no protection at all. Session tokens carry 256 bits of entropy and
  * would be safe unhashed-but-unguessable either way; they go through the same
  * function so there is one construction to reason about instead of two.
+ *
+ * Throws SERVER_MISCONFIGURED when the pepper is missing — see `pepper()`.
+ * Anonymous calls never reach here (sessionByToken returns before hashing an
+ * empty token), so a misconfigured deployment still serves price history.
  */
 export async function hashSecret(secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(env.AUTH_PEPPER ?? UNPEPPERED),
+    encoder.encode(pepper()),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -484,6 +633,49 @@ export const EVENT_NAMES = [
 export type EventName = (typeof EVENT_NAMES)[number];
 
 /**
+ * Sign-in refusals, as a closed list — the same single-definition rule as
+ * EVENT_NAMES: auth.ts writes only these, and `dashboard:stats` reads and
+ * zero-fills exactly these.
+ *
+ *   verify:bad      a well-formed guess that was wrong, or a code that was
+ *                   expired, spent or never issued (one verdict, by design)
+ *   verify:locked   a guess at a code already dead from five wrong ones
+ *   verify:limited  a guess refused by the per-address hourly or daily bucket
+ *   code:limited    a code request refused by the per-address hourly or daily
+ *                   bucket — the mailbomb guard doing its job
+ *   code:global     a code request refused by the deployment-wide bucket. The
+ *                   caller is still told "check your mail", so this is the only
+ *                   place that state is visible: nonzero means real people are
+ *                   being refused sign-in codes in silence.
+ *
+ * Counts only, and only verdicts the server already reached. No address, no
+ * code, no token and no device id appears in any key, so the numbers say how
+ * often the door was tried and never by whom or against whom. Both answer in
+ * band (consumeCode returns its verdict and requestCode answers ok), which is
+ * the only reason these can be counted at all — a thrown refusal would roll
+ * its own counter back.
+ */
+export const ACCESS_SIGNALS = [
+  "verify:bad",
+  "verify:locked",
+  "verify:limited",
+  "code:limited",
+  "code:global",
+] as const;
+
+export type AccessSignal = (typeof ACCESS_SIGNALS)[number];
+
+/** Lifetime and per-day twins, the shape `alerts:email:*` already uses. */
+export async function bumpAccessSignal(
+  ctx: MutationCtx,
+  signal: AccessSignal,
+  now: number,
+): Promise<void> {
+  await bump(ctx, `auth:${signal}`);
+  await bump(ctx, `auth:${signal}:day:${utcDay(now)}`);
+}
+
+/**
  * Normalize a Micro Center category into a counter key segment: trimmed,
  * lowercased, capped at 60 chars. Returns null when there's nothing usable,
  * so callers skip the bump rather than creating an "obs:cat:" empty bucket.
@@ -546,8 +738,10 @@ export function normalizeSku(raw: string): string {
  * Truncation only. Everything from the query string or the fragment is dropped
  * and an absolute URL is reduced to its path, so the popup's
  * `"https://www.microcenter.com" + urlPath` still resolves. A value that is
- * neither is passed through untouched: inventing a path is worse than storing
- * an odd one, and `report`'s length check still bounds it.
+ * neither is passed through untouched — inventing a path is worse than storing
+ * an odd one — and is then refused by {@link isProductPath}, which both write
+ * paths run on the result. This function shapes a path; it does not vouch for
+ * one.
  *
  * NOT a plain cut at the first `#`, which is what this was until dev answered
  * back. Product 684336's path is
@@ -568,6 +762,73 @@ export function normalizeUrlPath(raw: string): string {
   return /^https?:\/\//i.test(trimmed)
     ? trimmed.replace(/^https?:\/\/[^/]*/i, "")
     : trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// What a product's identity and link are allowed to look like
+//
+// WHY THESE EXIST. Both sighting paths are public and anonymous, and both
+// patch `name` and `urlPath` onto the existing row for whatever productId they
+// are given. `normalizeUrlPath` passed through anything without a scheme, and
+// three surfaces build a link as `"https://www.microcenter.com" + urlPath` —
+// so a stored `@evil.example/login` made the alert email's "See it on Micro
+// Center" button point at evil.example, sent from our own domain, to everyone
+// watching that product. One `reportBatch` call could do it to 96 products.
+//
+// The fix is at the write boundary, for the reason normalizeSku's is: it
+// settles for every client version at once. The two core shapes were measured
+// against dev before they were made rules — 8,000 of 8,000 products have an
+// all-digit productId and a path under `/product/<that id>/` (2026-10-25) — so
+// neither can refuse a real sighting that has ever arrived. The three path
+// refusals isProductPath adds on top (dot segments, backslashes, control
+// characters) were NOT part of that survey; they rest on how Micro Center
+// builds a slug, and `products:repairUrlPaths` in a dry run is the measurement
+// that confirms or refutes them on any deployment.
+// ---------------------------------------------------------------------------
+
+const PRODUCT_ID_SHAPE = /^\d{1,10}$/;
+
+/** Is this a Micro Center product id — one to ten digits, nothing else? */
+export function isWellFormedProductId(productId: string): boolean {
+  return PRODUCT_ID_SHAPE.test(productId);
+}
+
+// A path segment a URL parser treats as "." or ".." — including the
+// percent-encoded spellings WHATWG URL resolves the same way.
+const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Is `path` THIS product's own page: exactly `/product/<productId>`, or
+ * anything under `/product/<productId>/`?
+ *
+ * The id is part of the test rather than any `/product/` prefix, so one
+ * product's row cannot be pointed at another product's page either — the link
+ * under a watch always names the thing being watched. Micro Center routes on
+ * the numeric id and treats the slug after it as decorative (driven 2026-08-18:
+ * a mangled slug still served the right product), so the slug is left free.
+ *
+ * The prefix closes the HOST: a string starting `/product/<digits>` cannot
+ * change where `"https://www.microcenter.com" + path` goes. Three more
+ * refusals close the PATH, because a parser does not read the string the way
+ * the prefix test does: a `.`/`..` segment walks back out of `/product/<id>`, a
+ * backslash is a separator to it, and a control character is silently
+ * stripped, rejoining whatever it separated into a dot segment. None of the
+ * three occurs in a slug Micro Center generates, and every surface that builds
+ * a link by concatenation (the popup and the service worker as well as the
+ * mail) is covered by refusing them here, at the one place every stored path
+ * passes through. alerts.ts productUrl re-checks the PARSED pathname anyway.
+ *
+ * False for a malformed id, so the helper is safe to call on stored rows that
+ * predate the id check.
+ */
+export function isProductPath(path: string, productId: string): boolean {
+  if (!isWellFormedProductId(productId)) return false;
+  const root = `/product/${productId}`;
+  if (path !== root && !path.startsWith(`${root}/`)) return false;
+  if (path.includes("\\") || CONTROL_CHAR.test(path)) return false;
+  return !path.split("/").some((segment) => DOT_SEGMENT.test(segment));
 }
 
 
@@ -980,6 +1241,12 @@ const HOT_PREFIXES = [
   "alerts:clicked:day:",
   "abuse:",
   "sel:",
+  // Sign-in refusals (ACCESS_SIGNALS). Human-rate on a quiet day and
+  // attacker-rate on a bad one — a guess spray or a mailbomb attempt is
+  // exactly when every refusal lands on the same day key, and a contended
+  // counter there would turn OCC retries into failed sign-ins for the real
+  // people caught in the same minute. Nothing else is written under `auth:`.
+  "auth:",
 ];
 
 /**
@@ -1295,6 +1562,27 @@ export function requireCleanContent(text: string): void {
   const violation = contentViolation(text);
   if (violation === null) return;
   throw new ConvexError(violation);
+}
+
+/**
+ * Does this text carry a link or an email address? The product-NAME check, and
+ * deliberately a narrow slice of the comment filter rather than the whole of it.
+ *
+ * A product name is written by any anonymous sighting and then printed in an
+ * alert email's subject and body, under our domain, to everyone watching the
+ * product — "Your Jackdaw account is suspended, verify at …" is a 300-character
+ * name. Links and addresses are what turn that into a phishing lure, and the
+ * same URL_PATTERNS / EMAIL_PATTERN constants comments use match 0 of dev's
+ * 8,000 real names (2026-10-25), so they can refuse it without refusing a
+ * product.
+ *
+ * NOT the phone pattern: it matches 54 of those 8,000, because a run of ten
+ * digits with separators is what a list of part numbers looks like. NOT the
+ * profanity list either — the name is the retailer's text, and refusing the
+ * sighting would only make a real product disappear from the record.
+ */
+export function hasLinkOrEmail(text: string): boolean {
+  return URL_PATTERNS.some((re) => re.test(text)) || EMAIL_PATTERN.test(text);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
+  ACCESS_SIGNALS,
   ADMIN_ARGS,
   EVENT_NAMES,
   SELECTOR_NAMES,
@@ -10,6 +11,7 @@ import {
   foldCounterRows,
   HOT_COUNTER_SHARDS,
   readCounter,
+  recordAdminAction,
   requireAdmin,
   resolveCommentReport,
   utcDay,
@@ -69,9 +71,11 @@ const WATCH_SCAN_LIMIT = 1000;
 //   daily         30 days x (4 hot x 9 + 1 cold) ....... 1,110
 //   errors        6 names x 8 keys x 9 .................   432
 //   selectors     5 x 3 x 8 keys x 9 + sel:rejected ....  1,089
+//   access        5 signals x 8 keys x 9 ...............   360
+//   adminActions  newest ADMIN_ACTIONS_SHOWN rows ......    10
 //                                                       -------
-//                                                        15,140
-// against a 16,384 ceiling, ~1.2k of headroom. Points per product came down
+//                                                        15,510
+// against a 16,384 ceiling, ~870 of headroom. Points per product came down
 // from 50 to 40 to pay for the shards: chart-worthiness needs five points and
 // staleness reads the newest lastSeenAt in the window, so forty answers both
 // questions exactly as fifty did. The sample stays 200 because `sampleSize`
@@ -88,6 +92,10 @@ const STALE_AFTER_MS = 30 * DAY_MS;
 // "evt:" would also sweep every day key ever written, which grows without
 // bound while this window does not.
 const ERROR_DAYS = 7;
+
+// The admin trail shown on the panel. The table is append-only and grows with
+// every moderation action, so this is a newest-first window, never a scan.
+const ADMIN_ACTIONS_SHOWN = 10;
 
 export const stats = query({
   args: ADMIN_ARGS,
@@ -178,6 +186,36 @@ export const stats = query({
     // have measured, and the whole table above should be read with that in mind.
     selectorsRejected: v.number(),
     selectorRecentDays: v.number(),
+    // Sign-in refusals by kind (lib.ts ACCESS_SIGNALS), lifetime and over the
+    // same seven days as `errors`. Always all five, zero-filled, for the same
+    // reason `errors` is. `name` is one of ACCESS_SIGNALS; v.string() because
+    // the panel treats it as a label and the write path keeps the set closed.
+    //
+    // WHAT THESE CAN SUPPORT: how often each door refused, never who knocked —
+    // no key carries an address. `verify:bad` climbing on its own is people
+    // mistyping; `verify:limited` or `code:limited` climbing is somebody
+    // leaning on one address; `code:global` above zero is everyone's sign-in
+    // being refused in silence, since requestCode answers "sent" regardless.
+    access: v.array(
+      v.object({
+        name: v.string(),
+        total: v.number(),
+        last7: v.number(),
+      }),
+    ),
+    // The newest admin-trail rows: what changed, by which door, and when. No
+    // email and no account id — the panel's question is "what was done", and
+    // the account behind a session row is one CLI lookup away for whoever
+    // needs it. `op` is one of the schema's four literals and `via` one of two;
+    // v.string() for the same label-only reason as above.
+    adminActions: v.array(
+      v.object({
+        op: v.string(),
+        target: v.string(),
+        via: v.string(),
+        at: v.number(),
+      }),
+    ),
   }),
   handler: async (ctx, args) => {
     await checkAdminRateLimit(ctx);
@@ -388,6 +426,36 @@ export const stats = query({
     );
     const selectorsRejected = await readCounter(ctx, "sel:rejected");
 
+    // Same explicit-key-list shape as `errors`: point reads of the lifetime
+    // key and seven day keys per signal, never a range over "auth:", which
+    // would sweep every day key ever written. The keys are hot (lib.ts) so
+    // each read folds up to nine rows, which the budget above counts.
+    const access = await Promise.all(
+      ACCESS_SIGNALS.map(async (name) => {
+        const [total, ...days] = await Promise.all([
+          readCounter(ctx, `auth:${name}`),
+          ...errorDays.map((date) => readCounter(ctx, `auth:${name}:day:${date}`)),
+        ]);
+        return {
+          name: name as string,
+          total,
+          last7: days.reduce((sum, n) => sum + n, 0),
+        };
+      }),
+    );
+
+    const recentAdmin = await ctx.db
+      .query("adminActions")
+      .withIndex("by_at")
+      .order("desc")
+      .take(ADMIN_ACTIONS_SHOWN);
+    const adminActions = recentAdmin.map((row) => ({
+      op: row.op as string,
+      target: row.target,
+      via: row.via as string,
+      at: row.at,
+    }));
+
     return {
       totals: {
         observations,
@@ -416,6 +484,8 @@ export const stats = query({
       // The recent window's length, so the panel can label the column instead
       // of hard-coding a number that would silently drift from this one.
       selectorRecentDays: ERROR_DAYS,
+      access,
+      adminActions,
     };
   },
 });
@@ -693,7 +763,9 @@ export const flagged = query({
 
 /**
  * Same implementation as `moderation:resolve` (both call resolveCommentReport),
- * reachable with the admin key instead of a CLI session.
+ * reachable with an admin session or the key instead of a CLI session — and,
+ * unlike the CLI twin, recorded in the admin trail, because this is the door
+ * that sits on the public HTTP surface.
  */
 export const resolve = mutation({
   args: {
@@ -706,9 +778,18 @@ export const resolve = mutation({
     // Rate limit before the key check by intent, though the throw below rolls
     // the token back — see enforceAdminRateLimit's note.
     await enforceAdminRateLimit(ctx);
-    await requireAdmin(ctx, args);
+    const who = await requireAdmin(ctx, args);
 
     await resolveCommentReport(ctx, args.commentId, args.action);
+    // After the resolve, so an unknown comment (resolveCommentReport throws
+    // NOT_FOUND) rolls this back with it. The id only, never the words: for a
+    // delete, the trail must not be where the comment survives.
+    await recordAdminAction(
+      ctx,
+      who,
+      args.action === "unhide" ? "comment:unhide" : "comment:delete",
+      args.commentId,
+    );
     return null;
   },
 });

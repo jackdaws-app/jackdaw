@@ -1,9 +1,14 @@
 import { v } from "convex/values";
-import { env, internalAction, internalMutation } from "./_generated/server";
-import type { ActionCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import {
+  env,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import type { ActionCtx, QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { bump, hashSecret, secretsMatch, utcDay } from "./lib";
+import { bump, hashSecret, isProductPath, secretsMatch, utcDay } from "./lib";
 
 // ---------------------------------------------------------------------------
 // Email alerts — the delivery half
@@ -38,21 +43,47 @@ const MAIL_TIMEOUT_MS = 10_000;
 const RETAILER = "https://www.microcenter.com";
 
 /**
- * A product path, made safe to concatenate.
+ * The one link an alert carries, and the one thing in the mail a stranger could
+ * once choose.
  *
- * Micro Center's own dataLayer can hand us a slug carrying an undecoded HTML
- * numeric character reference — product 684336 ends `...with-900&#181;m-fiber-holder`,
- * seven literal characters, because a script body is not HTML and nothing
- * decodes it. Concatenated raw, that `#` becomes a fragment delimiter and the
- * link arrives truncated. `encodeURI` does NOT fix this; it leaves `#` and `&`
- * alone as reserved characters.
+ * DEFENCE IN DEPTH, behind the write boundary. Both sighting paths now refuse
+ * any urlPath that is not this product's own page (lib.ts isProductPath), and
+ * `products:repairUrlPaths` resets rows stored before that. This re-checks at
+ * the sink anyway, because the sink is where a wrong value costs most: a
+ * button reading "See it on Micro Center", sent from our own domain, is the
+ * most trusted link Jackdaw ever hands anybody. So the stored path has to pass
+ * the same test again, the URL is built by the parser rather than by
+ * concatenation, and the PARSED result must still be on the retailer's origin
+ * and still under `/product/<id>`. The string test already refuses dot
+ * segments and backslashes; the parsed test is there for whatever a URL parser
+ * reads differently from a string comparison that nobody has thought of yet.
+ * Anything that fails gets the bare product page, which Micro Center routes on
+ * the numeric id alone (driven 2026-08-18), so the shopper still lands on the
+ * right product.
  *
- * This is the third copy of this two-character fix (background.js and popup.js
+ * The `#` escape stays, for valid paths. Micro Center's own dataLayer can hand
+ * us a slug carrying an undecoded HTML numeric character reference — product
+ * 684336 ends `...with-900&#181;m-fiber-holder`, seven literal characters,
+ * because a script body is not HTML and nothing decodes it. Unescaped, that
+ * `#` becomes a fragment delimiter and the link arrives truncated. `encodeURI`
+ * does NOT fix this; it leaves `#` and `&` alone as reserved characters.
+ *
+ * This is the third copy of that two-character fix (background.js and popup.js
  * hold the others) and it is duplicated for the same reason they are: a service
  * worker, a popup and a Convex action share no module.
  */
-function productUrl(urlPath: string): string {
-  return RETAILER + urlPath.replace(/#/g, "%23");
+function productUrl(productId: string, urlPath: string): string {
+  const fallback = `${RETAILER}/product/${encodeURIComponent(productId)}`;
+  if (!isProductPath(urlPath, productId)) return fallback;
+  let url: URL;
+  try {
+    url = new URL(RETAILER + urlPath.replace(/#/g, "%23"));
+  } catch {
+    return fallback;
+  }
+  if (url.origin !== RETAILER) return fallback;
+  if (!isProductPath(url.pathname, productId)) return fallback;
+  return url.href;
 }
 
 
@@ -82,11 +113,65 @@ export async function unsubToken(accountId: string): Promise<string> {
 }
 
 /**
+ * The account an unsubscribe token names, or null for any token that does not
+ * verify. One parser for both doors below — the read-only check a page load
+ * makes and the write a confirmed POST makes — so the two can never disagree
+ * about whether a link is good.
+ *
+ * Null covers malformed, forged and deleted-account alike, for the reason
+ * http.ts gives: which of those it was is nobody's business.
+ */
+async function accountForUnsubToken(
+  ctx: QueryCtx,
+  token: string,
+): Promise<Doc<"accounts"> | null> {
+  // Cap before doing any work: a token is ~100 characters and there is no
+  // reason to hash a megabyte of junk somebody pasted into a query string.
+  if (token.length === 0 || token.length > 200) return null;
+
+  const cut = token.lastIndexOf(".");
+  if (cut <= 0) return null;
+  const rawId = token.slice(0, cut);
+  const digest = token.slice(cut + 1);
+
+  // normalizeId rather than a cast: a malformed id must be a refusal, not a
+  // thrown "invalid id" out of ctx.db.get.
+  const accountId = ctx.db.normalizeId("accounts", rawId);
+  if (accountId === null) return null;
+
+  // Constant-time compare, same helper the admin key and session paths use.
+  if (!secretsMatch(digest, await unsubDigest(accountId))) return null;
+
+  return await ctx.db.get(accountId);
+}
+
+/**
+ * Does this unsubscribe link verify? WRITES NOTHING.
+ *
+ * What a GET on /unsubscribe calls, and the reason it exists at all: mail
+ * security scanners and some clients fetch every link in a message on
+ * delivery, so a GET that unsubscribed turned people's alerts off before they
+ * had opened the mail. The page a GET renders now only asks; the POST its
+ * button sends is what acts.
+ */
+export const checkUnsubToken = internalQuery({
+  args: { token: v.string() },
+  returns: v.object({ ok: v.boolean() }),
+  handler: async (ctx, args) => {
+    return { ok: (await accountForUnsubToken(ctx, args.token)) !== null };
+  },
+});
+
+/**
  * Turn email alerts off from an unsubscribe link.
  *
  * IN BAND, never thrown. The caller is an HTTP action rendering a page to a
  * person who clicked a link in their mail; a thrown refusal there is a 500 and
  * a dead end, where a verdict is a sentence they can act on.
+ *
+ * Returns no address. The page used to print it, which told anybody holding a
+ * forwarded mail — or a scanner's log — whose inbox the link belonged to. The
+ * token never expires, so that was a standing lookup from link to person.
  *
  * Idempotent by construction: a second click patches a row that already reads
  * false, and answers "ok" both times. An unsubscribe confirming twice is
@@ -95,31 +180,11 @@ export async function unsubToken(accountId: string): Promise<string> {
  */
 export const unsubscribeByToken = internalMutation({
   args: { token: v.string() },
-  returns: v.object({
-    ok: v.boolean(),
-    email: v.union(v.string(), v.null()),
-  }),
+  returns: v.object({ ok: v.boolean() }),
   handler: async (ctx, args) => {
-    const refused = { ok: false, email: null };
-    // Cap before doing any work: a token is ~100 characters and there is no
-    // reason to hash a megabyte of junk somebody pasted into a query string.
-    if (args.token.length === 0 || args.token.length > 200) return refused;
-
-    const cut = args.token.lastIndexOf(".");
-    if (cut <= 0) return refused;
-    const rawId = args.token.slice(0, cut);
-    const digest = args.token.slice(cut + 1);
-
-    // normalizeId rather than a cast: a malformed id must be a refusal, not a
-    // thrown "invalid id" out of ctx.db.get.
-    const accountId = ctx.db.normalizeId("accounts", rawId);
-    if (accountId === null) return refused;
-
-    // Constant-time compare, same helper the admin key and session paths use.
-    if (!secretsMatch(digest, await unsubDigest(accountId))) return refused;
-
-    const account = await ctx.db.get(accountId);
-    if (account === null) return refused;
+    const account = await accountForUnsubToken(ctx, args.token);
+    if (account === null) return { ok: false };
+    const accountId = account._id;
 
     // Patch unconditionally rather than only when true — a row that predates
     // the field has it absent, and writing the explicit false is what records
@@ -136,7 +201,7 @@ export const unsubscribeByToken = internalMutation({
       await bump(ctx, "alerts:email:unsub");
       await bump(ctx, `alerts:email:unsub:day:${utcDay(now)}`);
     }
-    return { ok: true, email: account.email };
+    return { ok: true };
   },
 });
 
@@ -441,6 +506,9 @@ export const fanOut = internalAction({
 
 type Fire = {
   email: string;
+  // Carried so productUrl can fall back to the bare product page, and so it
+  // can check the stored path names THIS product rather than any product.
+  productId: string;
   name: string;
   urlPath: string;
   priceAtWatch: number;
@@ -572,7 +640,7 @@ export function bodyText(fire: Fire, unsubUrl: string | null): string {
     "",
     headline(fire),
     "",
-    productUrl(fire.urlPath),
+    productUrl(fire.productId, fire.urlPath),
     "",
     CAVEAT,
     ...textFooter(footerLinks(unsubUrl)),
@@ -587,7 +655,7 @@ export function bodyHtml(fire: Fire, unsubUrl: string | null): string {
     body: [
       `<div class="jd-ink" style="margin:14px 0 0;font-size:17px;font-weight:600;line-height:1.35;color:#16233a">${esc(fire.name)}</div>`,
       para(esc(headline(fire))),
-      button("See it on Micro Center", productUrl(fire.urlPath)),
+      button("See it on Micro Center", productUrl(fire.productId, fire.urlPath)),
       para(esc(CAVEAT), { muted: true, top: 20 }),
     ].join(""),
   });

@@ -59,6 +59,49 @@ for f in extension/*.css site/*.css; do
   fi
 done
 
+echo "==> Site Content-Security-Policy (vercel.json)"
+# The policy pins two things that are edited elsewhere: the Convex origin in
+# site/config.js (swapped at every release) and the hash of each inline
+# <script> in site/*.html. Either one drifting does not fail loudly in a
+# browser. The admin console just stops reaching its backend, or an inline
+# script stops running, and a page that looks fine has lost behaviour. So the
+# policy is checked against both, here.
+if ! python3 - <<'PY'
+import base64, hashlib, json, re, sys, glob
+
+csp = None
+for rule in json.load(open("vercel.json")).get("headers", []):
+    for h in rule.get("headers", []):
+        if h["key"].lower() == "content-security-policy":
+            csp = h["value"]
+if csp is None:
+    sys.exit("vercel.json sets no Content-Security-Policy")
+directives = {d.split()[0]: d.split()[1:] for d in csp.split(";") if d.strip()}
+
+bad = False
+cfg = open("site/config.js").read()
+url = re.search(r'JACKDAW_CONVEX_URL\s*=\s*"([^"]+)"', cfg).group(1)
+if url.rstrip("/") not in directives.get("connect-src", []):
+    print(f"connect-src does not allow {url} (site/config.js)")
+    bad = True
+
+for f in sorted(glob.glob("site/*.html")):
+    html = open(f, encoding="utf-8").read()
+    for m in re.finditer(r"<script(\s[^>]*)?>(.*?)</script>", html, re.S):
+        attrs = m.group(1) or ""
+        if "src=" in attrs or "application/ld+json" in attrs:
+            continue
+        digest = base64.b64encode(hashlib.sha256(m.group(2).encode()).digest()).decode()
+        if f"'sha256-{digest}'" not in directives.get("script-src", []):
+            print(f"{f}: inline script 'sha256-{digest}' is not in script-src")
+            bad = True
+sys.exit(1 if bad else 0)
+PY
+then
+  annotate "vercel.json" "Content-Security-Policy out of step with the site"
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "==> ok"
 fi

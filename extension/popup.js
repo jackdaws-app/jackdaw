@@ -30,8 +30,28 @@
   // `.../with-900&` and 404s. `encodeURI` does NOT help; it leaves `#` and `&`
   // alone as reserved characters. Escape the one character whose meaning
   // changes on the way into a URL.
-  const productUrl = (urlPath) =>
-    "https://www.microcenter.com" + String(urlPath).replace(/#/g, "%23");
+  //
+  // The path is crowdsourced, so it is checked before it becomes a link: it
+  // must belong to this product's own `/product/<id>` page and the result must
+  // still be on Micro Center's origin. Concatenated blind, a stored
+  // `@evil.example/x` makes the host evil.example. Anything that fails falls
+  // back to `/product/<id>`, which Micro Center routes on the id alone.
+  // Duplicated in background.js and convex/alerts.ts, which share no module.
+  const RETAILER = "https://www.microcenter.com";
+  const productUrl = (productId, urlPath) => {
+    const id = String(productId ?? "");
+    if (!/^\d{1,10}$/.test(id)) return RETAILER;
+    const path = String(urlPath ?? "");
+    if (path === `/product/${id}` || path.startsWith(`/product/${id}/`)) {
+      try {
+        const u = new URL(RETAILER + path.replace(/#/g, "%23"));
+        if (u.origin === RETAILER) return u.href;
+      } catch {
+        // falls through to the id-only link
+      }
+    }
+    return `${RETAILER}/product/${id}`;
+  };
 
   // Micro Center prints "$15,299.99"; every price string in Jackdaw matches it.
   const fmt = (p) =>
@@ -223,7 +243,7 @@
       if (triggers) card.append(el("div", "pop-triggers", triggers));
 
       card.addEventListener("click", () => {
-        chrome.tabs.create({ url: productUrl(r.urlPath) });
+        chrome.tabs.create({ url: productUrl(r.productId, r.urlPath) });
         window.close();
       });
       bodyEl.append(card);

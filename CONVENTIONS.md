@@ -86,6 +86,26 @@ narrower restriction; it also sets a browser floor, so `manifest.json` declares
 `minimum_chrome_version`. Don't lower it without checking that the restriction still
 applies.
 
+**Every stored product field was written by an anonymous caller, so it is untrusted on
+the way out as well as on the way in.** A product's name and path reach the database from
+public sightings, which means anyone can write them, and the places they come back out
+(the alert email, the popup's links, a notification) must not let that become something
+else. A product link is never built by concatenating a stored path onto the retailer's
+origin, because a stored path can be written so that the result leaves it. Use the
+`productUrl(productId, urlPath)` builder in `popup.js`, `background.js` and
+`convex/alerts.ts`. It accepts only this product's own `/product/<id>` path and falls back
+to `/product/<id>`, which the retailer routes on the id alone. The write boundary enforces
+the same shape, so the builder is the second check and not the only one. Render names as
+text, never markup.
+
+**The site sends a Content-Security-Policy, and it is pinned to the page.** `vercel.json`
+allows scripts from the site's own origin plus a hash for each inline `<script>`, and
+network calls only to the site and the production Convex deployment. Adding or editing an
+inline script, or pointing `site/config.js` at a different deployment, means updating the
+policy in the same change; `npm test` fails when they disagree. Prefer a file to a new
+inline script. Serving a build with `python3 site/devserver.py 8791 dist/site` sends the
+same headers, so a blocked script fails locally first.
+
 **A content script outlives the extension that injected it.** A reload or an auto-update
 orphans the running instance: the DOM and the closures survive, and every `chrome.*` call
 from then on throws "Extension context invalidated" — uncaught, into the retailer's own
@@ -573,7 +593,11 @@ never leak into legal text.
 - If it scheduled work from a mutation: say whether it is the accelerator or the
   guarantee, and check that the slow path still covers everything the fast one skips.
 - If it touched the site: run `npm run build:site` and drive the built pages, not just the
-  sources. Minification is where a change stops being the program you tested.
+  sources. Minification is where a change stops being the program you tested. Serve the
+  build with `devserver.py` so it carries the production headers, and check the console
+  for Content-Security-Policy violations.
+- If it builds a link from stored data: it goes through `productUrl`, never through string
+  concatenation.
 - Say in the PR what you actually verified and how. "Tested" is not information; "drove it
   on a category page at 96 results per page, both themes, contrast 4.9 light / 5.3 dark"
   is.

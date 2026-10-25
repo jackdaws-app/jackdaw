@@ -756,7 +756,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const drops = await convexQuery("watches:check", { ...scope });
     for (const d of drops) {
       const { title, message } = await notificationFor(d);
-      chrome.notifications.create(d.urlPath, {
+      chrome.notifications.create(productUrl(d.productId, d.urlPath), {
         type: "basic",
         iconUrl: "icons/icon128.png",
         title,
@@ -784,14 +784,34 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // does NOT help; it leaves `#` and `&` alone as reserved characters. Escape the
 // one character whose meaning changes on the way into a URL.
 //
-// Duplicated in popup.js: a popup script and a service worker share no module
-// here, and the alternative is a file that exists only to hold one expression.
-const productUrl = (urlPath) =>
-  "https://www.microcenter.com" + String(urlPath).replace(/#/g, "%23");
+// The path is crowdsourced, so it is checked before it becomes a link: it must
+// belong to this product's own `/product/<id>` page and the result must still be
+// on Micro Center's origin, or the link falls back to `/product/<id>`, which
+// Micro Center routes on the id alone. The notification id IS the finished URL,
+// so the click handler opens exactly what was checked here.
+//
+// Duplicated in popup.js and convex/alerts.ts: a popup script, a service worker
+// and a Convex action share no module, and the alternative is a file that
+// exists only to hold one function.
+const RETAILER = "https://www.microcenter.com";
+const productUrl = (productId, urlPath) => {
+  const id = String(productId ?? "");
+  if (!/^\d{1,10}$/.test(id)) return RETAILER;
+  const path = String(urlPath ?? "");
+  if (path === `/product/${id}` || path.startsWith(`/product/${id}/`)) {
+    try {
+      const u = new URL(RETAILER + path.replace(/#/g, "%23"));
+      if (u.origin === RETAILER) return u.href;
+    } catch {
+      // falls through to the id-only link
+    }
+  }
+  return `${RETAILER}/product/${id}`;
+};
 
 chrome.notifications.onClicked.addListener((notificationId) => {
-  if (!notificationId.startsWith("/")) return;
-  chrome.tabs.create({ url: productUrl(notificationId) });
+  if (!notificationId.startsWith(`${RETAILER}/product/`)) return;
+  chrome.tabs.create({ url: notificationId });
   chrome.notifications.clear(notificationId);
   // A click is the one moment we can honestly say Jackdaw sent someone to a
   // store's product page. Counted in aggregate only (no device, no product).

@@ -29,4 +29,11 @@ jobs:
           # Create the 'cla-signatures' branch before the first PR, or the action
           # will fail to write the signature file.
           branch: "cla-signatures"
-          allowlist: DavidSensara,bot*
+          # Matched as an UNANCHORED regex against the committer's login, or,
+          # for a commit whose email is linked to no GitHub account, against
+          # the free-text git author name. So a pattern here is a claim anyone
+          # can make by setting user.name, and a glob widens it to every name
+          # containing the text. Nothing but the maintainer is listed, and a
+          # PR whose commits are not linked to a real account should be read
+          # as unsigned whatever this check says.
+          allowlist: DavidSensara

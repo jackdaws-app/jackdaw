@@ -1,6 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { ADMIN_ARGS, enforceAdminRateLimit, requireAdmin } from "./lib";
+import {
+  ADMIN_ARGS,
+  enforceAdminRateLimit,
+  recordAdminAction,
+  requireAdmin,
+} from "./lib";
 
 // The published bodies of the privacy policy and the terms of service.
 //
@@ -155,7 +160,7 @@ export const publish = mutation({
   }),
   handler: async (ctx, args) => {
     await enforceAdminRateLimit(ctx);
-    await requireAdmin(ctx, args);
+    const who = await requireAdmin(ctx, args);
 
     const body = normalizeBody(args.markdown);
     if (body.length < MIN_BODY || body.length > MAX_BODY) {
@@ -194,6 +199,10 @@ export const publish = mutation({
       publishedAt: Date.now(),
       ...(note.length > 0 ? { note } : {}),
     });
+    // Only here, after the insert: an unchanged republish returned above and
+    // published nothing, so it is a button press rather than an amendment and
+    // leaves no row — the same rule the version history follows.
+    await recordAdminAction(ctx, who, "policy:publish", `${args.slug} v${version}`);
     return { published: true, version, unchanged: false };
   },
 });
@@ -261,7 +270,7 @@ export const revert = mutation({
   returns: v.object({ version: v.number(), restored: v.number() }),
   handler: async (ctx, args) => {
     await enforceAdminRateLimit(ctx);
-    await requireAdmin(ctx, args);
+    const who = await requireAdmin(ctx, args);
 
     const source = await ctx.db
       .query("policyDocs")
@@ -299,6 +308,12 @@ export const revert = mutation({
       publishedAt: Date.now(),
       note: `Restored version ${args.version}`,
     });
+    await recordAdminAction(
+      ctx,
+      who,
+      "policy:revert",
+      `${args.slug} v${version} (restored v${args.version})`,
+    );
     return { version, restored: args.version };
   },
 });

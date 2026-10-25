@@ -15,6 +15,7 @@ import { internal } from "./_generated/api";
 import {
   SESSION_TTL_MS,
   bump,
+  bumpAccessSignal,
   separatorFoldedForm,
   handleKeyOf,
   hashSecret,
@@ -153,8 +154,14 @@ function generateSessionToken(): string {
  * looks exactly like a send.
  *
  * The cost of that is real and accepted: a rate-limited caller is told the
- * code is on its way and no code arrives. Five an hour per address is well
- * clear of what a person retrying a typo can hit.
+ * code is on its way and no code arrives. Five an hour and ten a day per
+ * address is well clear of what a person retrying a typo can hit, and the
+ * daily ceiling is what keeps this endpoint from being a mailbomb aimed at a
+ * stranger's inbox — the hourly bucket alone refilled to 120 a day.
+ *
+ * Every refusal is COUNTED (lib.ts ACCESS_SIGNALS), which the in-band answer
+ * is what makes possible: the bump commits with the token it reports on. The
+ * counters carry no address.
  */
 export const requestCode = mutation({
   args: { email: v.string() },
@@ -163,19 +170,38 @@ export const requestCode = mutation({
     // Shape validation throws, and that is fine here: whether a string is a
     // syntactically valid address is independent of whether anyone owns it.
     const email = normalizeEmail(args.email);
+    const now = Date.now();
 
-    // Per-address first, deployment-wide second, and the global token is only
-    // consumed once the per-address bucket has allowed the request — so one
-    // hammered address can't drain the budget everyone else shares.
+    // Per-address hourly, per-address daily, then deployment-wide — and each
+    // later token is only consumed once the earlier buckets have allowed the
+    // request, so one hammered address can't drain the budget everyone else
+    // shares.
     const perEmail = await rateLimiter.limit(ctx, "authCodeRequest", {
       key: email,
     });
-    if (!perEmail.ok) return { ok: true as const };
+    if (!perEmail.ok) {
+      await bumpAccessSignal(ctx, "code:limited", now);
+      return { ok: true as const };
+    }
+
+    const perEmailDaily = await rateLimiter.limit(ctx, "authCodeRequestDaily", {
+      key: email,
+    });
+    if (!perEmailDaily.ok) {
+      await bumpAccessSignal(ctx, "code:limited", now);
+      return { ok: true as const };
+    }
 
     const global = await rateLimiter.limit(ctx, "authCodeGlobal", {
       key: "global",
     });
-    if (!global.ok) return { ok: true as const };
+    if (!global.ok) {
+      // Counted apart from the per-address refusals because it means the
+      // opposite thing: not one address being hammered, but everyone's
+      // sign-in being refused while each of them is told to check their mail.
+      await bumpAccessSignal(ctx, "code:global", now);
+      return { ok: true as const };
+    }
 
     // The code itself is minted inside the action (see the header note), so
     // nothing secret is ever parked in this scheduled call's arguments.
@@ -437,6 +463,12 @@ export const verifyCode = action({
  *
  * Order matters: the lock is checked before the comparison, so the attempt
  * that trips the limit is refused rather than answered.
+ *
+ * Every refusal is counted by verdict (lib.ts ACCESS_SIGNALS) — in this
+ * transaction, which is the only reason it can be: the verdict commits, so the
+ * count does. Only well-formed guesses reach here; verifyCode turns a
+ * malformed one away before any mutation runs, and it could never have been
+ * right. No key carries the address.
  */
 export const consumeCode = internalMutation({
   args: { email: v.string(), codeHash: v.string() },
@@ -450,30 +482,50 @@ export const consumeCode = internalMutation({
     }),
   ),
   handler: async (ctx, args): Promise<CodeVerdict> => {
+    const now = Date.now();
+
     const limit = await rateLimiter.limit(ctx, "authVerify", {
       key: args.email,
     });
     if (!limit.ok) {
+      await bumpAccessSignal(ctx, "verify:limited", now);
       return { status: "rateLimited", retryAfter: limit.retryAfter };
+    }
+    // The daily ceiling, after the hourly bucket and with the same verdict.
+    // The hourly one is what a person mistyping meets; this is what an
+    // attacker patient enough to wait out every hour meets. See lib.ts.
+    const daily = await rateLimiter.limit(ctx, "authVerifyDaily", {
+      key: args.email,
+    });
+    if (!daily.ok) {
+      await bumpAccessSignal(ctx, "verify:limited", now);
+      return { status: "rateLimited", retryAfter: daily.retryAfter };
     }
 
     const row = await ctx.db
       .query("loginCodes")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .unique();
-    const now = Date.now();
+
+    const bad = async (): Promise<CodeVerdict> => {
+      await bumpAccessSignal(ctx, "verify:bad", now);
+      return { status: "bad" };
+    };
 
     // Never issued, already spent, or expired — all "bad", so a guesser can't
     // tell an address with a live code from one without.
-    if (row === null) return { status: "bad" };
-    if (row.consumedAt !== undefined) return { status: "bad" };
-    if (row.expiresAt <= now) return { status: "bad" };
-    if (row.attempts >= MAX_CODE_ATTEMPTS) return { status: "locked" };
+    if (row === null) return await bad();
+    if (row.consumedAt !== undefined) return await bad();
+    if (row.expiresAt <= now) return await bad();
+    if (row.attempts >= MAX_CODE_ATTEMPTS) {
+      await bumpAccessSignal(ctx, "verify:locked", now);
+      return { status: "locked" };
+    }
 
     // Full-sweep comparison, no early return: same reasoning as requireAdmin.
     if (!secretsMatch(args.codeHash, row.codeHash)) {
       await ctx.db.patch(row._id, { attempts: row.attempts + 1 });
-      return { status: "bad" };
+      return await bad();
     }
 
     // Single use. Marked spent in the same transaction that accepts it, and
@@ -1216,51 +1268,95 @@ export const devPeekCode = internalQuery({
   },
 });
 
+// How many times one daily tick of purgeExpired may re-schedule itself. A
+// hundred passes of SWEEP_LIMIT is 50,000 rows per table per tick — far past
+// any real day's expiries, and enough to drain the backlog a code-request
+// spray can leave (the global bucket admits 5,000 sends an hour). Bounded
+// because a chain that could run forever is a chain that CAN; tomorrow's tick
+// picks up anything left, as alerts.sweep's MAX_HOPS does for mail.
+const PURGE_MAX_HOPS = 100;
+
+type PurgeResult = {
+  codes: number;
+  sessions: number;
+  more: boolean;
+  hop: number;
+  chained: boolean;
+};
+
 /**
- * Delete spent sign-in codes and dead sessions:
- * `npx convex run auth:purgeExpired`
+ * Delete expired sign-in codes and dead sessions. Run daily by crons.ts;
+ * by hand it is `npx convex run auth:purgeExpired`.
  *
  * Neither table has a read path that would clear them on its own — a consumed
  * code is inert but immortal, and a session only gets swept if its account
- * signs in again or is deleted — so without this they grow forever. Bounded
- * per run and reports `more`, in the same shape as admin.ts's other sweeps;
- * run it again while that is true.
+ * signs in again or is deleted — so without this they grow forever.
  *
- * Unindexed take() on purpose: rows come back oldest-first, which for a
- * garbage collector is exactly the order worth scanning, and an index on
- * expiresAt would cost a write on every sign-in to serve a manual chore.
+ * READS ONLY WHAT IS DUE, through `by_expiresAt`. This used to take the first
+ * rows of each table in creation order and skip the live ones, which meant the
+ * oldest SWEEP_LIMIT sessions decided what the purge could ever see: a prefix
+ * of long-lived sessions in daily use hid every expired one behind it,
+ * permanently, while `more` said true on every run and nothing ever ran again.
+ * Now every row read is a row deleted, so each pass makes progress by
+ * construction.
+ *
+ * CONSUMED CODES NEED NO SEPARATE TEST. Every code is written with an expiry
+ * CODE_TTL_MS (ten minutes) out, so a spent one is in this range at most ten
+ * minutes after it was spent — and it is inert in the meantime, since
+ * consumeCode refuses a consumed row before it compares anything.
+ *
+ * DRAINS ITSELF. A pass that filled either batch schedules the next one at
+ * once, up to PURGE_MAX_HOPS deep, so one cron tick clears a backlog rather
+ * than taking a day per SWEEP_LIMIT rows. `hop` is only ever set by this
+ * function scheduling itself; the cron passes nothing and starts at 0.
  */
 export const purgeExpired = internalMutation({
-  args: {},
+  args: { hop: v.optional(v.number()) },
   returns: v.object({
     codes: v.number(),
     sessions: v.number(),
     more: v.boolean(),
+    hop: v.number(),
+    chained: v.boolean(),
   }),
-  handler: async (ctx) => {
+  // Annotated rather than inferred: the handler reaches `internal` to schedule
+  // itself, and inferring through the generated api type it is part of
+  // collapses to `any`. Same reason as alerts.sweep's annotation.
+  handler: async (ctx, args): Promise<PurgeResult> => {
     const now = Date.now();
+    const hop = args.hop ?? 0;
 
-    const codeRows = await ctx.db.query("loginCodes").take(SWEEP_LIMIT);
-    let codes = 0;
+    const codeRows = await ctx.db
+      .query("loginCodes")
+      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", now))
+      .take(SWEEP_LIMIT);
     for (const row of codeRows) {
-      if (row.expiresAt > now && row.consumedAt === undefined) continue;
       await ctx.db.delete(row._id);
-      codes++;
     }
 
-    const sessionRows = await ctx.db.query("sessions").take(SWEEP_LIMIT);
-    let sessions = 0;
+    const sessionRows = await ctx.db
+      .query("sessions")
+      .withIndex("by_expiresAt", (q) => q.lte("expiresAt", now))
+      .take(SWEEP_LIMIT);
     for (const row of sessionRows) {
-      if (row.expiresAt > now) continue;
       await ctx.db.delete(row._id);
-      sessions++;
+    }
+
+    const more =
+      codeRows.length >= SWEEP_LIMIT || sessionRows.length >= SWEEP_LIMIT;
+    const chained = more && hop < PURGE_MAX_HOPS;
+    if (chained) {
+      await ctx.scheduler.runAfter(0, internal.auth.purgeExpired, {
+        hop: hop + 1,
+      });
     }
 
     return {
-      codes,
-      sessions,
-      more:
-        codeRows.length >= SWEEP_LIMIT || sessionRows.length >= SWEEP_LIMIT,
+      codes: codeRows.length,
+      sessions: sessionRows.length,
+      more,
+      hop,
+      chained,
     };
   },
 });

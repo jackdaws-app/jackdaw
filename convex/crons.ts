@@ -65,8 +65,11 @@ crons.hourly(
 // an unfinished sign-in expires, so something has to make that true on its own
 // rather than when a maintainer remembers.
 //
-// Bounded per run and reports `more` — at a volume where one daily pass stops
-// keeping up, raise the frequency rather than the cap.
+// Bounded per pass, and a pass that fills its batch schedules the next one
+// itself (`hop`, up to PURGE_MAX_HOPS in auth.ts), so one tick drains the day's
+// expiries rather than one batch of them. It reads through `by_expiresAt`, so
+// only rows that are due are ever read. If a chain ever runs out at the hop
+// limit, raise the frequency here rather than the batch size there.
 crons.daily(
   "purge spent sign-in codes and dead sessions",
   { hourUTC: 8, minuteUTC: 10 },

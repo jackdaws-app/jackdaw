@@ -353,6 +353,70 @@
     }
   }
 
+  // Sign-in refusals, as server-side verdicts. Each signal carries the weekly
+  // count at which it stops being ordinary: people mistype codes, so a few
+  // wrong guesses a week is a working door, while a site-wide refusal means
+  // real people are being told "check your mail" and getting nothing.
+  const ACCESS = {
+    "verify:bad": ["Wrong codes", "a mistyped, expired or spent code", 25, 250],
+    "verify:locked": ["Codes locked", "a guess at a code already dead from five misses", 5, 50],
+    "verify:limited": ["Guesses refused", "an address hit its guess limit", 1, 25],
+    "code:limited": ["Code requests refused", "an address hit its request limit", 5, 100],
+    "code:global": ["Codes refused site-wide", "the sending ceiling; sign-in is failing silently", 1, 1],
+  };
+  const ADMIN_OPS = {
+    "policy:publish": "Published",
+    "policy:revert": "Restored",
+    "comment:unhide": "Restored comment",
+    "comment:delete": "Deleted comment",
+  };
+
+  function renderAccess(access, actions) {
+    const card = $("accessCard");
+    const wrap = $("access");
+    const trail = $("adminTrail");
+    const note = $("accessNote");
+    if (!access) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    wrap.textContent = "";
+    trail.textContent = "";
+
+    const by = Object.fromEntries(access.map((a) => [a.name, a]));
+    let flagged = 0;
+    for (const [name, [label, meaning, warnAt, badAt]] of Object.entries(ACCESS)) {
+      const a = by[name] || { last7: 0, total: 0 };
+      const tone = a.last7 >= badAt ? "bad" : a.last7 >= warnAt ? "warn" : "good";
+      if (tone !== "good") flagged++;
+      const row = el("div", "health-row signal-row");
+      row.append(
+        el("div", "health-label", label),
+        el("div", "health-value " + tone, `${fmt(a.last7)} · 7d`),
+        el("div", "health-sub", `${fmt(a.total)} all time · ${meaning}`),
+      );
+      wrap.append(row);
+    }
+    note.textContent = flagged
+      ? `${flagged} of ${Object.keys(ACCESS).length} above their usual level this week`
+      : "nothing unusual this week";
+
+    const rows = actions || [];
+    trail.append(el("p", "admin-fine", rows.length ? "Recent admin changes" : "No admin changes recorded yet."));
+    for (const r of rows) {
+      const row = el("div", "policy-row trail-row");
+      const target = el("div", "policy-version", r.target);
+      target.title = r.target;
+      row.append(
+        el("div", "policy-name", ADMIN_OPS[r.op] || r.op),
+        target,
+        el("div", "policy-sub", `${A.ago(r.at)} · by ${r.via === "key" ? "admin key" : "signed-in admin"}`),
+      );
+      trail.append(row);
+    }
+  }
+
   // Selector health. What each reader looks for, and — the part that decides
   // whether a number is alarming — what its healthy ratio actually IS.
   //
@@ -944,6 +1008,7 @@
       renderCategories(stats.categories);
       renderPriceIndex(index);
       renderSignals(stats.errors);
+      renderAccess(stats.access, stats.adminActions);
       renderSelectors(
         stats.selectors,
         stats.selectorsRejected ?? 0,

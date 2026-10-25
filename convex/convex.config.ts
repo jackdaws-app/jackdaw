@@ -24,12 +24,20 @@ const app = defineApp({
     // From address for those emails. Defaults to noreply@jackdaws.app, which
     // has to be a domain verified in Resend before anything sends.
     JACKDAW_FROM_EMAIL: v.optional(v.string()),
-    // Pepper mixed into every code/session hash (HMAC key). Optional so
-    // deploys never fail on it, but it is the difference between a stolen
-    // database being useless and a stolen database being a live sign-in code:
-    // a 6-digit code has a million preimages, so an unpeppered digest of one
-    // is reversible in milliseconds. Set it on both deployments. Rotating it
-    // invalidates every outstanding code and session, which is a feature.
+    // Pepper mixed into every code/session hash (HMAC key). It is the
+    // difference between a stolen database being useless and a stolen
+    // database being a live sign-in code: a 6-digit code has a million
+    // preimages, so an unpeppered digest of one is reversible in milliseconds.
+    //
+    // Optional HERE so a deploy never fails on it — but every call that
+    // hashes a secret does. lib.ts hashSecret refuses SERVER_MISCONFIGURED
+    // when this is unset, so on such a deployment requesting a code, signing
+    // in and resolving any session all fail loudly instead of hashing under a
+    // key from the public source, which is what they used to do. Anonymous
+    // reads never hash and keep working. Set it on both deployments to 256
+    // bits of hex (`openssl rand -hex 32`); the length is not enforced, so it
+    // is on whoever sets it. Rotating it invalidates every outstanding code,
+    // session and unsubscribe link, which is a feature.
     AUTH_PEPPER: v.optional(v.string()),
   },
 });
