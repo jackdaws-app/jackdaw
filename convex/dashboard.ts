@@ -7,6 +7,8 @@ import {
   checkAdminRateLimit,
   enforceAdminRateLimit,
   flaggedComments,
+  foldCounterRows,
+  HOT_COUNTER_SHARDS,
   readCounter,
   requireAdmin,
   resolveCommentReport,
@@ -33,6 +35,22 @@ const STORE_PREFIX_END = "obs:store:~";
 // Categories are free text, so the ceiling is U+FFFF rather than "~".
 const CATEGORY_PREFIX = "obs:cat:";
 const CATEGORY_PREFIX_END = "obs:cat:￿";
+// Row caps for the two namespace scans. The hot counters (see lib.ts) hold
+// one base row plus up to HOT_COUNTER_SHARDS shard rows per KEY, and every
+// shard row sits inside the same prefix range, so a cap on rows has to be
+// (keys wanted) x (1 + shards) or the scan silently truncates to a fraction of
+// the namespace. Both caps are stated as keys and multiplied once, here.
+//   stores     — Micro Center has ~28 locations plus the two pseudo-stores;
+//                60 keys is twice that, so this can only truncate if the
+//                store list doubles.
+//   categories — free text off the retailer's own taxonomy; dev holds 227
+//                distinct keys as of 2026-09-02, so 300 is the working bound
+//                and the panel ranks within it.
+const COUNTER_ROWS_PER_KEY = 1 + HOT_COUNTER_SHARDS;
+const STORE_KEY_CAP = 60;
+const CATEGORY_KEY_CAP = 300;
+const STORE_ROW_CAP = STORE_KEY_CAP * COUNTER_ROWS_PER_KEY;
+const CATEGORY_ROW_CAP = CATEGORY_KEY_CAP * COUNTER_ROWS_PER_KEY;
 
 // Aggregate watched value is a live sum, not a counter: a watch's target price
 // changes in place, so an incremental tally would drift. Bounded instead.
@@ -40,19 +58,35 @@ const WATCH_SCAN_LIMIT = 1000;
 
 // Data health sampling. The read budget is what sets these: a Convex function
 // gets ~16k document reads, and health alone costs SAMPLE * (1 + POINTS).
-// 200 * 51 = 10,200, plus ~1,500 for every other section of this query, leaves
-// roughly 4k of headroom. 500 products at 50 points each would be 25,500 and
-// would blow the limit outright, so the sample is smaller and `sampleSize` is
-// returned to let the panel say "based on N products" honestly.
+//
+// Worst-case budget for `stats`, every hot counter fully sharded (9 rows a
+// key — see lib.ts), every scan at its cap:
+//   totals        7 hot x 9 + 6 cold ..................    69
+//   store range   60 keys x 9 ..........................   540
+//   category range 300 keys x 9 ........................ 2,700
+//   watches ............................................ 1,000
+//   health        200 x (1 + 40) ....................... 8,200
+//   daily         30 days x (4 hot x 9 + 1 cold) ....... 1,110
+//   errors        6 names x 8 keys x 9 .................   432
+//   selectors     5 x 3 x 8 keys x 9 + sel:rejected ....  1,089
+//                                                       -------
+//                                                        15,140
+// against a 16,384 ceiling, ~1.2k of headroom. Points per product came down
+// from 50 to 40 to pay for the shards: chart-worthiness needs five points and
+// staleness reads the newest lastSeenAt in the window, so forty answers both
+// questions exactly as fifty did. The sample stays 200 because `sampleSize`
+// is what the panel prints. 500 products at 50 points would be 25,500 and
+// blow the limit outright.
 const HEALTH_SAMPLE = 200;
-const HEALTH_POINTS_PER_PRODUCT = 50;
+const HEALTH_POINTS_PER_PRODUCT = 40;
 const CHART_WORTHY_MIN_POINTS = 5;
 const STALE_AFTER_MS = 30 * DAY_MS;
 
-// Client error window. Six names × seven days is 42 point reads, cheap enough
-// to sit alongside the health sample — and point reads specifically, not a
-// prefix range: a range over "evt:" would also sweep every day key ever
-// written, which grows without bound while this window does not.
+// Client error window. Six names × seven days is 42 point reads (each up to
+// nine documents once sharded), cheap enough to sit alongside the health
+// sample — and point reads specifically, not a prefix range: a range over
+// "evt:" would also sweep every day key ever written, which grows without
+// bound while this window does not.
 const ERROR_DAYS = 7;
 
 export const stats = query({
@@ -184,17 +218,19 @@ export const stats = query({
       readCounter(ctx, "obs:gridday:from"),
     ]);
 
-    // Bounded indexed range over one key namespace — not a table scan.
+    // Bounded indexed range over one key namespace — not a table scan. Folded
+    // onto base keys first: a hot key's shard rows are in this range too, and
+    // unfolded they would render as eight phantom stores each.
     const storeRows = await ctx.db
       .query("counters")
       .withIndex("by_key", (q) =>
         q.gte("key", STORE_PREFIX).lt("key", STORE_PREFIX_END),
       )
-      .take(200);
-    const stores = storeRows
-      .map((row) => ({
-        storeNum: row.key.slice(STORE_PREFIX.length),
-        observations: row.value,
+      .take(STORE_ROW_CAP);
+    const stores = [...foldCounterRows(storeRows)]
+      .map(([key, value]) => ({
+        storeNum: key.slice(STORE_PREFIX.length),
+        observations: value,
       }))
       .sort((a, b) => b.observations - a.observations)
       .slice(0, MAX_STORES);
@@ -205,11 +241,11 @@ export const stats = query({
       .withIndex("by_key", (q) =>
         q.gte("key", CATEGORY_PREFIX).lt("key", CATEGORY_PREFIX_END),
       )
-      .take(300);
-    const categories = categoryRows
-      .map((row) => ({
-        category: row.key.slice(CATEGORY_PREFIX.length),
-        observations: row.value,
+      .take(CATEGORY_ROW_CAP);
+    const categories = [...foldCounterRows(categoryRows)]
+      .map(([key, value]) => ({
+        category: key.slice(CATEGORY_PREFIX.length),
+        observations: value,
       }))
       .sort((a, b) => b.observations - a.observations)
       .slice(0, MAX_CATEGORIES);
@@ -403,7 +439,8 @@ export const stats = query({
 // and neither of those is a price movement.
 
 // Read budget, same arithmetic as `health` above: CATEGORIES * (SAMPLE + SAMPLE
-// * POINTS) = 8 * (30 + 900) = 7,440 documents, plus the counter range. That is
+// * POINTS) = 8 * (30 + 900) = 7,440 documents, plus the counter range (up to
+// CATEGORY_ROW_CAP = 2,700). That is
 // why this is its own query rather than another section of `stats` — stats has
 // no room for it, and keeping them separate means a category with pathological
 // history can never delay or break the counters.
@@ -495,11 +532,11 @@ export const categoryIndex = query({
       .withIndex("by_key", (q) =>
         q.gte("key", CATEGORY_PREFIX).lt("key", CATEGORY_PREFIX_END),
       )
-      .take(300);
-    const names = categoryRows
-      .map((row) => ({
-        category: row.key.slice(CATEGORY_PREFIX.length),
-        observations: row.value,
+      .take(CATEGORY_ROW_CAP);
+    const names = [...foldCounterRows(categoryRows)]
+      .map(([key, value]) => ({
+        category: key.slice(CATEGORY_PREFIX.length),
+        observations: value,
       }))
       .sort((a, b) => b.observations - a.observations)
       .slice(0, INDEX_CATEGORIES)

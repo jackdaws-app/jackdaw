@@ -975,7 +975,9 @@
         (age ? ` (last seen ${age})` : "")
       : `Jackdaw — shoppers have seen this between ${seen}` + (age ? `, last ${age}` : "");
 
-    const root = host.attachShadow({ mode: "open" });
+    // Closed for the same reason as the panel's root: nothing on the host
+    // page gets a handle on ours.
+    const root = host.attachShadow({ mode: "closed" });
     const s0 = badgeSheet();
     if (s0) root.adoptedStyleSheets = [s0];
     else {

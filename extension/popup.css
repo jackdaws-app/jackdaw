@@ -467,6 +467,11 @@ body.dark .pop-sheet-card { background: #131e30; }
 /* Policy link on the sign-in sheet. The body above it already carries the
    bottom margin, so this only reclaims the gap it needs before the field. */
 .pop-sheet-fine { font-size: 11px; margin: -6px 0 12px; }
+/* The line under a resumed code field. A <button> so it is keyboard-reachable
+   and announced as an action; styled as the policy link above it, minus the
+   arrow, so it reads as an escape hatch and not as a third primary. */
+.pop-code-fine { margin: 8px 0 0; }
+.pop-link-btn { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
 
 .pop-field {
   display: block;

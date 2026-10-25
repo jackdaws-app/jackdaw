@@ -591,7 +591,42 @@
   }
 
   /** Signed out: ask for an address, then transform that step into the code step. */
-  function renderSignIn() {
+  // A popup is destroyed the moment it loses focus — a click on the page, a
+  // tab switch, an accidental dismiss — and the sign-in sheet's step lived in
+  // memory, so a shopper who had just been sent a code came back to "Send
+  // code" and had to ask for another. The address and the moment it was sent
+  // now survive in storage.local (a trusted context; content scripts cannot
+  // read it and nothing adds it to their allowlist), and the next open resumes
+  // at the code step for as long as the backend's code is still live. Cleared
+  // on success, on "Not now", and on sign-out.
+  const PENDING_KEY = "jdPendingSignIn";
+  // Chrome shows no autofill dropdown inside an action popup, for any
+  // extension, so the popup does its own: the last address that signed in
+  // here fills the field, selected, and a return visit is Enter then the code.
+  // Same trusted storage area that already holds the session's address; kept
+  // across sign-out, forgotten when the account is deleted.
+  const LAST_EMAIL_KEY = "jdLastSignInEmail";
+  const PENDING_TTL_MS = 10 * 60 * 1000; // mirrors CODE_TTL_MS in convex/auth.ts
+
+  async function readPendingSignIn() {
+    try {
+      const got = await chrome.storage.local.get(PENDING_KEY);
+      const p = got[PENDING_KEY];
+      if (!p || typeof p.email !== "string" || typeof p.sentAt !== "number") return null;
+      if (Date.now() - p.sentAt > PENDING_TTL_MS) {
+        await chrome.storage.local.remove(PENDING_KEY);
+        return null;
+      }
+      return p;
+    } catch {
+      return null;
+    }
+  }
+  function clearPendingSignIn() {
+    return chrome.storage.local.remove(PENDING_KEY).catch(() => {});
+  }
+
+  function renderSignIn(resume) {
     sheetBody.textContent = "";
     sheetBody.append(
       sheetHead(
@@ -628,19 +663,20 @@
     emailWrap.append(emailInput);
     emailStep.append(emailWrap);
 
-    const sentLine = el("div", "pop-step shut");
+    const sentLine = el("div", "pop-step" + (resume ? "" : " shut"));
     const sentWrap = el("div");
     const sent = el("div", "pop-sent");
     sent.innerHTML = CHECK;
     sentWrap.append(sent);
     sentLine.append(sentWrap);
 
-    const codeStep = el("div", "pop-step shut");
+    const codeStep = el("div", "pop-step" + (resume ? "" : " shut"));
     const codeWrap = el("div");
     const codeInput = el("input", "pop-field code");
     codeInput.type = "text";
     codeInput.inputMode = "numeric";
-    // Chrome offers the code straight from the mail app with this.
+    // Harmless on desktop Chrome, which does nothing with an emailed code;
+    // a platform that can read one out of a message would use this hint.
     codeInput.autocomplete = "one-time-code";
     codeInput.maxLength = 7;
     codeInput.placeholder = "······";
@@ -649,16 +685,51 @@
     codeStep.append(codeWrap);
 
     const actions = el("div", "pop-actions");
-    const primary = el("button", "pop-btn", "Send code");
+    const primary = el("button", "pop-btn", resume ? "Sign in" : "Send code");
     const cancel = el("button", "pop-btn ghost", "Not now");
     actions.append(primary, el("span", "pop-spacer"), cancel);
 
-    sheetBody.append(emailStep, sentLine, codeStep, actions);
-    emailInput.focus();
-    cancel.addEventListener("click", closeSheet);
+    // A resumed sheet gets one more way out, and it is a quiet line under the
+    // code field rather than a third pill: the address may have been a typo,
+    // and the only other route to a fresh code was "Not now" then start over.
+    // Three pills in a 300px row all wrapped to two lines; two is the limit.
+    if (resume) {
+      const fine = el("div", "pop-sheet-fine pop-code-fine");
+      const other = el("button", "pop-link pop-link-btn");
+      other.type = "button";
+      other.append(el("span", "pop-link-text", "Use a different address"));
+      other.addEventListener("click", async () => {
+        await clearPendingSignIn();
+        renderSignIn();
+      });
+      fine.append(other);
+      codeWrap.append(fine);
+    }
 
-    let step = "email";
-    let address = "";
+    sheetBody.append(emailStep, sentLine, codeStep, actions);
+    cancel.addEventListener("click", () => {
+      clearPendingSignIn();
+      closeSheet();
+    });
+
+    let step = resume ? "code" : "email";
+    let address = resume ? resume.email : "";
+    if (resume) {
+      emailStep.classList.add("shut");
+      sent.append(document.createTextNode("Code sent to "), el("b", null, address));
+      codeInput.focus();
+    } else {
+      emailInput.focus();
+      chrome.storage.local
+        .get(LAST_EMAIL_KEY)
+        .then((got) => {
+          const last = got[LAST_EMAIL_KEY];
+          if (typeof last !== "string" || !last || emailInput.value) return;
+          emailInput.value = last;
+          emailInput.select();
+        })
+        .catch(() => {});
+    }
 
     async function submit() {
       if (primary.disabled) return;
@@ -679,6 +750,9 @@
         // Step one becomes step two: the address field collapses into the line
         // that names it, and the code field opens into the space it gave up.
         step = "code";
+        chrome.storage.local
+          .set({ [PENDING_KEY]: { email: address, sentAt: Date.now() } })
+          .catch(() => {});
         sent.append(document.createTextNode("Code sent to "), el("b", null, address));
         emailStep.classList.add("shut");
         primary.textContent = "Sign in";
@@ -701,6 +775,8 @@
         codeInput.select();
         return showError(errorText(res));
       }
+      clearPendingSignIn();
+      chrome.storage.local.set({ [LAST_EMAIL_KEY]: address }).catch(() => {});
       renderSignedInDone(res.result);
     }
 
@@ -817,6 +893,7 @@
     out.addEventListener("click", async () => {
       out.disabled = true;
       await send({ type: "auth:signOut" });
+      clearPendingSignIn();
       auth = { signedIn: false };
       paintAcct();
       loadList();
@@ -841,6 +918,7 @@
       }
       del.disabled = true;
       const res = await send({ type: "auth:delete" });
+      await chrome.storage.local.remove(LAST_EMAIL_KEY).catch(() => {});
       if (res.error) {
         del.disabled = false;
         return showError(errorText(res));
@@ -865,7 +943,13 @@
   // The list depends on the auth answer now — a signed-out popup shows the
   // invitation instead of fetching a dashboard it has no token for — so the
   // auth read comes first rather than racing the render.
-  refreshAuth().then(loadList);
+  refreshAuth()
+    .then(loadList)
+    .then(async () => {
+      if (auth.signedIn) return clearPendingSignIn();
+      const pending = await readPendingSignIn();
+      if (pending) openSheet(() => renderSignIn(pending), acctBtn);
+    });
 })();
 
 // ---------- The header lap ----------
